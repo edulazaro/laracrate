@@ -1,38 +1,38 @@
 # Laracrate
 
-Almacenamiento polimórfico de archivos para Laravel con upload directo a R2/S3, control de acceso granular, streaming de contenido sensible, image variants automáticos, preview de vídeo y PDF, watermark per-variant, multipart uploads, extracción de texto y embeddings vectoriales.
+Polymorphic file storage for Laravel with direct upload to R2/S3, granular access control, sensitive content streaming, automatic image variants, video and PDF previews, per-variant watermarking, multipart uploads, text extraction, and vector embeddings.
 
-## Tabla de contenidos
+## Table of contents
 
-1. [Filosofía](#filosofía)
-2. [Instalación](#instalación)
-3. [Modelo de datos](#modelo-de-datos)
-4. [Configuración](#configuración)
-5. [Uso desde el modelo](#uso-desde-el-modelo)
-6. [Pipeline de procesamiento](#pipeline-de-procesamiento)
+1. [Philosophy](#philosophy)
+2. [Installation](#installation)
+3. [Data model](#data-model)
+4. [Configuration](#configuration)
+5. [Using it from your model](#using-it-from-your-model)
+6. [Processing pipeline](#processing-pipeline)
 7. [Variants](#variants)
-8. [Modos de upload](#modos-de-upload)
-9. [Endpoints HTTP](#endpoints-http)
+8. [Upload modes](#upload-modes)
+9. [HTTP endpoints](#http-endpoints)
 10. [Sensitive content](#sensitive-content)
-11. [Comandos artisan](#comandos-artisan)
-12. [Componente Livewire opcional](#componente-livewire-opcional)
-13. [API completa](#api-completa)
+11. [Artisan commands](#artisan-commands)
+12. [Optional Livewire component](#optional-livewire-component)
+13. [Full API](#full-api)
 14. [Tests](#tests)
-15. [Dependencias](#dependencias)
+15. [Dependencies](#dependencies)
 16. [License](#license)
 
-## Filosofía
+## Philosophy
 
-1. **Backend agnóstico al frontend.** El core no depende de Livewire ni Alpine. Solo expone endpoints, un trait, y un servicio.
-2. **Reutiliza `Storage::disk()` de Laravel.** Las credenciales de los disks viven en `config/filesystems.php` (single source of truth). El paquete no duplica configuración.
-3. **Pipeline de Actions.** Cada operación es una clase aislada (`edulazaro/laractions`), testeable y queueable.
-4. **Procesado async.** Variants, preview de vídeo y PDF, extracción de texto, embeddings, todo en cola. El upload del usuario es instantáneo.
-5. **3 modos de acceso por colección**: `public` (CDN directo), `signed` (URL firmada temporal), `stream` (controller con audit y viewer bind).
-6. **Convención `path = key entera`.** El campo `path` del File guarda la key completa del objeto en disk (directorios, filename, extensión). El campo `name` es denormalización de `basename($path)`.
+1. **Backend agnostic to the frontend.** The core has zero dependency on Livewire or Alpine. It exposes endpoints, a trait, and a service.
+2. **Reuses Laravel's `Storage::disk()`.** Disk credentials live in `config/filesystems.php` (single source of truth). The package does not duplicate configuration.
+3. **Pipeline of Actions.** Every operation is an isolated class (`edulazaro/laractions`), testable and queueable.
+4. **Async processing.** Variants, video and PDF previews, text extraction, embeddings, all run on the queue. The user upload is instant.
+5. **3 access modes per collection**: `public` (direct CDN), `signed` (temporary signed URL), `stream` (controller with audit and viewer bind).
+6. **`path = full key` convention.** The `path` field on a File row stores the complete object key in the disk (directories, filename, extension). The `name` field is denormalization of `basename($path)`.
 
-## Instalación
+## Installation
 
-### 1. Path repository en `composer.json` de la app (mientras no esté en Packagist)
+### 1. Path repository in your app's `composer.json` (until it ships on Packagist)
 
 ```json
 {
@@ -45,7 +45,7 @@ Almacenamiento polimórfico de archivos para Laravel con upload directo a R2/S3,
 }
 ```
 
-### 2. Instalar y publicar
+### 2. Install and publish
 
 ```bash
 composer require edulazaro/laracrate
@@ -53,17 +53,17 @@ php artisan vendor:publish --tag=laracrate-config
 php artisan migrate
 ```
 
-`migrate` crea 3 tablas, todas con prefijo `laracrate_`:
+`migrate` creates 3 tables, all with the `laracrate_` prefix:
 
-- `laracrate_files`, tabla principal de top-level y variants.
-- `laracrate_file_contents`, chunks de texto extraído y embeddings (opt-in).
-- `laracrate_multipart_uploads`, sesiones de multipart upload activas.
+- `laracrate_files`, the main table for top-level files and variants.
+- `laracrate_file_contents`, chunks of extracted text and embeddings (opt-in).
+- `laracrate_multipart_uploads`, active multipart upload sessions.
 
-El prefijo `laracrate_` evita choques con tablas legacy `files` que existen en muchas apps Laravel.
+The `laracrate_` prefix avoids clashing with legacy `files` tables that exist in many Laravel apps.
 
-### 3. Disks en `config/filesystems.php`
+### 3. Disks in `config/filesystems.php`
 
-Añade los disks que vayas a usar (R2/S3 para storage real, `local` para dev):
+Add the disks you intend to use (R2/S3 for real storage, `local` for dev):
 
 ```php
 'media' => [
@@ -80,15 +80,15 @@ Añade los disks que vayas a usar (R2/S3 para storage real, `local` para dev):
 ],
 ```
 
-## Modelo de datos
+## Data model
 
-### Tabla `laracrate_files`
+### Table `laracrate_files`
 
-47 columnas core más JSON:
+47 core columns plus JSON:
 
 ```
 id, slug (ulid)
-parent_id, variant                            (jerarquía variants/preview)
+parent_id, variant                            (variants/preview hierarchy)
 fileable_type/id                              (polymorphic owner)
 creator_type/id                               (polymorphic creator)
 tenant_type/id                                (polymorphic tenant)
@@ -103,36 +103,36 @@ downloads_count, last_downloaded_at
 timestamps + softDeletes
 ```
 
-### Tablas auxiliares
+### Auxiliary tables
 
-- `laracrate_file_contents`, una fila por chunk de texto extraído. Si la collection define `chunk_size: 0`, una fila por File con todo el texto.
-- `laracrate_multipart_uploads`, sesiones activas de multipart upload S3/R2. Vida típica de minutos a horas. El cron `laracrate:abort-stale-multipart` aborta las que pasan de `expires_at`.
+- `laracrate_file_contents`, one row per chunk of extracted text. If the collection sets `chunk_size: 0`, one row per File holds all the text.
+- `laracrate_multipart_uploads`, active multipart upload sessions for S3/R2. Typical lifetime of minutes to hours. The `laracrate:abort-stale-multipart` cron aborts those past `expires_at`.
 
-### Conceptos clave
+### Key concepts
 
-- **`path` es la key entera del objeto en disk.** No se concatena con `name`. Acceso recomendado: `$file->key` (accessor que hace `ltrim($file->path, '/')`).
-- **`name` es denormalización** del basename (con extensión). Útil para queries y display, jamás se concatena.
-- **`parent_id` y `variant`**: cualquier File hijo (thumbnail, preview, transcoded) tiene `parent_id` apuntando al padre y `variant` con el rol (`thumbnail`, `medium`, `preview`, `display`...). Es recursivo: el preview de un vídeo tiene sus propios variants hijos.
-- **3 polymorphic ortogonales**: `fileable` (a qué pertenece), `creator` (quién lo creó), `tenant` (scope multi-tenant).
-- **`access`**: `public` produce URL directa CDN, `signed` produce URL firmada con TTL, `stream` produce ruta del paquete con re-validación por request.
+- **`path` is the full object key in the disk.** It is not concatenated with `name`. Recommended access: `$file->key` (an accessor that does `ltrim($file->path, '/')`).
+- **`name` is denormalization** of the basename (with extension). Useful for queries and display, never concatenated.
+- **`parent_id` and `variant`**: any child File (thumbnail, preview, transcoded) has `parent_id` pointing to its parent and `variant` carrying the role (`thumbnail`, `medium`, `preview`, `display`...). Recursive: a video preview has its own child variants.
+- **3 orthogonal polymorphic relations**: `fileable` (what it belongs to), `creator` (who created it), `tenant` (multi-tenant scope).
+- **`access`**: `public` produces a direct CDN URL, `signed` produces a signed URL with TTL, `stream` produces a package route with per-request re-validation.
 - **`processing_status`**: `pending`, `processing`, `completed`, `failed`. Enum `EduLazaro\Laracrate\Enums\ProcessingStatus`.
 
-## Configuración
+## Configuration
 
-Todo vive en `config/laracrate.php` (publicado con `vendor:publish`).
+Everything lives in `config/laracrate.php` (published with `vendor:publish`).
 
-### `default_collection` y `default_context`
+### `default_collection` and `default_context`
 
-Valores por defecto del schema cuando un File se inserta sin especificarlos.
+Schema defaults applied when a File row is inserted without specifying them.
 
 ```php
 'default_collection' => 'default',
 'default_context'    => 'default',
 ```
 
-### `defaults`, defaults por tipo de archivo
+### `defaults`, defaults per file type
 
-Aplican a todas las colecciones salvo override. Cada type define mime types aceptados, tamaño máximo, calidad, dimensiones máximas y variants default.
+These apply to every collection unless overridden. Each type defines accepted mime types, max size, quality, max dimensions, and default variants.
 
 ```php
 'defaults' => [
@@ -161,9 +161,9 @@ Aplican a todas las colecciones salvo override. Cada type define mime types acep
 ],
 ```
 
-### `collections`, definición de cada colección
+### `collections`, definition of each collection
 
-Cada collection define disk, access mode, types aceptados con su config, y opcionalmente `single`, `sensitive`, `encrypt`, `ttl_hours`, `quota_bytes`, `component`, `placeholder`.
+Each collection sets disk, access mode, accepted types with their config, and optionally `single`, `sensitive`, `encrypt`, `ttl_hours`, `quota_bytes`, `component`, `placeholder`.
 
 ```php
 'collections' => [
@@ -171,8 +171,8 @@ Cada collection define disk, access mode, types aceptados con su config, y opcio
     'avatar' => [
         'disk'      => 'media',
         'access'    => 'public',
-        'single'    => true,                   // solo 1 file por owner
-        'component' => 'user-avatar',          // componente blade default (opcional)
+        'single'    => true,                   // only 1 file per owner
+        'component' => 'user-avatar',          // default blade component (optional)
         'types'     => [
             'image' => [
                 'variants' => [
@@ -186,13 +186,13 @@ Cada collection define disk, access mode, types aceptados con su config, y opcio
     'identity' => [
         'disk'      => 'documents',
         'access'    => 'stream',
-        'sensitive' => true,                   // bind URL al user
-        'encrypt'   => true,                   // cifra binario en reposo
+        'sensitive' => true,                   // bind URL to the user
+        'encrypt'   => true,                   // encrypt binary at rest
         'types'     => [
             'image' => [
                 'variants' => [
-                    'thumbnail' => ['width' => 300, 'height' => 300],            // sin watermark
-                    'display'   => ['width' => 1200, 'watermark' => true],       // con watermark
+                    'thumbnail' => ['width' => 300, 'height' => 300],            // no watermark
+                    'display'   => ['width' => 1200, 'watermark' => true],       // watermarked
                 ],
             ],
             'document' => [
@@ -204,23 +204,23 @@ Cada collection define disk, access mode, types aceptados con su config, y opcio
     'temp_uploads' => [
         'disk'      => 'media',
         'access'    => 'public',
-        'ttl_hours' => 24,                     // se purgan via comando
+        'ttl_hours' => 24,                     // purged via command
     ],
 
 ],
 ```
 
-**Reglas de `types`:**
+**Rules for `types`:**
 
-- Lista blanca de qué types acepta la colección, más config de qué hacer con cada uno.
-- Cada entrada puede ser string suelto (`'image'`, hereda defaults globales) o array (`'image' => [override]`).
-- `variants` siempre dentro de un type (`types.image.variants`).
-- `preview` para document y video genera un variant especial; sus propios variants hijos van en `preview.variants`.
-- Los defaults globales del type se mergean con el override de la collection. Solo declaras lo que quieres cambiar.
+- An allowlist of which types the collection accepts, plus the config of what to do with each.
+- Each entry can be a bare string (`'image'`, inherits global defaults) or an array (`'image' => [overrides]`).
+- `variants` always live inside a type (`types.image.variants`).
+- `preview` for document and video produces a special variant; its own child variants go in `preview.variants`.
+- The global type defaults are recursively merged with the collection override. You only declare what you want to change.
 
-### `placeholders`, fallback cuando no hay archivo
+### `placeholders`, fallback when there is no file
 
-Resolución (más específico al más general):
+Resolution order (most specific to most general):
 
 1. `config('laracrate.collections.{name}.placeholder')`
 2. `config('laracrate.placeholders.{type}')`
@@ -236,25 +236,25 @@ Resolución (más específico al más general):
 ],
 ```
 
-Cada slot acepta string fijo o closure dinámica:
+Each slot accepts a fixed string or a dynamic closure:
 
 ```php
 'image' => fn ($collection, $type, $model) => "/api/avatars/{$model->id}.svg",
 ```
 
-### `urls`, política de URLs
+### `urls`, URL strategy
 
 ```php
 'urls' => [
-    'signed_ttl'             => 5,    // TTL minutos signed URL R2
-    'signed_cache_ttl'       => 4,    // TTL cache server-side de la signed URL
-    'sensitive_redirect_ttl' => 10,   // TTL ultra corto post-validación (segundos)
-    'route_signed_ttl'       => 15,   // TTL minutos del HMAC de /files/{slug}/stream
-    'bind_to_user'           => true, // amarrar URL al user actual cuando sensitive
+    'signed_ttl'             => 5,    // signed URL TTL in minutes (R2)
+    'signed_cache_ttl'       => 4,    // server-side cache TTL of the signed URL
+    'sensitive_redirect_ttl' => 10,   // ultra-short TTL after validation (seconds)
+    'route_signed_ttl'       => 15,   // HMAC TTL for /files/{slug}/stream (minutes)
+    'bind_to_user'           => true, // tie the URL to the current viewer when sensitive
 ],
 ```
 
-### `policies`, bridge al Gate de Laravel
+### `policies`, bridge to Laravel's Gate
 
 ```php
 'policies' => [
@@ -262,7 +262,7 @@ Cada slot acepta string fijo o closure dinámica:
 ],
 ```
 
-Si `register_gate` está activo, puedes usar las ergonomías nativas:
+When `register_gate` is on you can use the native ergonomics:
 
 ```php
 @can('view', $file)
@@ -271,9 +271,9 @@ $this->authorize('delete', $file)
 Route::middleware('can:view,file')
 ```
 
-Mapping: `view`/`update`/`delete` van al registry `canView`/`canEdit`/`canDelete`.
+Mapping: `view`/`update`/`delete` go to the registry's `canView`/`canEdit`/`canDelete`.
 
-### `stream`, endpoints de streaming
+### `stream`, streaming endpoints
 
 ```php
 'stream' => [
@@ -285,7 +285,7 @@ Mapping: `view`/`update`/`delete` van al registry `canView`/`canEdit`/`canDelete
 ],
 ```
 
-### `status`, endpoints de polling
+### `status`, polling endpoints
 
 ```php
 'status' => [
@@ -296,28 +296,28 @@ Mapping: `view`/`update`/`delete` van al registry `canView`/`canEdit`/`canDelete
 
 Endpoints:
 
-- `GET /laracrate/files/{slug}/status`, estado de un archivo.
-- `POST /laracrate/files/status`, batch de varios slugs.
+- `GET /laracrate/files/{slug}/status`, status of a single file.
+- `POST /laracrate/files/status`, batch (multiple slugs).
 
-### `multipart`, uploads grandes
+### `multipart`, large uploads
 
 ```php
 'multipart' => [
-    'threshold'       => 100 * 1024 * 1024,  // 100 MB; el frontend decide cuándo usar multipart
-    'part_size'       => 10  * 1024 * 1024,  // 10 MB por parte (mín. 5 MB en S3)
-    'expire_minutes'  => 60,                 // TTL sesión multipart
-    'url_ttl_minutes' => 60,                 // TTL URLs presigned de cada parte
+    'threshold'       => 100 * 1024 * 1024,  // 100 MB; the frontend decides when to use multipart
+    'part_size'       => 10  * 1024 * 1024,  // 10 MB per part (S3 minimum is 5 MB)
+    'expire_minutes'  => 60,                 // multipart session TTL
+    'url_ttl_minutes' => 60,                 // presigned URL TTL per part
     'route_prefix'    => 'laracrate/multipart',
-    'middleware'      => null,               // null hereda de uploads
+    'middleware'      => null,               // null inherits from uploads
 ],
 ```
 
-### `image`, procesamiento de imágenes
+### `image`, image processing
 
 ```php
 'image' => [
-    'driver'             => 'imagick',  // 'imagick' (recomendado) o 'gd'
-    'optimize_originals' => false,      // re-encodea original a webp con max dims
+    'driver'             => 'imagick',  // 'imagick' (recommended) or 'gd'
+    'optimize_originals' => false,      // re-encode the original to webp with max dims
     'max_width'          => 1920,
     'max_height'         => 1920,
     'quality'            => 85,
@@ -334,9 +334,9 @@ Endpoints:
 ],
 ```
 
-Requiere `ffmpeg` y `ffprobe` en el path del servidor.
+Requires `ffmpeg` and `ffprobe` on the server's PATH.
 
-### `encryption`, cifrado de binarios sensibles
+### `encryption`, encryption of sensitive binaries
 
 ```php
 'encryption' => [
@@ -344,9 +344,9 @@ Requiere `ffmpeg` y `ffprobe` en el path del servidor.
 ],
 ```
 
-Si una collection declara `'encrypt' => true`, el binario se cifra con `EncryptFileAction` antes de subirse al backend, y se desencripta on-the-fly al servir desde `StreamFileController`.
+If a collection sets `'encrypt' => true`, the binary is encrypted with `EncryptFileAction` before being uploaded to the backend, and decrypted on the fly when served by `StreamFileController`.
 
-### `embeddings`, extracción de texto y vectores
+### `embeddings`, text extraction and vectors
 
 ```php
 'embeddings' => [
@@ -361,7 +361,7 @@ Si una collection declara `'encrypt' => true`, el binario se cifra con `EncryptF
 ],
 ```
 
-Activación per-collection:
+Per-collection activation:
 
 ```php
 'collections' => [
@@ -373,7 +373,7 @@ Activación per-collection:
 ],
 ```
 
-Provider custom:
+Custom provider:
 
 ```php
 // AppServiceProvider::register()
@@ -383,7 +383,7 @@ $this->app->bind(
 );
 ```
 
-Text extractor custom:
+Custom text extractor:
 
 ```php
 // AppServiceProvider::boot()
@@ -391,26 +391,26 @@ $registry = app(\EduLazaro\Laracrate\Support\TextExtractorRegistry::class);
 $registry->add(new \App\Extractors\MyOcrExtractor());
 ```
 
-El paquete incluye:
+Bundled implementations:
 
 - `OpenAiEmbeddingProvider` (default).
-- `NullEmbeddingProvider` (no-op para testing).
-- `PdfTextExtractor` (PDFs vía `smalot/pdfparser`).
+- `NullEmbeddingProvider` (no-op for testing).
+- `PdfTextExtractor` (PDFs via `smalot/pdfparser`).
 - `PlainTextExtractor` (text/*).
 
-### `watermark`, marca de agua per-variant
+### `watermark`, per-variant watermark
 
-Se incrusta en el binario de variants concretas. **El original (master) NUNCA lleva watermark.** Solo las variants que lo declaren explícitamente.
+The watermark is baked into the binary of specific variants. **The original (master) NEVER carries a watermark.** Only variants that explicitly opt in.
 
 ```php
 'watermark' => [
-    'image_path' => env('LARACRATE_WATERMARK_IMAGE', null),  // PNG a superponer
-    'size'       => 0.40,                                    // 40% del ancho de la variant
-    'opacity'    => 30,                                      // 0 a 100
+    'image_path' => env('LARACRATE_WATERMARK_IMAGE', null),  // PNG to overlay
+    'size'       => 0.40,                                    // 40% of the variant's width
+    'opacity'    => 30,                                      // 0 to 100
     'position'   => 'center',
 
     'text' => [
-        'content'         => null,                           // null, string, o closure(File): ?string
+        'content'         => null,                           // null, fixed string, or closure(File): ?string
         'font_size_ratio' => 0.0195,
         'color'           => 'rgba(255, 255, 255, 0.60)',
         'position'        => 'bottom-left',
@@ -420,7 +420,7 @@ Se incrusta en el binario de variants concretas. **El original (master) NUNCA ll
 ],
 ```
 
-Activación per-variant:
+Per-variant activation:
 
 ```php
 'collections' => [
@@ -428,8 +428,8 @@ Activación per-variant:
         'types' => [
             'image' => [
                 'variants' => [
-                    'thumbnail' => ['width' => 300, 'height' => 300],            // sin watermark
-                    'display'   => ['width' => 1200, 'watermark' => true],       // con watermark
+                    'thumbnail' => ['width' => 300, 'height' => 300],            // no watermark
+                    'display'   => ['width' => 1200, 'watermark' => true],       // with watermark
                 ],
             ],
         ],
@@ -437,9 +437,9 @@ Activación per-variant:
 ],
 ```
 
-Si cambias la PNG o ajustas tamaños, regeneras los variants y el master sigue intacto.
+If you change the PNG or tweak sizes, regenerate the variants and the master stays untouched.
 
-### `ui`, tema por defecto del componente Livewire opcional
+### `ui`, default theme for the optional Livewire component
 
 ```php
 'ui' => [
@@ -447,22 +447,22 @@ Si cambias la PNG o ajustas tamaños, regeneras los variants y el master sigue i
 ],
 ```
 
-Solo aplica si usas el componente Livewire opcional. Detalles en su sección.
+Only relevant if you use the optional Livewire component. Details in its section.
 
 ### `queue`
 
 ```php
 'queue' => [
-    'connection' => env('LARACRATE_QUEUE_CONNECTION', null),  // null usa default Laravel
+    'connection' => env('LARACRATE_QUEUE_CONNECTION', null),  // null uses Laravel's default
     'name'       => env('LARACRATE_QUEUE_NAME', 'default'),
 ],
 ```
 
-Útil para aislar el procesamiento de archivos de otras colas.
+Useful for isolating file processing from other queues.
 
-## Uso desde el modelo
+## Using it from your model
 
-### Trait `HasFiles`
+### `HasFiles` trait
 
 ```php
 use EduLazaro\Laracrate\Concerns\HasFiles;
@@ -471,7 +471,7 @@ class Property extends Model
 {
     use HasFiles;
 
-    // Override per-modelo (opcional). Mergea con la collection global.
+    // Per-model override (optional). Recursively merged with the global collection.
     protected array $fileCollections = [
         'gallery' => [
             'types' => [
@@ -486,18 +486,18 @@ class Property extends Model
 }
 ```
 
-### Subir archivo via server (request normal)
+### Server-side upload (regular request)
 
 ```php
 $property->addFile($request->file('image'), 'gallery', [
-    'title' => 'Fachada principal',
+    'title' => 'Front facade',
     'label' => 'facade',
 ]);
 ```
 
-### Subir directo a R2 (presigned, recomendado)
+### Direct upload to R2 (presigned, recommended)
 
-JS cliente:
+JS client:
 
 ```js
 import { presignAndUpload } from 'edulazaro/laracrate/resources/js/laracrate';
@@ -517,7 +517,7 @@ await fetch(`/properties/${propertyId}/files`, {
 });
 ```
 
-Backend del confirm:
+Backend confirm:
 
 ```php
 use EduLazaro\Laracrate\Support\FileUpload;
@@ -534,49 +534,49 @@ Route::post('/properties/{property}/files', function (Request $request, Property
 });
 ```
 
-### Multipart (archivos grandes, mayores a 100 MB)
+### Multipart (large files, larger than 100 MB)
 
-El JS helper detecta el tamaño y usa multipart automáticamente si pasa el `threshold`. Backend ya cubierto por las rutas del paquete.
+The JS helper detects the size and switches to multipart automatically when it crosses the `threshold`. The backend is already covered by the package routes.
 
-### Mostrar en blade
+### Show in blade
 
 ```blade
-{{-- URL del File --}}
+{{-- File URL --}}
 <img src="{{ $property->file('gallery')?->variant('medium')->url() }}">
 
-{{-- Variant con dot notation --}}
+{{-- Variant with dot notation --}}
 <img src="{{ $videoFile->variant('preview.thumbnail')->url('image') }}">
 
-{{-- Helpers con fallback automático al placeholder --}}
+{{-- Helpers with automatic placeholder fallback --}}
 <img src="{{ $user->fileLink('avatar', 'medium') }}">
 
-{{-- Render con componente blade configurable --}}
+{{-- Render with a configurable blade component --}}
 {{ $user->fileRender('avatar', 'medium', ['class' => 'w-12 h-12 rounded-full']) }}
 
-{{-- Link directo al stream (collections con access=stream) --}}
-<a href="{{ $file->link }}">Descargar</a>
+{{-- Direct stream link (collections with access=stream) --}}
+<a href="{{ $file->link }}">Download</a>
 <img src="{{ $file->preview_link }}">
 ```
 
-`$file->variant('preview.thumbnail')` navega con dot notation y **cae al ancestro real** si la cadena se rompe (nunca devuelve null). Si necesitas fallar fuerte, usa `variantOrFail()`.
+`$file->variant('preview.thumbnail')` walks with dot notation and **falls back to the closest real ancestor** if the chain breaks (it never returns null). If you need to fail loudly, use `variantOrFail()`.
 
-### Helper `fileLink()` y `fileRender()`
+### Helpers `fileLink()` and `fileRender()`
 
-Eliminan el boilerplate de null-checks:
+They remove the null-check boilerplate:
 
 ```php
-$user->fileLink('avatar')                          // URL o placeholder configurado
-$user->fileLink('avatar', 'medium')                // variant medium
+$user->fileLink('avatar')                          // URL or configured placeholder
+$user->fileLink('avatar', 'medium')                // medium variant
 $user->fileLink('cover', 'preview.thumbnail')      // dot notation
-$user->fileLink('cover', 'preview.small', 'image') // forzar tipo
+$user->fileLink('cover', 'preview.small', 'image') // force a type
 
 $user->fileRender('avatar', 'medium', ['class' => 'w-12 h-12'])
-// produce <x-{component} :model="$user" :url="..." class="w-12 h-12" />
+// produces <x-{component} :model="$user" :url="..." class="w-12 h-12" />
 ```
 
-`fileLink()` devuelve `string|null`. `fileRender()` devuelve `HtmlString`.
+`fileLink()` returns `string|null`. `fileRender()` returns `HtmlString`.
 
-#### Componente blade default per-collection
+#### Default blade component per collection
 
 ```php
 'collections' => [
@@ -587,7 +587,7 @@ $user->fileRender('avatar', 'medium', ['class' => 'w-12 h-12'])
 ],
 ```
 
-Componente en la app:
+Component in your app:
 
 ```blade
 {{-- resources/views/components/user-avatar.blade.php --}}
@@ -602,7 +602,7 @@ Componente en la app:
 @endif
 ```
 
-### Borrar, reordenar, publicar
+### Delete, reorder, publish
 
 ```php
 $property->deleteFile($file);
@@ -612,7 +612,7 @@ $file->publish();
 $file->unpublish();
 ```
 
-### Policies (autorización)
+### Policies (authorization)
 
 ```php
 use EduLazaro\Laracrate\Support\PolicyRegistry;
@@ -624,61 +624,61 @@ app(PolicyRegistry::class)
     ->deletable('property',  fn ($file, $user) => $user && $file->fileable->canEdit($user));
 ```
 
-Defaults sin policy registrada:
+Defaults when no policy is registered:
 
-- El **creador humano** del File siempre puede ver, editar y borrar.
-- Files con `access='public'` siempre pueden ver.
-- Resto: deny.
+- The **human creator** of the File can always view, edit, and delete.
+- Files with `access='public'` can always be viewed.
+- Everything else: deny.
 
-## Pipeline de procesamiento
+## Processing pipeline
 
-Al crear un File top-level (sin `parent_id`), `FileObserver::created` dispatcha `ProcessFileJob` (queue). El job orquesta `ProcessFileAction`, que itera los **Steps** del `ProcessingPipelineRegistry` en orden de prioridad ascendente.
+When a top-level File is created (no `parent_id`), `FileObserver::created` dispatches `ProcessFileJob` (queue). The job orchestrates `ProcessFileAction`, which iterates the **Steps** of the `ProcessingPipelineRegistry` in ascending priority order.
 
-Steps por defecto del paquete:
+Default steps shipped by the package:
 
-| Priority | Step | Cuándo aplica |
+| Priority | Step | Triggers when |
 |---:|---|---|
 | 10 | `ExtractImageDimensions` | type === image |
-| 10 | `ExtractVideoDimensions` | type === video (requiere ffprobe) |
-| 20 | `OptimizeImage` | type === image y collection.optimize_originals === true |
-| 25 | `TranscodeVideo` | type === video y collection.types.video.transcode === true |
-| 40 | `GenerateImageVariants` | type === image y hay `variants` config |
-| 45 | `ExtractVideoPreview` | type === video y hay `preview` config |
-| 45 | `ExtractPdfPreview` | type === document y mime === application/pdf |
-| 60 | `ExtractText` | extract_text o embed, y hay TextExtractor para el mime |
-| 70 | `ChunkText` | embed === true y hay texto extraído |
-| 80 | `GenerateEmbedding` | embeddings.enabled, embed === true, y hay chunks |
+| 10 | `ExtractVideoDimensions` | type === video (requires ffprobe) |
+| 20 | `OptimizeImage` | type === image and collection.optimize_originals === true |
+| 25 | `TranscodeVideo` | type === video and collection.types.video.transcode === true |
+| 40 | `GenerateImageVariants` | type === image and there is a `variants` config |
+| 45 | `ExtractVideoPreview` | type === video and there is a `preview` config |
+| 45 | `ExtractPdfPreview` | type === document and mime === application/pdf |
+| 60 | `ExtractText` | extract_text or embed, and there is a TextExtractor for the mime |
+| 70 | `ChunkText` | embed === true and text was extracted |
+| 80 | `GenerateEmbedding` | embeddings.enabled, embed === true, and there are chunks |
 
-Convención de prioridades:
+Priority convention:
 
-- 0 a 19: metadata (dimensions, duration).
-- 20 a 39: transformación del original (optimize, transcode, encrypt).
-- 40 a 59: derivados (variants, previews, thumbnails).
-- 60 a 79: extracción semántica (texto, OCR, transcripción).
-- 80 a 99: IA (chunking, embeddings, classification).
+- 0 to 19: metadata (dimensions, duration).
+- 20 to 39: original transformation (optimize, transcode, encrypt).
+- 40 to 59: derivatives (variants, previews, thumbnails).
+- 60 to 79: semantic extraction (text, OCR, transcription).
+- 80 to 99: AI (chunking, embeddings, classification).
 
-Eventos:
+Events:
 
-- `FileProcessingStarted`, antes del primer step.
-- `FileProcessed`, todos los steps completados OK.
-- `FileProcessingFailed`, un step lanzó.
-- `VariantGenerated`, al crear un variant.
-- `EmbeddingsReady`, al generar embeddings.
+- `FileProcessingStarted`, before the first step.
+- `FileProcessed`, all steps completed OK.
+- `FileProcessingFailed`, a step threw.
+- `VariantGenerated`, when a variant is created.
+- `EmbeddingsReady`, when embeddings are generated.
 
-Política fail-fast: si un step lanza, el File queda en `processing_status = FAILED` y `ProcessFileJob` reintenta con backoff (3 tries: 10s, 30s, 60s). Steps posteriores no se ejecutan en ese intento.
+Fail-fast policy: if a step throws, the File is left at `processing_status = FAILED` and `ProcessFileJob` retries with backoff (3 tries: 10s, 30s, 60s). Subsequent steps do not run on that attempt.
 
-Si el File se borra antes de que el worker llegue al job (típico cuando `setFile()` reemplaza un avatar), Laravel descarta el job en silencio gracias a `$deleteWhenMissingModels = true`. Cero entradas zombi en `failed_jobs`.
+If the File is deleted before the worker reaches the job (typical when `setFile()` replaces an avatar), Laravel discards the job silently thanks to `$deleteWhenMissingModels = true`. No zombie entries in `failed_jobs`.
 
-### Extender el pipeline desde la app
+### Extending the pipeline from your app
 
 ```php
 // AppServiceProvider::boot()
 $registry = app(\EduLazaro\Laracrate\Support\ProcessingPipelineRegistry::class);
 
-// Añadir un step propio
+// Add your own step
 $registry->add(new \App\Files\Pipeline\VirusScanStep());
 
-// Quitar uno default
+// Remove a default
 $registry->remove(\EduLazaro\Laracrate\Pipeline\Steps\Image\OptimizeImageStep::class);
 ```
 
@@ -713,119 +713,119 @@ class VirusScanStep implements ProcessingStep
 
 ## Variants
 
-Los variants son rows hijos de `laracrate_files` con `parent_id` y `variant`. La FK con cascade los borra cuando borras el padre. El `FileObserver` borra el binario en R2 al borrar la fila (force delete).
+Variants are child rows of `laracrate_files` with `parent_id` and `variant`. The cascade FK deletes them when you delete the parent. The `FileObserver` deletes the binary in R2 when the row is force-deleted.
 
-### Convención de paths
+### Path convention
 
-- `path` del original: `{fileable_type}/{fileable_id}/{collection}/{ulid_filename.ext}`.
-- `path` de un variant: `{parentDir}/variants/{baseName}_{variantName}.{ext}`.
-- `path` de un sibling (ejemplo, transcoded `mp4` que reemplaza al `mov`): `{parentDir}/{newName}.{ext}`.
+- `path` of the original: `{fileable_type}/{fileable_id}/{collection}/{ulid_filename.ext}`.
+- `path` of a variant: `{parentDir}/variants/{baseName}_{variantName}.{ext}`.
+- `path` of a sibling (for example, a transcoded `mp4` replacing the `mov`): `{parentDir}/{newName}.{ext}`.
 
-Helpers en el modelo `File`:
+Helpers on the `File` model:
 
 ```php
-$file->key                                  // ltrim($file->path, '/'), la key entera
-$file->variantKey($newName)                 // construye key para un variant (subdir variants/)
-$file->siblingKey($newName)                 // construye key para un sibling (mismo dir)
-$file->createVariant($name, $overrides)     // crea fila variant heredando scope del padre
+$file->key                                  // ltrim($file->path, '/'), the full key
+$file->variantKey($newName)                 // build the key for a variant (variants/ subdir)
+$file->siblingKey($newName)                 // build the key for a sibling (same dir)
+$file->createVariant($name, $overrides)     // create a variant row inheriting parent scope
 ```
 
-### Watermark per-variant
+### Per-variant watermark
 
-El watermark se incrusta en el binario del variant **al generarlo**. El original siempre queda limpio. Si cambias la PNG o el texto mañana, regeneras variants y listo.
+The watermark is baked into the variant's binary **at generation time**. The original always stays clean. If you change the PNG or text tomorrow, regenerate the variants and you are done.
 
-Ver bloque `watermark` en config.
+See the `watermark` config block.
 
-## Modos de upload
+## Upload modes
 
-| Modo | Cuándo usar | Pros | Contras |
+| Mode | When to use | Pros | Cons |
 |---|---|---|---|
-| **Via server** (`addFile($uploadedFile)`) | archivos pequeños, validación estricta server-side | encrypt en reposo posible, validación PHP | binario pasa por PHP |
-| **Presigned directo** (PUT a R2) | flujo normal | sin PHP en el flujo, escala bien | sin encrypt en reposo |
-| **Multipart** (mayor a 100 MB) | vídeos grandes, datasets | partes paralelizables, reanudable | más complejidad cliente |
+| **Via server** (`addFile($uploadedFile)`) | small files, strict server-side validation | encrypt at rest possible, PHP validation | binary flows through PHP |
+| **Direct presigned** (PUT to R2) | the normal flow | no PHP in the upload path, scales well | no encrypt at rest |
+| **Multipart** (larger than 100 MB) | large videos, datasets | parallelizable parts, resumable | more client complexity |
 
-El presign acepta `fileable_type`, `fileable_id` y `collection` para generar la **key canónica directa**. Si no se conoce el modelo al subir, el binario va a `temp/` y `CreateFileAction` lo mueve con `copyObject` server-side de S3 (cero descarga al PHP).
+The presign accepts `fileable_type`, `fileable_id`, and `collection` to generate the **canonical key directly**. If the model is unknown at upload time, the binary lands in `temp/` and `CreateFileAction` moves it with S3 server-side `copyObject` (zero download to PHP).
 
-## Endpoints HTTP
+## HTTP endpoints
 
-| Método | Ruta | Descripción |
+| Method | Route | Description |
 |---|---|---|
-| POST | `/laracrate/uploads/presign` | Genera presigned URL (single PUT) |
-| DELETE | `/laracrate/uploads/{disk}/{encodedKey}` | Cancela upload `temp/` |
-| POST | `/laracrate/multipart/init` | Inicia multipart upload |
-| POST | `/laracrate/multipart/{id}/parts` | Re-emite presigned URLs de partes |
-| POST | `/laracrate/multipart/{id}/complete` | Ensambla partes y registra el File |
-| DELETE | `/laracrate/multipart/{id}` | Aborta sesión multipart |
-| GET | `/files/{slug}/stream` | Stream con audit (collections `access=stream`) |
-| GET | `/files/{slug}/preview` | Stream sin incrementar `last_downloaded_at` |
-| GET | `/files/{slug}/download` | Forzar descarga (Content-Disposition: attachment) |
-| GET | `/laracrate/files/{slug}/status` | Estado del File para polling tras upload async |
-| POST | `/laracrate/files/status` | Estado batch de varios slugs |
-| POST | `/_laracrate/local/upload` | Upload del local driver (ruta firmada Laravel) |
-| GET | `/_laracrate/local/serve/{slug}` | Sirve File del local disk |
+| POST | `/laracrate/uploads/presign` | Generate a presigned URL (single PUT) |
+| DELETE | `/laracrate/uploads/{disk}/{encodedKey}` | Cancel a `temp/` upload |
+| POST | `/laracrate/multipart/init` | Start a multipart upload |
+| POST | `/laracrate/multipart/{id}/parts` | Re-issue presigned URLs for parts |
+| POST | `/laracrate/multipart/{id}/complete` | Assemble parts and register the File |
+| DELETE | `/laracrate/multipart/{id}` | Abort a multipart session |
+| GET | `/files/{slug}/stream` | Stream with audit (collections `access=stream`) |
+| GET | `/files/{slug}/preview` | Stream without bumping `last_downloaded_at` |
+| GET | `/files/{slug}/download` | Force download (Content-Disposition: attachment) |
+| GET | `/laracrate/files/{slug}/status` | File status for polling after async upload |
+| POST | `/laracrate/files/status` | Batch status of multiple slugs |
+| POST | `/_laracrate/local/upload` | Local-driver upload (Laravel signed route) |
+| GET | `/_laracrate/local/serve/{slug}` | Serve a File from the local disk |
 
 ## Sensitive content
 
-Para collections con `access=stream`, flujo por request:
+For collections with `access=stream`, the per-request flow is:
 
-1. URL del paquete firmada con Laravel (TTL `route_signed_ttl`).
-2. Controller valida la firma.
-3. Si `sensitive=true`, valida `Auth::id() === query('u')` (URL bind).
-4. Policy chain, `FilePolicy::view($file, $user)` lee `PolicyRegistry`.
-5. Si `is_encrypted=true`, `DecryptFileAction` desencripta antes de servir.
-6. Audit, incrementa `last_downloaded_at`, opcional log con IP y user_id.
+1. Package URL signed by Laravel (TTL `route_signed_ttl`).
+2. The controller validates the signature.
+3. If `sensitive=true`, validates `Auth::id() === query('u')` (URL bind).
+4. Policy chain, `FilePolicy::view($file, $user)` reads `PolicyRegistry`.
+5. If `is_encrypted=true`, `DecryptFileAction` decrypts before serving.
+6. Audit, increments `last_downloaded_at`, optionally logs IP and user_id.
 
-El watermark **no se aplica aquí**, está horneado en el variant.
+The watermark **is not applied here**, it is baked into the variant.
 
-## Comandos artisan
+## Artisan commands
 
 ```bash
-# Aborta sesiones multipart colgadas (programable hourly)
+# Abort stale multipart sessions (schedule hourly)
 php artisan laracrate:abort-stale-multipart
 
-# Borra Files con TTL expirado y sus binarios (programable hourly)
+# Delete Files past their TTL together with their binaries (schedule hourly)
 php artisan laracrate:purge-expired
 ```
 
-Programación recomendada en `app/Console/Kernel.php`:
+Recommended schedule in `app/Console/Kernel.php`:
 
 ```php
 $schedule->command('laracrate:abort-stale-multipart')->hourly();
 $schedule->command('laracrate:purge-expired')->hourly();
 ```
 
-## Componente Livewire opcional
+## Optional Livewire component
 
-El paquete incluye un componente Livewire `LaracrateUploader` listo para usar como uploader visual de cualquier collection. Es **totalmente opcional**: el core del paquete funciona sin Livewire, y la app puede escribir su propio uploader o consumir directamente `addFile()`/`setFile()` desde sus formularios.
+The package ships an optional Livewire component, `LaracrateUploader`, ready to be used as a visual uploader for any collection. It is **fully optional**: the package core works without Livewire, and your app can build its own uploader or call `addFile()`/`setFile()` directly from your forms.
 
 ```blade
 <livewire:laracrate-uploader :model="$user" collection="avatar" />
 <livewire:laracrate-uploader :model="$user" collection="avatar" theme="ios" layout="portrait" />
 ```
 
-Soporta 8 themes (`default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`) y 2 layouts (`row`, `portrait`). El theme global se configura en `config('laracrate.ui.default_theme')`.
+It supports 8 themes (`default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`) and 2 layouts (`row`, `portrait`). The global theme is configured at `config('laracrate.ui.default_theme')`.
 
-Para customizar las vistas:
+To customize the views:
 
 ```bash
 php artisan vendor:publish --tag=laracrate-views
 ```
 
-Si no usas Livewire, simplemente ignora esta sección. Los themes y el componente no se cargan a menos que los renderices.
+If you do not use Livewire, simply ignore this section. Themes and the component are not loaded unless you render them.
 
-## API completa
+## Full API
 
-### Trait `HasFiles`
+### `HasFiles` trait
 
 ```php
 $model->files(?$collection = null)              // MorphMany (top-level only)
-$model->file($collection)                       // primer file ordenado por default → latest
-$model->images($collection)                     // shortcut de files($collection)->where(type, image)
-$model->getFile($collection)                    // primer file (alias)
-$model->defaultFile($collection)                // file con default=true
+$model->file($collection)                       // first file ordered by default → latest
+$model->images($collection)                     // shortcut of files($collection)->where(type, image)
+$model->getFile($collection)                    // first file (alias)
+$model->defaultFile($collection)                // file with default=true
 
 $model->addFile($upload, $collection, $metadata = [])
-$model->setFile($collection, $upload, $metadata = [])  // single, reemplaza el existente
+$model->setFile($collection, $upload, $metadata = [])  // single, replaces the existing
 $model->deleteFile($file, $forceDelete = false)
 $model->reorderFiles($collection, $orderedIds)
 $model->setDefaultFile($file)
@@ -838,24 +838,24 @@ $model->getDiskFor($collection): string
 $model->resolveFileTenant(): ?Model
 ```
 
-### Modelo `File`
+### `File` model
 
 ```php
-// Relaciones
+// Relations
 $file->parent
 $file->children
 $file->fileable
 $file->creator
 $file->tenant
-$file->contents                                  // chunks de laracrate_file_contents
+$file->contents                                  // chunks from laracrate_file_contents
 
 // Variants
-$file->variant('preview.thumbnail')              // dot notation, fallback al ancestro real
-$file->variantOrFail('preview.thumbnail')        // lanza si la cadena se rompe
+$file->variant('preview.thumbnail')              // dot notation, falls back to ancestor
+$file->variantOrFail('preview.thumbnail')        // throws if the chain breaks
 
 // URLs
-$file->url($forceType = null)                    // URL real o placeholder
-$file->link                                      // accessor: alias de url()
+$file->url($forceType = null)                    // real URL or placeholder
+$file->link                                      // accessor: alias of url()
 $file->preview_link                              // accessor: variant('preview.thumbnail')->url('image')
 $file->streamUrl()
 $file->downloadUrl()
@@ -867,18 +867,18 @@ $file->variantKey($newName)
 $file->siblingKey($newName)
 $file->createVariant($variantName, $overrides)
 
-// Estado
+// State
 $file->makeDefault()
 $file->publish() / unpublish()
 $file->isVariant() / isTopLevel() / isSensitive()
 $file->isImage() / isVideo() / isAudio() / isDocument()
 $file->createdByUser() / createdByAgent() / createdAutomatically()
 
-// Texto extraído (si embed)
-$file->extractedText(): ?string                  // une todos los chunks
+// Extracted text (when embed)
+$file->extractedText(): ?string                  // joins all chunks
 $file->hasEmbeddings(): bool
 
-// Authorization (delega a PolicyRegistry)
+// Authorization (delegates to PolicyRegistry)
 $file->canView($user)
 $file->canEdit($user)
 $file->canDelete($user)
@@ -893,20 +893,20 @@ File::withDescendants(2)
 File::forTenant($tenant)
 ```
 
-### Servicio `StorageManager`
+### `StorageManager` service
 
 ```php
 $manager = app(\EduLazaro\Laracrate\Services\StorageManager::class);
 
-$manager->urlFor($file)                                       // delega en GeneratePublicUrl/Signed/Stream
-$manager->diskFor($file)                                      // Storage::disk del File
-$manager->readBinary($file)                                   // contenido binario completo
+$manager->urlFor($file)                                       // delegates to GeneratePublicUrl/Signed/Stream
+$manager->diskFor($file)                                      // Storage::disk for the File
+$manager->readBinary($file)                                   // full binary contents
 $manager->writeBinary($disk, $key, $content, $mime)
 $manager->deleteFromBackend($disk, $key)
 $manager->moveServerSide($disk, $fromKey, $toKey)             // S3 copyObject
-$manager->batchDelete($disk, $keys)                           // hasta 1000 keys/request
+$manager->batchDelete($disk, $keys)                           // up to 1000 keys per request
 $manager->presignedUpload($disk, $key, $mime, $maxSize, $minutes = 15)
-$manager->withLocalCopy($file, $callback)                     // descarga temporal segura
+$manager->withLocalCopy($file, $callback)                     // safe temporary download
 
 $manager->getCollectionConfig($collection): array
 $manager->getTypeConfig($collection, $type): array
@@ -917,7 +917,7 @@ $manager->s3ClientOf($disk): ?S3Client
 
 ## Tests
 
-`Storage::fake()` y SQLite in-memory, sin Docker ni servicios externos:
+`Storage::fake()` and SQLite in-memory, no Docker, no external services:
 
 ```bash
 cd packages/edulazaro/laracrate
@@ -925,17 +925,17 @@ composer install
 vendor/bin/phpunit
 ```
 
-Tests cubren modelo, trait, observer, manager, policies, presigned controller, stream controller, multipart, embeddings.
+Tests cover the model, trait, observer, manager, policies, presigned controller, stream controller, multipart, and embeddings.
 
-## Dependencias
+## Dependencies
 
-- Laravel 11+ y PHP 8.2+
-- `intervention/image` (procesado de imágenes, watermark)
-- `aws/aws-sdk-php` (presign y multipart S3/R2)
-- `edulazaro/laractions` (clase base de Actions)
-- `smalot/pdfparser` (opcional, para `PdfTextExtractor`)
-- `imagick` extension PHP (recomendado) o `gd`
-- `ffmpeg`, `ffprobe` en path (solo si usas vídeo)
+- Laravel 11+ and PHP 8.2+
+- `intervention/image` (image processing, watermark)
+- `aws/aws-sdk-php` (S3/R2 presign and multipart)
+- `edulazaro/laractions` (base Action class)
+- `smalot/pdfparser` (optional, for `PdfTextExtractor`)
+- `imagick` PHP extension (recommended) or `gd`
+- `ffmpeg`, `ffprobe` on PATH (only if you use video)
 
 ## License
 
