@@ -1,0 +1,44 @@
+{
+    "name": "edulazaro/laracrate",
+    "description": "Polymorphic file storage for Laravel with R2/S3 direct upload, granular access control, sensitive content streaming and image conversions. Zero dependencies beyond Laravel core.",
+    "license": "MIT",
+    "type": "library",
+    "keywords": ["laravel", "files", "storage", "r2", "s3", "media", "uploads"],
+    "require": {
+        "php": "^8.2",
+        "laravel/framework": "^11.0|^12.0",
+        "edulazaro/laractions": "^1.0",
+        "aws/aws-sdk-php": "^3.300",
+        "intervention/image": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "EduLazaro\\Laracrate\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "EduLazaro\\Laracrate\\Tests\\": "tests/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Edu Lazaro",
+            "email": "edu@edulazaro.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "EduLazaro\\Laracrate\\LaracrateServiceProvider"
+            ]
+        }
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "orchestra/testbench": "^9.0"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

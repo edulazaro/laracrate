@@ -1,0 +1,34 @@
+# Composer
+/vendor/
+composer.lock
+
+# Node (si en algún momento se añade build de assets)
+/node_modules/
+package-lock.json
+yarn.lock
+
+# PHPUnit
+/.phpunit.cache/
+.phpunit.result.cache
+/coverage/
+/build/
+
+# Tooling
+.php-cs-fixer.cache
+.phpactor.json
+.phpstan.cache/
+
+# IDE / Editor
+.idea/
+.vscode/
+.fleet/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Guía interna para agentes (no se publica)
+CLAUDE.md
