@@ -36,21 +36,14 @@
 
     {{-- Cola staged + acciones --}}
     <div x-show="queue.length > 0" class="mt-6 space-y-3" x-cloak>
+        {{-- Header con estado (solo informativo) --}}
         <div class="flex items-center justify-between gap-3">
             <p class="text-[10px] font-mono uppercase tracking-wide text-gray-500">
                 <span x-show="!uploading && pendingCount > 0" x-text="pendingCount + ' en cola'"></span>
                 <span x-show="uploading">{{ str(__('laracrate::uploader.uploading'))->lower() }}</span>
                 <span x-show="!uploading && pendingCount === 0 && doneCount > 0" x-text="doneCount + ' OK' + (errorCount > 0 ? ' / ' + errorCount + ' err' : '')"></span>
             </p>
-            <div class="flex items-center gap-2">
-                <span x-show="uploading" class="text-[11px] font-mono text-gray-500 tabular-nums" x-text="batchProgress + '%'"></span>
-                <button x-show="!uploading && pendingCount > 0" type="button" @click="clearQueue()"
-                    class="text-xs text-gray-500 hover:text-gray-900 underline decoration-dotted underline-offset-4">{{ __('laracrate::uploader.cancel') }}</button>
-                <button x-show="!uploading && pendingCount > 0" type="button" @click="startBatch()"
-                    class="inline-flex items-center px-3 h-8 rounded-sm bg-gray-900 text-white text-xs font-medium hover:bg-gray-800 transition-colors">
-                    {{ __('laracrate::uploader.submit') }}
-                </button>
-            </div>
+            <span x-show="uploading" class="text-[11px] font-mono text-gray-500 tabular-nums" x-text="batchProgress + '%'"></span>
         </div>
 
         <div x-show="uploading" class="w-full bg-gray-200 h-0.5">
@@ -105,6 +98,19 @@
                     <p class="absolute bottom-0 left-0 right-0 bg-gray-900/70 text-white text-[10px] font-mono px-1.5 py-0.5 truncate" x-text="item.name"></p>
                 </div>
             </template>
+        </div>
+
+        {{-- Acciones primarias centradas --}}
+        <div x-show="!uploading && pendingCount > 0" class="flex flex-col items-center gap-2 pt-2">
+            <button type="button" @click="startBatch()"
+                class="inline-flex items-center justify-center px-6 h-10 rounded-sm bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors">
+                {{ __('laracrate::uploader.submit') }}
+                <span x-show="pendingCount > 1" class="ml-1.5 text-gray-300 font-mono tabular-nums" x-text="'(' + pendingCount + ')'"></span>
+            </button>
+            <button type="button" @click="clearQueue()"
+                class="text-xs text-gray-500 hover:text-gray-900 underline decoration-dotted underline-offset-4">
+                {{ __('laracrate::uploader.cancel') }}
+            </button>
         </div>
     </div>
 </div>

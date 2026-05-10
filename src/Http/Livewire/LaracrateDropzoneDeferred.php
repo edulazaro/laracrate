@@ -60,6 +60,7 @@ class LaracrateDropzoneDeferred extends Component
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
     {
         $upload = FileUpload::fromArray([
+            'disk'          => $this->disk(),
             'key'           => $key,
             'mime_type'     => $mime,
             'original_name' => $name,
