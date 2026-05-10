@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Enums\ProcessingStatus;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\CollectionConfig;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -390,16 +391,37 @@ class File extends Model
 
     /* ------------------------------------------------------------------
      | Stream / download (rutas firmadas del paquete)
+     |
+     | El controlador (StreamFileController) exige hasValidSignature(), así
+     | que estas URLs se emiten siempre firmadas con TTL. TTL configurable
+     | en `laracrate.urls.signed_ttl_minutes` (defecto 15).
      * ------------------------------------------------------------------ */
 
     public function streamUrl(): string
     {
-        return route('laracrate.files.stream', ['file' => $this->slug]);
+        return URL::temporarySignedRoute(
+            'laracrate.files.stream',
+            now()->addMinutes((int) config('laracrate.urls.route_signed_ttl', 15)),
+            ['file' => $this->slug]
+        );
     }
 
     public function downloadUrl(): string
     {
-        return route('laracrate.files.download', ['file' => $this->slug]);
+        return URL::temporarySignedRoute(
+            'laracrate.files.download',
+            now()->addMinutes((int) config('laracrate.urls.route_signed_ttl', 15)),
+            ['file' => $this->slug]
+        );
+    }
+
+    public function previewUrl(): string
+    {
+        return URL::temporarySignedRoute(
+            'laracrate.files.preview',
+            now()->addMinutes((int) config('laracrate.urls.route_signed_ttl', 15)),
+            ['file' => $this->slug]
+        );
     }
 
     /* ------------------------------------------------------------------
