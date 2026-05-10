@@ -8,7 +8,7 @@ use EduLazaro\Laracrate\Http\Controllers\PresignedUploadController;
 use EduLazaro\Laracrate\Http\Controllers\StreamFileController;
 use Illuminate\Support\Facades\Route;
 
-$prefix     = config('laracrate.stream.route_prefix', 'files');
+$prefix     = config('laracrate.stream.route_prefix', 'laracrate/files');
 $middleware = config('laracrate.stream.middleware', ['web', 'auth']);
 $namePrefix = config('laracrate.stream.route_name_prefix', 'laracrate.files');
 

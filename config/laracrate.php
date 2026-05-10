@@ -243,9 +243,12 @@ return [
     */
 
     'stream' => [
-        'route_prefix'      => 'files',
-        'route_name_prefix' => 'laracrate.files',
-        'middleware'        => ['web', 'auth'],
+        // Prefijo "laracrate/" para evitar colisiones con rutas existentes del
+        // proyecto bajo /files/... — muy común en apps que ya tienen un
+        // FileController propio. Cámbialo solo si sabes que no choca.
+        'route_prefix'        => 'laracrate/files',
+        'route_name_prefix'   => 'laracrate.files',
+        'middleware'          => ['web', 'auth'],
         'increment_downloads' => true,
         'log_access'          => true,
     ],
