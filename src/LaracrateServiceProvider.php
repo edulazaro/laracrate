@@ -58,6 +58,7 @@ class LaracrateServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
         $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
         $this->loadViewsFrom(__DIR__ . '/../resources/views', 'laracrate');
+        $this->loadTranslationsFrom(__DIR__ . '/../lang', 'laracrate');
 
         File::observe(FileObserver::class);
 
@@ -79,6 +80,10 @@ class LaracrateServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../resources/views' => resource_path('views/vendor/laracrate'),
             ], 'laracrate-views');
+
+            $this->publishes([
+                __DIR__ . '/../lang' => $this->app->langPath('vendor/laracrate'),
+            ], 'laracrate-translations');
 
             $this->commands([
                 AbortStaleMultipartCommand::class,

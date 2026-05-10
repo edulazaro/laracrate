@@ -40,6 +40,14 @@ class LaracrateUploaderDeferred extends Component
     public string $layout = 'row';
 
     /**
+     * Override de redondeo del preview de la imagen. Valores estándar Tailwind:
+     * 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full'.
+     * Si null, cada tema usa su default propio.
+     */
+    #[Locked]
+    public ?string $rounded = null;
+
+    /**
      * Buffer del upload temporal de Livewire. NO se persiste hasta `submit()`.
      */
     public $pending = null;
@@ -56,12 +64,29 @@ class LaracrateUploaderDeferred extends Component
         ?string $variant = null,
         ?string $theme = null,
         string $layout = 'row',
+        ?string $rounded = null,
     ): void {
         $this->model      = $model;
         $this->collection = $collection;
         $this->variant    = $variant;
         $this->theme      = $theme;
         $this->layout     = $layout;
+        $this->rounded    = $rounded;
+    }
+
+    public function roundedClass(): string
+    {
+        return match ($this->rounded) {
+            'none'  => 'rounded-none',
+            'sm'    => 'rounded-sm',
+            'md'    => 'rounded-md',
+            'lg'    => 'rounded-lg',
+            'xl'    => 'rounded-xl',
+            '2xl'   => 'rounded-2xl',
+            '3xl'   => 'rounded-3xl',
+            'full'  => 'rounded-full',
+            default => '',
+        };
     }
 
     /**
@@ -266,6 +291,7 @@ class LaracrateUploaderDeferred extends Component
             'acceptAttr'        => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
             'maxSizeKb'         => $this->maxSizeKb(),
             'pollMs'            => $this->pollMs,
+            'roundedClass'      => $this->roundedClass(),
         ]);
     }
 }

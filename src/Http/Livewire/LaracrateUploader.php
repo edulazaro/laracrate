@@ -41,6 +41,14 @@ class LaracrateUploader extends Component
     public string $layout = 'row';
 
     /**
+     * Override de redondeo del preview de la imagen. Valores estándar Tailwind:
+     * 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full'.
+     * Si null, cada tema usa su default propio.
+     */
+    #[Locked]
+    public ?string $rounded = null;
+
+    /**
      * Buffer del upload temporal de Livewire. Cuando se asigna, `updatedUpload`
      * dispara la validación y la persistencia vía `setFile()`.
      */
@@ -58,12 +66,36 @@ class LaracrateUploader extends Component
         ?string $variant = null,
         ?string $theme = null,
         string $layout = 'row',
+        ?string $rounded = null,
     ): void {
         $this->model      = $model;
         $this->collection = $collection;
         $this->variant    = $variant;
         $this->theme      = $theme;
         $this->layout     = $layout;
+        $this->rounded    = $rounded;
+    }
+
+    /**
+     * Devuelve la clase Tailwind correspondiente al valor de la prop `rounded`,
+     * o cadena vacía si no se ha pasado (cada tema fallback a su propio default).
+     *
+     * Las clases aparecen literales en el match() para que Tailwind las
+     * detecte al escanear los archivos PHP del paquete.
+     */
+    public function roundedClass(): string
+    {
+        return match ($this->rounded) {
+            'none'  => 'rounded-none',
+            'sm'    => 'rounded-sm',
+            'md'    => 'rounded-md',
+            'lg'    => 'rounded-lg',
+            'xl'    => 'rounded-xl',
+            '2xl'   => 'rounded-2xl',
+            '3xl'   => 'rounded-3xl',
+            'full'  => 'rounded-full',
+            default => '',
+        };
     }
 
     public function updatedUpload(): void
@@ -232,13 +264,14 @@ class LaracrateUploader extends Component
             : "laracrate::uploader.themes.{$theme}";
 
         return view($view, [
-            'config'      => $this->model->getCollectionConfig($this->collection),
-            'file'        => $this->currentFile(),
-            'state'       => $this->processingState(),
-            'previewUrl'  => $this->previewUrl(),
-            'acceptAttr'  => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
-            'maxSizeKb'   => $this->maxSizeKb(),
-            'pollMs'      => $this->pollMs,
+            'config'       => $this->model->getCollectionConfig($this->collection),
+            'file'         => $this->currentFile(),
+            'state'        => $this->processingState(),
+            'previewUrl'   => $this->previewUrl(),
+            'acceptAttr'   => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
+            'maxSizeKb'    => $this->maxSizeKb(),
+            'pollMs'       => $this->pollMs,
+            'roundedClass' => $this->roundedClass(),
         ]);
     }
 }
