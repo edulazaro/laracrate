@@ -8,6 +8,7 @@ use EduLazaro\Laracrate\Embeddings\OpenAiEmbeddingProvider;
 use EduLazaro\Laracrate\Console\Commands\AbortStaleMultipartCommand;
 use EduLazaro\Laracrate\Console\Commands\PurgeExpiredFilesCommand;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateUploader;
+use EduLazaro\Laracrate\Http\Livewire\LaracrateUploaderDeferred;
 use Livewire\Livewire;
 use EduLazaro\Laracrate\Extractors\PdfTextExtractor;
 use EduLazaro\Laracrate\Extractors\PlainTextExtractor;
@@ -93,6 +94,7 @@ class LaracrateServiceProvider extends ServiceProvider
         }
 
         Livewire::component('laracrate-uploader', LaracrateUploader::class);
+        Livewire::component('laracrate-uploader-deferred', LaracrateUploaderDeferred::class);
     }
 
     protected function registerEmbeddingProvider(): void
