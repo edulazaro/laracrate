@@ -3,7 +3,7 @@
 <script>
     /**
      * Factory Alpine compartida por todos los temas de
-     * <livewire:laracrate-dropzone> y <livewire:laracrate-dropzone-deferred>.
+     * laracrate-dropzone y laracrate-dropzone-deferred.
      *
      * El comportamiento depende de cfg.autoStart:
      *   - true  → cada `handleFiles()` arranca el lote inmediatamente (instant)
