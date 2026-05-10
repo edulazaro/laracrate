@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Actions\Files\GeneratePublicUrlAction;
 use EduLazaro\Laracrate\Actions\Files\GenerateSensitiveStreamUrlAction;
 use EduLazaro\Laracrate\Actions\Files\GenerateSignedUrlAction;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -218,22 +219,28 @@ class StorageManager
 
     /**
      * Resolución de configuración de una colección.
+     *
+     * $morphAlias permite aplicar el bloque per-model (`models.{alias}`) si
+     * la colección lo declara. Si la colección está restringida y el alias
+     * no encaja, lanza CollectionNotAllowedForModel.
      */
-    public function getCollectionConfig(string $collection, array $modelOverride = []): array
+    public function getCollectionConfig(string $collection, array $modelOverride = [], ?string $morphAlias = null): array
     {
-        $base = config("laracrate.collections.{$collection}", []);
+        $base = CollectionConfig::resolve($collection, $morphAlias);
         return array_replace_recursive($base, $modelOverride);
     }
 
     /**
      * Config efectiva de un type dentro de una colección. Mergea defaults
-     * globales del type con el override declarado en la colección.
+     * globales del type con el override declarado en la colección. Si la
+     * colección está restringida por modelo y se pasa $morphAlias, aplica
+     * primero el bloque per-model.
      *
      * Devuelve [] si la colección no acepta ese type.
      */
-    public function getTypeConfig(string $collection, string $type): array
+    public function getTypeConfig(string $collection, string $type, ?string $morphAlias = null): array
     {
-        $col   = config("laracrate.collections.{$collection}", []);
+        $col   = CollectionConfig::resolve($collection, $morphAlias);
         $types = $this->normalizeTypes($col['types'] ?? []);
 
         if (!array_key_exists($type, $types)) {
@@ -245,13 +252,13 @@ class StorageManager
     }
 
     /**
-     * ¿La colección acepta este type?
+     * ¿La colección acepta este type? Honra el bloque per-model si la
+     * colección está restringida y se pasa $morphAlias.
      */
-    public function acceptsType(string $collection, string $type): bool
+    public function acceptsType(string $collection, string $type, ?string $morphAlias = null): bool
     {
-        $types = $this->normalizeTypes(
-            config("laracrate.collections.{$collection}.types", [])
-        );
+        $col   = CollectionConfig::resolve($collection, $morphAlias);
+        $types = $this->normalizeTypes($col['types'] ?? []);
         return array_key_exists($type, $types);
     }
 

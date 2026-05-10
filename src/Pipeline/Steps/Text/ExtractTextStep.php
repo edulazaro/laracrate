@@ -5,6 +5,7 @@ namespace EduLazaro\Laracrate\Pipeline\Steps\Text;
 use EduLazaro\Laracrate\Actions\Files\ExtractTextAction;
 use EduLazaro\Laracrate\Contracts\ProcessingStep;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laracrate\Support\TextExtractorRegistry;
 
 class ExtractTextStep implements ProcessingStep
@@ -15,7 +16,7 @@ class ExtractTextStep implements ProcessingStep
             return false;
         }
 
-        $colRoot     = config("laracrate.collections.{$file->collection}", []);
+        $colRoot     = CollectionConfig::resolve($file->collection, $file->fileable_type);
         $extractText = (bool) ($colRoot['extract_text'] ?? false);
         $embed       = (bool) ($colRoot['embed'] ?? false);
 

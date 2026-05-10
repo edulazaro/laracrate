@@ -4,6 +4,7 @@ namespace EduLazaro\Laracrate\Actions\Files\Image;
 
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laractions\Action;
 use Illuminate\Support\Str;
 use Intervention\Image\ImageManager;
@@ -27,10 +28,10 @@ class OptimizeImageAction extends Action
         }
 
         // Cadena de resolución: arg → collection.types.image → defaults.image → image (engine)
-        $collection = $file->collection;
-        $maxWidth   = $maxWidth ?? $this->configFor($collection, 'max_width', 1920);
-        $maxHeight  = $maxHeight ?? $this->configFor($collection, 'max_height', 1920);
-        $quality    = $quality ?? $this->configFor($collection, 'quality', 85);
+        $imageCfg  = CollectionConfig::resolve($file->collection, $file->fileable_type)['types']['image'] ?? [];
+        $maxWidth  = $maxWidth ?? $this->configFor($imageCfg, 'max_width', 1920);
+        $maxHeight = $maxHeight ?? $this->configFor($imageCfg, 'max_height', 1920);
+        $quality   = $quality ?? $this->configFor($imageCfg, 'quality', 85);
 
         $manager = app(StorageManager::class);
         $binary  = $manager->readBinary($file);
@@ -77,14 +78,14 @@ class OptimizeImageAction extends Action
 
     /**
      * Resuelve un parámetro image leyendo en cadena:
-     *   1. config.collections.{collection}.types.image.{key}
+     *   1. $imageCfg[$key]            (collection.types.image, ya con override per-model aplicado)
      *   2. config.defaults.image.{key}
-     *   3. config.image.{key}  (engine fallback)
+     *   3. config.image.{key}         (engine fallback)
      *   4. $default
      */
-    protected function configFor(string $collection, string $key, mixed $default): mixed
+    protected function configFor(array $imageCfg, string $key, mixed $default): mixed
     {
-        return config("laracrate.collections.{$collection}.types.image.{$key}")
+        return ($imageCfg[$key] ?? null)
             ?? config("laracrate.defaults.image.{$key}")
             ?? config("laracrate.image.{$key}")
             ?? $default;

@@ -34,7 +34,7 @@ class GenerateImageVariantsStep implements ProcessingStep
 
     protected function variantsConfig(File $file): array
     {
-        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'image');
+        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'image', $file->fileable_type);
 
         return $config['variants'] ?? [];
     }

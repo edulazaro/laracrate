@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Contracts\ProcessingStep;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 
 class OptimizeImageStep implements ProcessingStep
 {
@@ -31,8 +32,8 @@ class OptimizeImageStep implements ProcessingStep
 
     protected function shouldOptimize(File $file): bool
     {
-        $colRoot = config("laracrate.collections.{$file->collection}", []);
-        $config  = app(StorageManager::class)->getTypeConfig($file->collection, 'image');
+        $colRoot = CollectionConfig::resolve($file->collection, $file->fileable_type);
+        $config  = app(StorageManager::class)->getTypeConfig($file->collection, 'image', $file->fileable_type);
 
         return (bool) (
             $colRoot['optimize']

@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Enums\ProcessingStatus;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laractions\Action;
 use Illuminate\Support\Str;
 use Intervention\Image\ImageManager;
@@ -52,9 +53,10 @@ class GenerateImageVariantAction extends Action
         //   3. config.defaults.image.{key}                               (global default)
         //   4. fallback hardcoded
         // Para 'quality', además prueba 'variant_quality' antes de 'quality' en niveles 2 y 3.
-        $collection = $file->collection;
+        $collection   = $file->collection;
+        $imageCfg     = CollectionConfig::resolve($collection, $file->fileable_type)['types']['image'] ?? [];
         $resolve = fn (string $key, mixed $default) => $options[$key]
-            ?? config("laracrate.collections.{$collection}.types.image.{$key}")
+            ?? ($imageCfg[$key] ?? null)
             ?? config("laracrate.defaults.image.{$key}")
             ?? $default;
 
@@ -72,7 +74,7 @@ class GenerateImageVariantAction extends Action
 
         // quality: variant.quality → type.variant_quality → defaults.variant_quality → cascade normal de 'quality'
         $quality = $options['quality']
-            ?? config("laracrate.collections.{$collection}.types.image.variant_quality")
+            ?? ($imageCfg['variant_quality'] ?? null)
             ?? config("laracrate.defaults.image.variant_quality")
             ?? $resolve('quality', 80);
 

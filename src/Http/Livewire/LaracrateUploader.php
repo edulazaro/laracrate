@@ -189,7 +189,7 @@ class LaracrateUploader extends Component
         $exts    = [];
 
         foreach ($types as $type) {
-            $typeCfg = $manager->getTypeConfig($this->collection, $type);
+            $typeCfg = $manager->getTypeConfig($this->collection, $type, $this->model->getMorphClass());
             foreach ($typeCfg['accepted_extensions'] ?? [] as $ext) {
                 $exts[] = strtolower($ext);
             }
@@ -210,7 +210,7 @@ class LaracrateUploader extends Component
         $mimes   = [];
 
         foreach ($types as $type) {
-            $typeCfg = $manager->getTypeConfig($this->collection, $type);
+            $typeCfg = $manager->getTypeConfig($this->collection, $type, $this->model->getMorphClass());
             foreach ($typeCfg['accepted_mime_types'] ?? [] as $mime) {
                 $mimes[] = $mime;
             }
@@ -232,7 +232,7 @@ class LaracrateUploader extends Component
 
         $max = 0;
         foreach ($types as $type) {
-            $typeCfg = $manager->getTypeConfig($this->collection, $type);
+            $typeCfg = $manager->getTypeConfig($this->collection, $type, $this->model->getMorphClass());
             $max = max($max, (int) ($typeCfg['max_file_size'] ?? 0));
         }
 

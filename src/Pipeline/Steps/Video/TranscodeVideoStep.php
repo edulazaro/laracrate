@@ -16,7 +16,7 @@ class TranscodeVideoStep implements ProcessingStep
             return false;
         }
 
-        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video');
+        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video', $file->fileable_type);
 
         return !empty($config['transcode']);
     }

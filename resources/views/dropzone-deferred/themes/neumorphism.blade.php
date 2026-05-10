@@ -41,11 +41,7 @@
                 <span x-show="uploading">{{ __('laracrate::uploader.uploading') }}</span>
                 <span x-show="!uploading && pendingCount === 0 && doneCount > 0" x-text="doneCount + ' OK' + (errorCount > 0 ? ' / ' + errorCount + ' err' : '')"></span>
             </p>
-            <div class="flex items-center gap-2">
-                <span x-show="uploading" class="text-xs text-gray-600" x-text="batchProgress + '%'"></span>
-                <button x-show="!uploading && pendingCount > 0" type="button" @click="clearQueue()" class="text-xs text-gray-600 hover:text-gray-900 underline">{{ __('laracrate::uploader.cancel') }}</button>
-                <button x-show="!uploading && pendingCount > 0" type="button" @click="startBatch()" class="inline-flex items-center px-3 h-8 rounded-xl text-gray-700 text-xs font-semibold transition-all" style="background: var(--neu-bg); box-shadow: 4px 4px 8px rgba(163,177,198,0.5), -4px -4px 8px rgba(255,255,255,0.85);">{{ __('laracrate::uploader.submit') }}</button>
-            </div>
+            <span x-show="uploading" class="text-xs text-gray-600" x-text="batchProgress + '%'"></span>
         </div>
         <div x-show="uploading" class="w-full rounded-full h-1.5" style="background: var(--neu-bg); box-shadow: inset 2px 2px 4px rgba(163,177,198,0.45), inset -2px -2px 4px rgba(255,255,255,0.7);">
             <div class="h-full rounded-full transition-all duration-300 bg-gray-700" :style="'width: ' + batchProgress + '%'"></div>
@@ -65,6 +61,20 @@
                     <p class="absolute bottom-0 left-0 right-0 bg-gray-700/70 text-white text-[10px] px-1.5 py-0.5 truncate" x-text="item.name"></p>
                 </div>
             </template>
+        </div>
+
+        {{-- Acciones primarias centradas --}}
+        <div x-show="!uploading && pendingCount > 0" class="flex flex-col items-center gap-2 pt-2">
+            <button type="button" @click="startBatch()"
+                class="inline-flex items-center justify-center px-6 h-10 rounded-xl text-gray-700 text-sm font-semibold transition-all"
+                style="background: var(--neu-bg); box-shadow: 4px 4px 8px rgba(163,177,198,0.5), -4px -4px 8px rgba(255,255,255,0.85);">
+                {{ __('laracrate::uploader.submit') }}
+                <span x-show="pendingCount > 1" class="ml-1.5 text-gray-500 font-mono tabular-nums" x-text="'(' + pendingCount + ')'"></span>
+            </button>
+            <button type="button" @click="clearQueue()"
+                class="text-xs text-gray-600 hover:text-gray-900 underline">
+                {{ __('laracrate::uploader.cancel') }}
+            </button>
         </div>
     </div>
 </div>

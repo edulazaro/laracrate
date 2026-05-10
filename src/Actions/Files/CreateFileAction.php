@@ -62,13 +62,15 @@ class CreateFileAction extends Action
         // 2. Validar que el type esté aceptado por la colección (si no es child).
         $type = FileType::fromMime($resolved['mime_type']);
         if (!$parent) {
-            if (!$manager->acceptsType($collection, $type->value)) {
+            $morphAlias = $fileable?->getMorphClass();
+
+            if (!$manager->acceptsType($collection, $type->value, $morphAlias)) {
                 throw new \InvalidArgumentException(
                     "La colección '{$collection}' no acepta archivos de tipo '{$type->value}'."
                 );
             }
 
-            $typeConfig = $manager->getTypeConfig($collection, $type->value);
+            $typeConfig = $manager->getTypeConfig($collection, $type->value, $morphAlias);
 
             // 2a. MIME real contra accepted_mime_types.
             $acceptedMimes = $typeConfig['accepted_mime_types'] ?? [];

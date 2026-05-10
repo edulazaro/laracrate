@@ -42,7 +42,7 @@ class ExtractPdfPreviewStep implements ProcessingStep
 
     protected function previewConfig(File $file): array
     {
-        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'document');
+        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'document', $file->fileable_type);
 
         return $config['preview'] ?? [];
     }

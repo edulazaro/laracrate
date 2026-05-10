@@ -3,6 +3,7 @@
 namespace EduLazaro\Laracrate\Actions\Files\Image;
 
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laractions\Action;
 use Throwable;
 
@@ -21,7 +22,10 @@ class GenerateImageVariantsAction extends Action
             return [];
         }
 
-        $variants = $variants ?? config("laracrate.collections.{$file->collection}.variants", []);
+        if ($variants === null) {
+            $config   = CollectionConfig::resolve($file->collection, $file->fileable_type);
+            $variants = $config['variants'] ?? [];
+        }
 
         if (empty($variants)) {
             return [];

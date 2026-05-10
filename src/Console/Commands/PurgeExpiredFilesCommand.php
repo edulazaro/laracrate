@@ -50,11 +50,13 @@ class PurgeExpiredFilesCommand extends Command
         $totalDeleted = 0;
         $totalFailed  = 0;
 
-        foreach ($collections as $name => $config) {
+        foreach ($collections as $name => $_rawConfig) {
             if ($only !== null && $name !== $only) {
                 continue;
             }
 
+            // Resolución sin morph alias: devuelve la base, ignora `models`.
+            $config   = \EduLazaro\Laracrate\Support\CollectionConfig::resolve($name);
             $ttlHours = $config['ttl_hours'] ?? null;
             if ($ttlHours === null || $ttlHours <= 0) {
                 continue;

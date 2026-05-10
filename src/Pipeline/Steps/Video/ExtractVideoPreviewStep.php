@@ -37,7 +37,7 @@ class ExtractVideoPreviewStep implements ProcessingStep
 
     protected function previewConfig(File $file): array
     {
-        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video');
+        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video', $file->fileable_type);
 
         return $config['preview'] ?? [];
     }

@@ -6,6 +6,7 @@ use EduLazaro\Laracrate\Enums\FileAccess;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Enums\ProcessingStatus;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -357,9 +358,9 @@ class File extends Model
      */
     public function placeholderFor(string $type): string
     {
-        $collection = $this->collection;
+        $config = CollectionConfig::resolve($this->collection, $this->fileable_type);
 
-        return config("laracrate.collections.{$collection}.placeholder")
+        return ($config['placeholder'] ?? null)
             ?? config("laracrate.placeholders.{$type}")
             ?? config('laracrate.placeholders.default')
             ?? '';

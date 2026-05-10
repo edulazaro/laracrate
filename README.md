@@ -218,6 +218,43 @@ Each collection sets disk, access mode, accepted types with their config, and op
 - `preview` for document and video produces a special variant; its own child variants go in `preview.variants`.
 - The global type defaults are recursively merged with the collection override. You only declare what you want to change.
 
+#### Granular per-model config (optional)
+
+The same collection name can serve several models with **different config per model**, using an optional `models` block. The block is keyed by morph alias (or FQCN if you don't use a morph map). Each entry is merged on top of the base.
+
+```php
+'documents' => [
+    // base — shared by every model that uses this collection
+    'disk'   => 'documents',
+    'access' => 'signed',
+    'types'  => [
+        'document' => ['preview' => ['page' => 1, 'width' => 1600]],
+    ],
+
+    'models' => [
+        'case' => [
+            // inherits everything above, plus:
+            'path' => 'cases/{slug}/documents',
+        ],
+        'organization' => [
+            'path' => 'orgs/{handle}/documents',
+            // override puntual: en orgs no queremos preview
+            'types' => [
+                'document' => ['preview' => false],
+            ],
+        ],
+    ],
+],
+```
+
+Semantics:
+
+- **Without `models`** → flat config, any model that uses the collection gets the same behavior (legacy / default).
+- **With `models`** → the collection is restricted to those aliases; any other model throws `EduLazaro\Laracrate\Exceptions\CollectionNotAllowedForModel`.
+- Override is `array_replace_recursive` on top of the base. Scalars get replaced; nested arrays merge key by key (declare the full array on a key when you want a wholesale swap).
+- The `models` key itself is stripped from the resolved output — callers see a normal flat array.
+- Tooling that iterates collections without a model context (e.g. `laracrate:purge-expired`) gets the base config without the `models` block.
+
 ### `placeholders`, fallback when there is no file
 
 Resolution order (most specific to most general):

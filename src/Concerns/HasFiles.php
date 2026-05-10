@@ -6,6 +6,7 @@ use EduLazaro\Laracrate\Actions\Files\CreateFileAction;
 use EduLazaro\Laracrate\Actions\Files\DeleteFileAction;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laracrate\Support\FileUpload;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -195,8 +196,9 @@ trait HasFiles
     protected function collectionPlaceholder(string $collection, string $type): ?string
     {
         $resolve = fn ($v) => is_callable($v) ? $v($collection, $type, $this) : $v;
+        $config  = $this->getCollectionConfig($collection);
 
-        return $resolve(config("laracrate.collections.{$collection}.placeholder"))
+        return $resolve($config['placeholder'] ?? null)
             ?? $resolve(config("laracrate.placeholders.{$type}"))
             ?? $resolve(config('laracrate.placeholders.default'));
     }
@@ -230,11 +232,18 @@ trait HasFiles
 
     /**
      * Resolución de la configuración efectiva de una colección.
-     * Merge: config('laracrate.collections.X') + $this->fileCollections[X] (override del modelo).
+     *
+     * Tres capas, en orden de precedencia (la última gana):
+     *   1. base (`config('laracrate.collections.X')`)
+     *   2. bloque per-model (`config('laracrate.collections.X.models.{alias}')`)
+     *   3. override del modelo (`$this->fileCollections[X]`)
+     *
+     * Si la colección declara `models` y este modelo no está listado, lanza
+     * CollectionNotAllowedForModel.
      */
     public function getCollectionConfig(string $collection): array
     {
-        $base     = config("laracrate.collections.{$collection}", []);
+        $base     = CollectionConfig::resolve($collection, $this->getMorphClass());
         $override = $this->fileCollections[$collection] ?? [];
 
         return array_replace_recursive($base, $override);

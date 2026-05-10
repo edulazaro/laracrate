@@ -6,6 +6,7 @@ use EduLazaro\Laracrate\Actions\Files\GenerateEmbeddingAction;
 use EduLazaro\Laracrate\Contracts\ProcessingStep;
 use EduLazaro\Laracrate\Events\EmbeddingsReady;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 
 class GenerateEmbeddingStep implements ProcessingStep
 {
@@ -15,7 +16,7 @@ class GenerateEmbeddingStep implements ProcessingStep
             return false;
         }
 
-        $colRoot = config("laracrate.collections.{$file->collection}", []);
+        $colRoot = CollectionConfig::resolve($file->collection, $file->fileable_type);
         $embed   = (bool) ($colRoot['embed'] ?? false);
 
         if (!$embed) {

@@ -5,6 +5,7 @@ namespace EduLazaro\Laracrate\Pipeline\Steps\Text;
 use EduLazaro\Laracrate\Actions\Files\ChunkTextAction;
 use EduLazaro\Laracrate\Contracts\ProcessingStep;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\CollectionConfig;
 
 class ChunkTextStep implements ProcessingStep
 {
@@ -14,7 +15,7 @@ class ChunkTextStep implements ProcessingStep
             return false;
         }
 
-        $colRoot = config("laracrate.collections.{$file->collection}", []);
+        $colRoot = CollectionConfig::resolve($file->collection, $file->fileable_type);
         $embed   = (bool) ($colRoot['embed'] ?? false);
 
         if (!$embed) {
