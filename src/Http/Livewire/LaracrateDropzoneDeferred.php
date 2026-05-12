@@ -148,12 +148,28 @@ class LaracrateDropzoneDeferred extends Component
             }
         }
 
-        $file = $this->model->addFile(
-            $upload,
-            $this->collection,
-            slots: $this->slots,
-            creator: $creator,
-        );
+        // CreateFileAction puede lanzar InvalidArgumentException por:
+        //   - MIME/extensión no aceptada por la colección o el slot
+        //   - Slot quota agotada (per_creator o global)
+        //   - Tamaño excedido
+        // Lo capturamos y devolvemos null para que el front trate el item como
+        // error normal (sin 500). El mensaje se manda en el evento para UX.
+        try {
+            $file = $this->model->addFile(
+                $upload,
+                $this->collection,
+                slots: $this->slots,
+                creator: $creator,
+            );
+        } catch (\InvalidArgumentException $e) {
+            $this->dispatch(
+                'laracrate-file-rejected',
+                collection: $this->collection,
+                reason: $e->getMessage(),
+                fileName: $name,
+            );
+            return null;
+        }
 
         if (! $file) {
             return null;
