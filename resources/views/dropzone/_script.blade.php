@@ -22,7 +22,12 @@
         get doneCount()    { return this.queue.filter(i => i.status === 'done').length; },
         get errorCount()   { return this.queue.filter(i => i.status === 'error').length; },
         get activeCount()  { return this.queue.filter(i => ['pending', 'uploading', 'done'].includes(i.status)).length; },
-        get reachedMax()   { return this.cfg.maxFiles ? (this.uploadedTotal + this.queue.filter(i => ['pending', 'uploading'].includes(i.status)).length) >= this.cfg.maxFiles : false; },
+        get reachedMax()   {
+            // cfg.maxFiles: null = sin límite, 0 = cero más archivos aceptados.
+            // Truthy check trataría 0 como "sin límite", así que comparamos contra null explícitamente.
+            if (this.cfg.maxFiles === null || this.cfg.maxFiles === undefined) return false;
+            return (this.uploadedTotal + this.queue.filter(i => ['pending', 'uploading'].includes(i.status)).length) >= this.cfg.maxFiles;
+        },
 
         getCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
@@ -33,8 +38,9 @@
             if (!files.length) return;
 
             // Respeta maxFiles: cuenta uploadedTotal (persistente) + cola activa.
-            const max = this.cfg.maxFiles ?? null;
-            if (max) {
+            // null = sin límite. 0 o más = cap explícito (incluido 0 = nada más).
+            const max = this.cfg.maxFiles;
+            if (max !== null && max !== undefined) {
                 const activeInQueue = this.queue.filter(i => ['pending', 'uploading'].includes(i.status)).length;
                 const used = this.uploadedTotal + activeInQueue;
                 const free = Math.max(0, max - used);
