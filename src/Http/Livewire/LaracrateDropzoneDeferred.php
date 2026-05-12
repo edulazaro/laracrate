@@ -332,20 +332,24 @@ class LaracrateDropzoneDeferred extends Component
         );
 
         return view($view, [
-            'config'       => $this->model->getCollectionConfig($this->collection),
-            'collection'   => $this->collection,
-            'disk'         => $this->disk(),
-            'fileableType' => $this->model->getMorphClass(),
-            'fileableId'   => $this->model->getKey(),
-            'acceptAttr'   => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
-            'extensions'   => $effective['extensions'],
-            'maxSizeKb'    => $this->maxSizeKb(),
-            'multiple'     => $this->multiple,
-            'persistQueue' => $this->persistQueue,
-            'hideActions'  => $this->hideActions,
-            'layout'       => $this->layout,
-            'maxFiles'     => $effective['maxFiles'],
-            'slotInfo'     => $effective['slotInfo'],
+            'config'            => $this->model->getCollectionConfig($this->collection),
+            'collection'        => $this->collection,
+            'disk'              => $this->disk(),
+            'fileableType'      => $this->model->getMorphClass(),
+            'fileableId'        => $this->model->getKey(),
+            'acceptAttr'        => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
+            'extensions'        => $effective['extensions'],
+            'maxSizeKb'         => $this->maxSizeKb(),
+            // 'multiple' y 'maxFiles' son public props del componente y se exponen
+            // automáticamente al view por Livewire. Las renombramos aquí para que
+            // las variables de la view ganen sobre la prop pública (sino quedan
+            // shadowed cuando la prop es null y el efectivo se computa en render).
+            'multipleAllowed'   => $this->multiple,
+            'persistQueue'      => $this->persistQueue,
+            'hideActions'       => $this->hideActions,
+            'layout'            => $this->layout,
+            'effectiveMaxFiles' => $effective['maxFiles'],
+            'slotInfo'          => $effective['slotInfo'],
         ]);
     }
 }

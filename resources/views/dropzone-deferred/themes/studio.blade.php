@@ -10,7 +10,7 @@
         maxSizeKb:    @js($maxSizeKb),
         persistQueue: @js($persistQueue),
         autoStart:    false,
-        maxFiles:     @js($maxFiles ?? null),
+        maxFiles:     @js($effectiveMaxFiles ?? null),
     })"
     x-init="
         // Sincroniza cfg.maxFiles desde el data-attribute. Livewire morphdom
@@ -26,7 +26,7 @@
         sync();
         new MutationObserver(sync).observe($el, { attributes: true, attributeFilter: ['data-effective-max'] });
     "
-    data-effective-max="{{ $maxFiles ?? '' }}"
+    data-effective-max="{{ $effectiveMaxFiles ?? '' }}"
     @laracrate-start-batch.window="
         if (($event.detail.fileableType ?? null) === @js($fileableType)
             && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
@@ -55,7 +55,7 @@
         <p class="mt-1 text-[11px] font-mono text-gray-500 tabular-nums">{{ str(__('laracrate::uploader.drag_or_click'))->lower() }}</p>
         <p class="mt-3 text-[10px] font-mono uppercase tracking-wide text-gray-400">{{ __('laracrate::uploader.max_size', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
         <input type="file" x-ref="input"
-            :multiple="@js($multiple) && (cfg.maxFiles === null || cfg.maxFiles > 1)"
+            :multiple="@js($multipleAllowed) && (cfg.maxFiles === null || cfg.maxFiles > 1)"
             accept="{{ $acceptAttr }}" class="hidden"
             @change="handleFiles($event.target.files); $event.target.value = ''" />
     </div>
