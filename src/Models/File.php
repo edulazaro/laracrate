@@ -99,6 +99,16 @@ class File extends Model
         return $this->hasMany(FileContent::class)->orderBy('chunk_index');
     }
 
+    public function tags(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(
+            FileTag::class,
+            'laracrate_file_tag_pivot',
+            'file_id',
+            'file_tag_id'
+        )->withTimestamps();
+    }
+
     /**
      * Key del archivo en su disk. `path` ya almacena la key entera; este
      * accessor solo defensiviza contra `null` y un `/` inicial accidental.
