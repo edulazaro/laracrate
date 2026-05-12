@@ -12,20 +12,17 @@
         autoStart:    false,
         maxFiles:     @js($effectiveMaxFiles ?? null),
     })"
-    x-init="
-        // Sincroniza cfg.maxFiles desde el data-attribute. Livewire morphdom
-        // actualiza data-* attributes en cada re-render pero NO re-inicializa
-        // Alpine x-data. Por eso confiamos en el dataset como source of truth.
+    x-init="(() => {
         const sync = () => {
             const v = $el.dataset.effectiveMax;
             cfg.maxFiles = (v === '' || v == null) ? null : parseInt(v, 10);
-            if (cfg.maxFiles && queue.length > cfg.maxFiles) {
+            if (cfg.maxFiles !== null && queue.length > cfg.maxFiles) {
                 queue = queue.slice(0, cfg.maxFiles);
             }
         };
         sync();
         new MutationObserver(sync).observe($el, { attributes: true, attributeFilter: ['data-effective-max'] });
-    "
+    })()"
     data-effective-max="{{ $effectiveMaxFiles ?? '' }}"
     @laracrate-start-batch.window="
         if (($event.detail.fileableType ?? null) === @js($fileableType)
@@ -34,20 +31,16 @@
             startBatch();
         }
     "
-    @laracrate-deferred-config.window="
-        // Backup: el render() del componente dispatcha este evento con el maxFiles
-        // efectivo. Lo escuchamos aquí en caso de que el MutationObserver no se
-        // dispare (algunos paths de morphdom no notifican cambios de attribute).
-        if (($event.detail.fileableType ?? null) === @js($fileableType)
-            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
-            && ($event.detail.collection ?? null) === @js($collection)) {
-            const m = $event.detail.maxFiles;
-            cfg.maxFiles = (m === null || m === undefined) ? null : parseInt(m, 10);
-            if (cfg.maxFiles !== null && queue.length > cfg.maxFiles) {
-                queue = queue.slice(0, cfg.maxFiles);
-            }
+    @laracrate-deferred-config.window="(() => {
+        if (($event.detail.fileableType ?? null) !== @js($fileableType)) return;
+        if (String($event.detail.fileableId ?? '') !== @js((string) $fileableId)) return;
+        if (($event.detail.collection ?? null) !== @js($collection)) return;
+        const m = $event.detail.maxFiles;
+        cfg.maxFiles = (m === null || m === undefined) ? null : parseInt(m, 10);
+        if (cfg.maxFiles !== null && queue.length > cfg.maxFiles) {
+            queue = queue.slice(0, cfg.maxFiles);
         }
-    "
+    })()"
     class="w-full"
 >
     {{-- Slot picker integrado (solo si hay 2+ opciones) --}}
