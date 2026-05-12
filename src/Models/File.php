@@ -99,13 +99,13 @@ class File extends Model
         return $this->hasMany(FileContent::class)->orderBy('chunk_index');
     }
 
-    public function tags(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function slots(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
         return $this->belongsToMany(
-            FileTag::class,
-            'laracrate_file_tag_pivot',
+            FileSlot::class,
+            'laracrate_file_slot_pivot',
             'file_id',
-            'file_tag_id'
+            'file_slot_id'
         )->withTimestamps();
     }
 

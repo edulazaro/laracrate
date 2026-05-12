@@ -7,23 +7,28 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * Tag de archivos: clasificador + filtro de extensiones + quota.
+ * FileSlot: un "hueco" con reglas que un usuario rellena con archivos.
  *
- * Estructura de scope:
- *   - tenant_type/tenant_id  → multi-tenancy (igual que File). Típicamente
- *     'organization' o lo que tu app considere tenant.
- *   - context_type/context_id → scope opcional dentro del tenant. Ej:
- *     context='case' para tags que aplican solo a un caso concreto,
- *     o null/context='organization' para tags globales del tenant.
+ * Casos típicos:
+ *   - Requisito en un proceso de admisión: "Sube tu DNI (slot 'DNI', max 1, .pdf/.jpg)"
+ *   - Cupo definido: "Sube hasta 3 facturas de junio"
+ *   - Limitar tipos: "Sube fotos (solo .jpg/.png)"
  *
- * Relación con archivos: m2m simple vía `laracrate_file_tag_pivot`.
- * Quota: el contexto del tag actúa como ámbito natural del límite.
- *   - Tag con context=null → cuenta files en toda la org
- *   - Tag con context=case/X → cuenta files dentro de ese case
+ * No es un sistema de clasificación — eso queda al desarrollador (categorías,
+ * tags libres, jerarquías, lo que necesite). El slot solo define **dónde
+ * encajan los archivos y bajo qué reglas**.
+ *
+ * Scope:
+ *   - tenant_type/tenant_id  → multi-tenancy (igual que File)
+ *   - context_type/context_id → scope opcional dentro del tenant
+ *     (ej. context='case' para slots solo de un caso concreto)
+ *
+ * Relación con archivos: m2m simple vía `laracrate_file_slot_pivot`.
+ * El contexto del slot actúa como ámbito natural del límite.
  */
-class FileTag extends Model
+class FileSlot extends Model
 {
-    protected $table = 'laracrate_file_tags';
+    protected $table = 'laracrate_file_slots';
 
     protected $fillable = [
         'tenant_type',
@@ -60,15 +65,15 @@ class FileTag extends Model
     {
         return $this->belongsToMany(
             File::class,
-            'laracrate_file_tag_pivot',
-            'file_tag_id',
+            'laracrate_file_slot_pivot',
+            'file_slot_id',
             'file_id'
         )->withTimestamps();
     }
 
     /**
-     * Cuenta archivos asociados al tag. Opcionalmente filtra por creator
-     * (creator_type='user', creator_id=X).
+     * Cuenta archivos en el slot. Opcionalmente filtra por creator polimórfico
+     * (creator_type, creator_id).
      */
     public function uploadedCount(?string $creatorType = null, ?int $creatorId = null): int
     {
@@ -81,7 +86,7 @@ class FileTag extends Model
     }
 
     /**
-     * Determina si el tag acepta más archivos. Devuelve detalle del por qué
+     * Determina si el slot acepta más archivos. Devuelve detalle del por qué
      * cuando no acepta:
      *   ['can' => bool, 'reason' => 'global'|'per_creator'|null, 'limit' => int|null]
      */
@@ -105,7 +110,8 @@ class FileTag extends Model
     }
 
     /**
-     * Comprueba si la extensión está permitida por este tag.
+     * Comprueba si la extensión está permitida por este slot.
+     * Lista vacía = todo permitido.
      */
     public function acceptsExtension(string $extension): bool
     {
