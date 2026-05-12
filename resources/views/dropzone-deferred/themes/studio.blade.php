@@ -60,6 +60,18 @@
             @change="handleFiles($event.target.files); $event.target.value = ''" />
     </div>
 
+    {{-- Estado "max alcanzado": mensaje informativo en lugar del dropzone --}}
+    <div x-show="reachedMax" x-cloak
+         class="rounded-sm border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+        <div class="inline-flex items-center justify-center w-10 h-10 rounded-sm border border-gray-300 bg-white text-gray-500 mb-3">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+        </div>
+        <p class="text-sm text-gray-900 font-medium">{{ __('laracrate::uploader.max_reached_title') }}</p>
+        <p class="mt-1 text-[11px] font-mono text-gray-500 tabular-nums" x-text="'máximo: ' + (cfg.maxFiles ?? '∞') + ' ' + @js(__('laracrate::uploader.max_reached_unit'))"></p>
+    </div>
+
     {{-- Cola staged + acciones --}}
     <div x-show="queue.length > 0" class="mt-6 space-y-3" x-cloak>
         {{-- Header con estado (solo informativo) --}}

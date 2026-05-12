@@ -24,6 +24,10 @@ return [
     // Empty state (deferred)
     'select'              => 'Select file',
 
+    // "Max reached" state (deferred, when the slot quota is exhausted)
+    'max_reached_title'   => 'No more files can be added',
+    'max_reached_unit'    => 'file(s)',
+
     // File state
     'replace'             => 'Replace',
     'delete'              => 'Delete',

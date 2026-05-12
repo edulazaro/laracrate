@@ -24,6 +24,10 @@ return [
     // Estado vacío (deferred)
     'select'              => 'Seleccionar archivo',
 
+    // Estado "max alcanzado" (deferred, cuando se agota la cuota del slot)
+    'max_reached_title'   => 'No puedes añadir más archivos',
+    'max_reached_unit'    => 'archivo(s)',
+
     // Estado con file
     'replace'             => 'Reemplazar',
     'delete'              => 'Eliminar',
