@@ -12,22 +12,26 @@
         autoStart:    false,
         maxFiles:     @js($maxFiles ?? null),
     })"
+    x-init="
+        // Sincroniza cfg.maxFiles desde el data-attribute. Livewire morphdom
+        // actualiza data-* attributes en cada re-render pero NO re-inicializa
+        // Alpine x-data. Por eso confiamos en el dataset como source of truth.
+        const sync = () => {
+            const v = $el.dataset.effectiveMax;
+            cfg.maxFiles = (v === '' || v == null) ? null : parseInt(v, 10);
+            if (cfg.maxFiles && queue.length > cfg.maxFiles) {
+                queue = queue.slice(0, cfg.maxFiles);
+            }
+        };
+        sync();
+        new MutationObserver(sync).observe($el, { attributes: true, attributeFilter: ['data-effective-max'] });
+    "
+    data-effective-max="{{ $maxFiles ?? '' }}"
     @laracrate-start-batch.window="
         if (($event.detail.fileableType ?? null) === @js($fileableType)
             && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
             && ($event.detail.collection ?? null) === @js($collection)) {
             startBatch();
-        }
-    "
-    @laracrate-deferred-config.window="
-        if (($event.detail.fileableType ?? null) === @js($fileableType)
-            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
-            && ($event.detail.collection ?? null) === @js($collection)) {
-            cfg.maxFiles = $event.detail.maxFiles ?? null;
-            // Recorta cola si el nuevo cap es menor
-            if (cfg.maxFiles && queue.length > cfg.maxFiles) {
-                queue = queue.slice(0, cfg.maxFiles);
-            }
         }
     "
     class="w-full"
