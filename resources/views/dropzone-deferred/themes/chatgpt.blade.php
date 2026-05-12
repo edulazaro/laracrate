@@ -16,6 +16,7 @@
     style="font-family: 'Söhne', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Inter', sans-serif;"
 >
     <div
+        x-show="!reachedMax"
         @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false"
         @drop.prevent="dragOver = false; handleFiles($event.dataTransfer.files)"
         @click="$refs.input.click()" role="button" tabindex="0"

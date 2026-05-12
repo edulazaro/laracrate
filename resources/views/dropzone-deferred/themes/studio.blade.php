@@ -21,8 +21,9 @@
     "
     class="w-full"
 >
-    {{-- Dropzone --}}
+    {{-- Dropzone (oculto si se alcanzó maxFiles) --}}
     <div
+        x-show="!reachedMax"
         @dragover.prevent="dragOver = true"
         @dragleave.prevent="dragOver = false"
         @drop.prevent="dragOver = false; handleFiles($event.dataTransfer.files)"

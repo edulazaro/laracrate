@@ -16,6 +16,7 @@
 >
     {{-- Dropzone --}}
     <div
+        x-show="!reachedMax"
         @dragover.prevent="dragOver = true"
         @dragleave.prevent="dragOver = false"
         @drop.prevent="dragOver = false; handleFiles($event.dataTransfer.files)"

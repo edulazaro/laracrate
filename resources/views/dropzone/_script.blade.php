@@ -16,10 +16,13 @@
         dragOver: false,
         cfg: cfg,
         nextId: 0,
+        uploadedTotal: 0,
 
         get pendingCount() { return this.queue.filter(i => i.status === 'pending').length; },
         get doneCount()    { return this.queue.filter(i => i.status === 'done').length; },
         get errorCount()   { return this.queue.filter(i => i.status === 'error').length; },
+        get activeCount()  { return this.queue.filter(i => ['pending', 'uploading', 'done'].includes(i.status)).length; },
+        get reachedMax()   { return this.cfg.maxFiles ? (this.uploadedTotal + this.queue.filter(i => ['pending', 'uploading'].includes(i.status)).length) >= this.cfg.maxFiles : false; },
 
         getCsrf() {
             return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
@@ -29,12 +32,12 @@
             let files = Array.from(fileList);
             if (!files.length) return;
 
-            // Respeta maxFiles: solo aceptamos hasta cubrir el cap (cuenta los
-            // que ya están en cola, exceptuando los descartados/error).
+            // Respeta maxFiles: cuenta uploadedTotal (persistente) + cola activa.
             const max = this.cfg.maxFiles ?? null;
             if (max) {
-                const active = this.queue.filter(i => ['pending', 'uploading', 'done'].includes(i.status)).length;
-                const free   = Math.max(0, max - active);
+                const activeInQueue = this.queue.filter(i => ['pending', 'uploading'].includes(i.status)).length;
+                const used = this.uploadedTotal + activeInQueue;
+                const free = Math.max(0, max - used);
                 if (free === 0) {
                     window.dispatchEvent(new CustomEvent('laracrate-max-files', { detail: { max } }));
                     return;
@@ -145,6 +148,7 @@
                 if (!fileId) throw new Error('register');
 
                 item.status = 'done';
+                this.uploadedTotal++;
                 return true;
             } catch (e) {
                 console.error('Laracrate dropzone:', e, item);
