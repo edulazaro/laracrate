@@ -65,6 +65,13 @@ class LaracrateDropzoneDeferred extends Component
     #[Locked]
     public ?int $maxFiles = null;
 
+    /**
+     * IDs de FileSlot a los que se atará cada archivo subido. Si se pasa,
+     * CreateFileAction valida acceptsExtension + canAcceptMore antes de crear.
+     */
+    #[Locked]
+    public array $slots = [];
+
     public function mount(
         Model $model,
         string $collection,
@@ -74,6 +81,7 @@ class LaracrateDropzoneDeferred extends Component
         bool $hideActions = false,
         string $layout = 'grid',
         ?int $maxFiles = null,
+        array $slots = [],
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -83,6 +91,17 @@ class LaracrateDropzoneDeferred extends Component
         $this->hideActions  = $hideActions;
         $this->layout       = in_array($layout, ['grid', 'list'], true) ? $layout : 'grid';
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
+        $this->slots        = array_values(array_filter(array_map('intval', $slots)));
+    }
+
+    /**
+     * Permite cambiar dinámicamente los slots desde el front (ej. al cambiar
+     * el selector de slot en una modal). Envía evento Livewire `set-slots`
+     * con `slots: [id, id, ...]` y el componente actualiza el listado.
+     */
+    public function setSlots(array $slots): void
+    {
+        $this->slots = array_values(array_filter(array_map('intval', $slots)));
     }
 
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
@@ -95,7 +114,7 @@ class LaracrateDropzoneDeferred extends Component
             'size'          => $size,
         ]);
 
-        $file = $this->model->addFile($upload, $this->collection);
+        $file = $this->model->addFile($upload, $this->collection, slots: $this->slots);
 
         if (! $file) {
             return null;
