@@ -51,6 +51,20 @@ class LaracrateDropzoneDeferred extends Component
     #[Locked]
     public bool $hideActions = false;
 
+    /**
+     * Disposición de la cola. 'grid' (default) o 'list'. Cada tema puede
+     * implementarlo a su manera; los que no lo declaran usan grid.
+     */
+    #[Locked]
+    public string $layout = 'grid';
+
+    /**
+     * Tope máximo de archivos aceptados en la cola. 0 o null = ilimitado.
+     * El Alpine factory rechaza extras y notifica vía evento `laracrate-max-files`.
+     */
+    #[Locked]
+    public ?int $maxFiles = null;
+
     public function mount(
         Model $model,
         string $collection,
@@ -58,6 +72,8 @@ class LaracrateDropzoneDeferred extends Component
         bool $multiple = true,
         bool $persistQueue = false,
         bool $hideActions = false,
+        string $layout = 'grid',
+        ?int $maxFiles = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -65,6 +81,8 @@ class LaracrateDropzoneDeferred extends Component
         $this->multiple     = $multiple;
         $this->persistQueue = $persistQueue;
         $this->hideActions  = $hideActions;
+        $this->layout       = in_array($layout, ['grid', 'list'], true) ? $layout : 'grid';
+        $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
     }
 
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
@@ -189,6 +207,8 @@ class LaracrateDropzoneDeferred extends Component
             'multiple'     => $this->multiple,
             'persistQueue' => $this->persistQueue,
             'hideActions'  => $this->hideActions,
+            'layout'       => $this->layout,
+            'maxFiles'     => $this->maxFiles,
         ]);
     }
 }

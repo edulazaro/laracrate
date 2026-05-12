@@ -10,6 +10,7 @@
         maxSizeKb:    @js($maxSizeKb),
         persistQueue: @js($persistQueue),
         autoStart:    false,
+        maxFiles:     @js($maxFiles ?? null),
     })"
     class="w-full"
 >
@@ -50,6 +51,12 @@
             <div class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" :style="'width: ' + batchProgress + '%'"></div>
         </div>
 
+        @if (($layout ?? 'grid') === 'list')
+
+            @include('laracrate::dropzone-deferred._queue-list')
+
+        @else
+
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             <template x-for="(item, i) in queue" :key="item.id">
                 <div class="relative aspect-square rounded-lg overflow-hidden border border-gray-200">
@@ -87,6 +94,8 @@
                             </button>
                         </template>
                     </div>
+
+        @endif
 
                     {{-- Botón quitar item antes de subir (solo en estado pending) --}}
                     <template x-if="item.status === 'pending'">

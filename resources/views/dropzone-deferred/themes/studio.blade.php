@@ -10,6 +10,7 @@
         maxSizeKb:    @js($maxSizeKb),
         persistQueue: @js($persistQueue),
         autoStart:    false,
+        maxFiles:     @js($maxFiles ?? null),
     })"
     @laracrate-start-batch.window="
         if (($event.detail.fileableType ?? null) === @js($fileableType)
@@ -57,6 +58,9 @@
             <div class="bg-gray-900 h-0.5 transition-all duration-300" :style="'width: ' + batchProgress + '%'"></div>
         </div>
 
+        @if (($layout ?? 'grid') === 'list')
+            @include('laracrate::dropzone-deferred._queue-list')
+        @else
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
             <template x-for="(item, i) in queue" :key="item.id">
                 <div class="relative aspect-square rounded-sm overflow-hidden border border-gray-200">
@@ -106,6 +110,7 @@
                 </div>
             </template>
         </div>
+        @endif
 
         {{-- Acciones primarias centradas. Si hideActions, se ocultan: el trigger
              vendrá de fuera vía evento `laracrate-start-batch` (footer de modal). --}}

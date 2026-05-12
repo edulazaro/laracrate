@@ -10,6 +10,7 @@
         maxSizeKb:    @js($maxSizeKb),
         persistQueue: @js($persistQueue),
         autoStart:    false,
+        maxFiles:     @js($maxFiles ?? null),
     })"
     class="w-full"
 >
@@ -36,6 +37,9 @@
             <span x-show="uploading" class="text-blue-600" x-text="batchProgress + '%'"></span>
         </div>
         <div x-show="uploading" class="w-full bg-gray-200 h-px"><div class="bg-blue-500 h-px transition-all duration-300" :style="'width: ' + batchProgress + '%'"></div></div>
+        @if (($layout ?? 'grid') === 'list')
+            @include('laracrate::dropzone-deferred._queue-list')
+        @else
         <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
             <template x-for="(item, i) in queue" :key="item.id">
                 <div class="relative aspect-square overflow-hidden">
@@ -46,6 +50,7 @@
                         <template x-if="item.status === 'done'"><svg class="w-5 h-5 text-blue-700" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></template>
                         <template x-if="item.status === 'error'"><button type="button" @click.stop="retryItem(i)" class="text-[10px] text-white underline">retry</button></template>
                     </div>
+        @endif
                     <template x-if="item.status === 'pending'"><button type="button" @click.stop="removeItem(i)" class="absolute top-0.5 right-0.5 text-gray-500 hover:text-gray-900 text-[10px]">×</button></template>
                 </div>
             </template>

@@ -26,8 +26,24 @@
         },
 
         handleFiles(fileList) {
-            const files = Array.from(fileList);
+            let files = Array.from(fileList);
             if (!files.length) return;
+
+            // Respeta maxFiles: solo aceptamos hasta cubrir el cap (cuenta los
+            // que ya están en cola, exceptuando los descartados/error).
+            const max = this.cfg.maxFiles ?? null;
+            if (max) {
+                const active = this.queue.filter(i => ['pending', 'uploading', 'done'].includes(i.status)).length;
+                const free   = Math.max(0, max - active);
+                if (free === 0) {
+                    window.dispatchEvent(new CustomEvent('laracrate-max-files', { detail: { max } }));
+                    return;
+                }
+                if (files.length > free) {
+                    window.dispatchEvent(new CustomEvent('laracrate-max-files', { detail: { max, rejected: files.length - free } }));
+                    files = files.slice(0, free);
+                }
+            }
 
             const wasIdle = this.queue.length === 0
                 || this.queue.every(i => i.status !== 'pending' && i.status !== 'uploading');

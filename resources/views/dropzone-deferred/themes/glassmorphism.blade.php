@@ -10,6 +10,7 @@
         maxSizeKb:    @js($maxSizeKb),
         persistQueue: @js($persistQueue),
         autoStart:    false,
+        maxFiles:     @js($maxFiles ?? null),
     })"
     class="w-full"
 >
@@ -40,6 +41,9 @@
             <span x-show="uploading" class="text-xs text-purple-700" x-text="batchProgress + '%'"></span>
         </div>
         <div x-show="uploading" class="w-full bg-white/30 backdrop-blur rounded-full h-1"><div class="bg-purple-600 h-1 rounded-full transition-all duration-300" :style="'width: ' + batchProgress + '%'"></div></div>
+        @if (($layout ?? 'grid') === 'list')
+            @include('laracrate::dropzone-deferred._queue-list')
+        @else
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             <template x-for="(item, i) in queue" :key="item.id">
                 <div class="relative aspect-square rounded-xl overflow-hidden border border-white/40 bg-white/20 backdrop-blur">
@@ -50,6 +54,7 @@
                         <template x-if="item.status === 'done'"><svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg></template>
                         <template x-if="item.status === 'error'"><button type="button" @click.stop="retryItem(i)" class="inline-flex items-center justify-center w-7 h-7 rounded-xl bg-white/80 backdrop-blur text-red-600"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button></template>
                     </div>
+        @endif
                     <template x-if="item.status === 'pending'"><button type="button" @click.stop="removeItem(i)" class="absolute top-1 right-1 inline-flex items-center justify-center w-6 h-6 rounded-xl bg-white/40 backdrop-blur border border-white/50 text-gray-700"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg></button></template>
                     <p class="absolute bottom-0 left-0 right-0 bg-black/40 backdrop-blur text-white text-[10px] px-1.5 py-0.5 truncate" x-text="item.name"></p>
                 </div>
