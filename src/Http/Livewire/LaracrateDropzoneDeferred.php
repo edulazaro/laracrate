@@ -261,26 +261,23 @@ class LaracrateDropzoneDeferred extends Component
         return $out;
     }
 
-    public function render()
+    /**
+     * Calcula el cap efectivo y las extensiones efectivas a partir de los slots.
+     * El cap más restrictivo gana. Cuenta los archivos ya subidos por este creator
+     * en cada slot para descontarlos del límite per_creator.
+     *
+     * @return array{maxFiles: ?int, extensions: array, slotInfo: array}
+     */
+    protected function computeEffective(): array
     {
-        $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');
-
-        $view = view()->exists("laracrate::dropzone-deferred.themes.{$theme}")
-            ? "laracrate::dropzone-deferred.themes.{$theme}"
-            : 'laracrate::dropzone-deferred.themes.default';
-
-        // Auto-derivación cuando hay slots: el cap visual y las extensiones
-        // aceptadas se calculan a partir de los slots (la opción más restrictiva
-        // gana). Si no hay slots, se respetan los props/config originales.
         $effectiveMaxFiles    = $this->maxFiles;
         $effectiveExtensions  = $this->acceptedExtensions();
-        $slotInfo             = []; // para que el theme muestre chips con nombres
+        $slotInfo             = [];
 
         if (!empty($this->slots)) {
             $slotModels = \EduLazaro\Laracrate\Models\FileSlot::whereIn('id', $this->slots)->get();
 
             foreach ($slotModels as $slot) {
-                // Capacidad restante por creator (si max_files_per_creator está set)
                 if ($slot->max_files_per_creator !== null) {
                     $used = $slot->uploadedCount($this->creatorType, $this->creatorId);
                     $remaining = max(0, $slot->max_files_per_creator - $used);
@@ -289,7 +286,6 @@ class LaracrateDropzoneDeferred extends Component
                         : min($effectiveMaxFiles, $remaining);
                 }
 
-                // Intersección de extensiones permitidas
                 if (!empty($slot->allowed_extensions)) {
                     $slotExts = array_map('strtolower', $slot->allowed_extensions);
                     $effectiveExtensions = empty($effectiveExtensions)
@@ -305,6 +301,36 @@ class LaracrateDropzoneDeferred extends Component
             }
         }
 
+        return [
+            'maxFiles'   => $effectiveMaxFiles,
+            'extensions' => $effectiveExtensions,
+            'slotInfo'   => $slotInfo,
+        ];
+    }
+
+    public function render()
+    {
+        $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');
+
+        $view = view()->exists("laracrate::dropzone-deferred.themes.{$theme}")
+            ? "laracrate::dropzone-deferred.themes.{$theme}"
+            : 'laracrate::dropzone-deferred.themes.default';
+
+        $effective = $this->computeEffective();
+
+        // Notifica al front el cap efectivo en cada render. El theme escucha
+        // `laracrate-deferred-config` con `{ fileableType, fileableId, collection,
+        // maxFiles }` y actualiza `cfg.maxFiles` reactivamente, sin depender del
+        // remount por key. Solución a casos donde Livewire morphdom mantiene el
+        // Alpine state estable entre cambios de slot.
+        $this->dispatch(
+            'laracrate-deferred-config',
+            fileableType: $this->model->getMorphClass(),
+            fileableId: (string) $this->model->getKey(),
+            collection: $this->collection,
+            maxFiles: $effective['maxFiles'],
+        );
+
         return view($view, [
             'config'       => $this->model->getCollectionConfig($this->collection),
             'collection'   => $this->collection,
@@ -312,14 +338,14 @@ class LaracrateDropzoneDeferred extends Component
             'fileableType' => $this->model->getMorphClass(),
             'fileableId'   => $this->model->getKey(),
             'acceptAttr'   => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
-            'extensions'   => $effectiveExtensions,
+            'extensions'   => $effective['extensions'],
             'maxSizeKb'    => $this->maxSizeKb(),
             'multiple'     => $this->multiple,
             'persistQueue' => $this->persistQueue,
             'hideActions'  => $this->hideActions,
             'layout'       => $this->layout,
-            'maxFiles'     => $effectiveMaxFiles,
-            'slotInfo'     => $slotInfo,
+            'maxFiles'     => $effective['maxFiles'],
+            'slotInfo'     => $effective['slotInfo'],
         ]);
     }
 }

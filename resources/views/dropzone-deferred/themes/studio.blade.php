@@ -19,6 +19,17 @@
             startBatch();
         }
     "
+    @laracrate-deferred-config.window="
+        if (($event.detail.fileableType ?? null) === @js($fileableType)
+            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
+            && ($event.detail.collection ?? null) === @js($collection)) {
+            cfg.maxFiles = $event.detail.maxFiles ?? null;
+            // Recorta cola si el nuevo cap es menor
+            if (cfg.maxFiles && queue.length > cfg.maxFiles) {
+                queue = queue.slice(0, cfg.maxFiles);
+            }
+        }
+    "
     class="w-full"
 >
     {{-- Dropzone (oculto si se alcanzó maxFiles) --}}
@@ -39,7 +50,9 @@
         <p class="text-sm text-gray-900 font-medium">{{ __('laracrate::uploader.select') }}</p>
         <p class="mt-1 text-[11px] font-mono text-gray-500 tabular-nums">{{ str(__('laracrate::uploader.drag_or_click'))->lower() }}</p>
         <p class="mt-3 text-[10px] font-mono uppercase tracking-wide text-gray-400">{{ __('laracrate::uploader.max_size', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
-        <input type="file" x-ref="input" @if($multiple) multiple @endif accept="{{ $acceptAttr }}" class="hidden"
+        <input type="file" x-ref="input"
+            :multiple="@js($multiple) && (cfg.maxFiles === null || cfg.maxFiles > 1)"
+            accept="{{ $acceptAttr }}" class="hidden"
             @change="handleFiles($event.target.files); $event.target.value = ''" />
     </div>
 
