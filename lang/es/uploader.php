@@ -28,6 +28,10 @@ return [
     'max_reached_title'   => 'No puedes añadir más archivos',
     'max_reached_unit'    => 'archivo(s)',
 
+    // Selector de slot integrado
+    'slot_placeholder'    => 'Sin clasificar',
+    'slot_required_hint'  => 'Elige una opción para poder subir archivos',
+
     // Estado con file
     'replace'             => 'Reemplazar',
     'delete'              => 'Eliminar',

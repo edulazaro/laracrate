@@ -28,6 +28,10 @@ return [
     'max_reached_title'   => 'No more files can be added',
     'max_reached_unit'    => 'file(s)',
 
+    // Built-in slot picker
+    'slot_placeholder'    => 'Unclassified',
+    'slot_required_hint'  => 'Pick an option to upload files',
+
     // File state
     'replace'             => 'Replace',
     'delete'              => 'Delete',

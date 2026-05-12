@@ -36,9 +36,78 @@
     "
     class="w-full"
 >
-    {{-- Dropzone (oculto si se alcanzó maxFiles) --}}
+    {{-- Slot picker integrado (solo si hay 2+ opciones) --}}
+    @if ($showSlotPicker)
+        <div class="mb-3" x-data="{ open: false }">
+            @if ($pickerLabel)
+                <p class="text-[10px] font-mono uppercase tracking-wide text-gray-500 mb-1">{{ $pickerLabel }}</p>
+            @endif
+            <div class="relative">
+                <button type="button"
+                    @click="open = !open"
+                    class="w-full flex items-center justify-between gap-2 bg-white border border-gray-300 hover:border-gray-900 text-gray-900 text-sm rounded-sm px-3 py-2 transition-colors cursor-pointer text-left">
+                    <span class="truncate">
+                        @php
+                            $selectedOpt = collect($pickerOptions)->firstWhere('id', $this->selectedSlotId);
+                        @endphp
+                        @if ($selectedOpt)
+                            @if (!empty($selectedOpt['color']))
+                                <span class="inline-block w-2 h-2 rounded-full align-middle mr-1.5" style="background:{{ $selectedOpt['color'] }}"></span>
+                            @endif
+                            {{ $selectedOpt['name'] }}
+                        @else
+                            <span class="text-gray-500">{{ $pickerPlaceholder }}</span>
+                        @endif
+                    </span>
+                    <svg class="w-4 h-4 text-gray-400 transition-transform" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+
+                <div x-show="open" x-cloak
+                    @click.outside="open = false"
+                    @keydown.escape.window="open = false"
+                    class="absolute left-0 right-0 z-10 mt-1 bg-white border border-gray-300 rounded-sm shadow-lg ring-1 ring-gray-900/5 max-h-60 overflow-auto">
+                    <ul>
+                        @if ($pickerOptional)
+                            <li>
+                                <button type="button"
+                                    wire:click="$set('selectedSlotId', null)"
+                                    @click="open = false"
+                                    class="w-full px-3 py-2 text-left text-sm border-b border-gray-100 transition-colors {{ $this->selectedSlotId === null ? 'bg-gray-900 text-white font-medium' : 'text-gray-500 hover:bg-gray-50' }}">
+                                    {{ $pickerPlaceholder }}
+                                </button>
+                            </li>
+                        @endif
+                        @foreach ($pickerOptions as $opt)
+                            <li>
+                                <button type="button"
+                                    wire:click="$set('selectedSlotId', {{ (int) $opt['id'] }})"
+                                    @click="open = false"
+                                    class="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-100 last:border-b-0 transition-colors {{ $this->selectedSlotId === (int) $opt['id'] ? 'bg-gray-900 text-white font-medium' : 'text-gray-700 hover:bg-gray-50' }}">
+                                    @if (!empty($opt['color']))
+                                        <span class="inline-block w-2 h-2 rounded-full flex-shrink-0" style="background:{{ $opt['color'] }}"></span>
+                                    @endif
+                                    <span class="truncate">{{ $opt['name'] }}</span>
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
+
+            @if ($requiresSlot)
+                <p class="mt-1 text-[10px] font-mono uppercase tracking-wide text-amber-600">{{ __('laracrate::uploader.slot_required_hint') }}</p>
+            @endif
+        </div>
+    @endif
+
+    {{-- Dropzone (oculto si se alcanzó maxFiles o si requiere slot y no hay) --}}
     <div
         x-show="!reachedMax"
+        @if ($requiresSlot)
+            style="opacity:0.5; pointer-events:none;"
+        @endif
         @dragover.prevent="dragOver = true"
         @dragleave.prevent="dragOver = false"
         @drop.prevent="dragOver = false; handleFiles($event.dataTransfer.files)"

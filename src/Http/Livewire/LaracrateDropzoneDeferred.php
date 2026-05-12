@@ -83,6 +83,54 @@ class LaracrateDropzoneDeferred extends Component
     #[Locked]
     public ?int $creatorId = null;
 
+    /**
+     * Opciones del selector de slot integrado en el componente.
+     * Si está vacío, no se renderiza el selector y el comportamiento es el
+     * clásico (cap derivado de `$slots` pasado como prop).
+     *
+     * Formato: array de arrays con keys `id`, `name`, opcionalmente `color`,
+     * `description`. Ejemplo:
+     *   [
+     *       ['id' => 60, 'name' => 'DNI'],
+     *       ['id' => 61, 'name' => 'Contrato', 'color' => '#7C2D12'],
+     *   ]
+     *
+     * Cuando se selecciona una opción, `$slots = [id]` automáticamente y
+     * `computeEffective()` recalcula maxFiles + extensiones permitidas.
+     */
+    #[Locked]
+    public array $slotOptions = [];
+
+    /**
+     * Etiqueta sobre el selector. Si null, no se renderiza un label visible.
+     * Ej: "Tipo de documento", "Categoría", "Etiqueta".
+     */
+    #[Locked]
+    public ?string $slotLabel = null;
+
+    /**
+     * Texto del placeholder del selector cuando no hay slot elegido. Si la
+     * UI lo permite, también funciona como opción "sin slot". Default:
+     * "Sin clasificar" (i18n).
+     */
+    #[Locked]
+    public ?string $slotPlaceholder = null;
+
+    /**
+     * Si true, el selector permite "sin slot" como opción explícita; si false,
+     * obliga a escoger uno antes de poder soltar archivos (el dropzone queda
+     * deshabilitado mientras no haya selección). Default: true.
+     */
+    #[Locked]
+    public bool $slotOptional = true;
+
+    /**
+     * ID del slot seleccionado actualmente. Reactivo: cambia desde el selector
+     * del theme via wire:model.live. Disparará `updatedSelectedSlotId` que
+     * sincroniza `$this->slots = [id]`.
+     */
+    public ?int $selectedSlotId = null;
+
     public function mount(
         Model $model,
         string $collection,
@@ -96,6 +144,11 @@ class LaracrateDropzoneDeferred extends Component
         mixed $creator = null,
         ?string $creatorType = null,
         ?int $creatorId = null,
+        array $slotOptions = [],
+        ?string $slotLabel = null,
+        ?string $slotPlaceholder = null,
+        bool $slotOptional = true,
+        ?int $selectedSlotId = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -116,16 +169,87 @@ class LaracrateDropzoneDeferred extends Component
             $this->creatorType = $creator->getMorphClass();
             $this->creatorId   = (int) $creator->getKey();
         }
+
+        // Slot picker integrado
+        $this->slotOptions     = $this->normalizeSlotOptions($slotOptions);
+        $this->slotLabel       = $slotLabel;
+        $this->slotPlaceholder = $slotPlaceholder;
+        $this->slotOptional    = $slotOptional;
+
+        if ($selectedSlotId !== null) {
+            $this->selectedSlotId = (int) $selectedSlotId;
+            $this->slots = [$this->selectedSlotId];
+        } elseif (count($this->slotOptions) === 1) {
+            // Una sola opción posible: auto-seleccionar y NO mostrar selector.
+            // El dropzone refleja directamente el cap/extensiones de ese slot.
+            $this->selectedSlotId = $this->slotOptions[0]['id'];
+            $this->slots = [$this->selectedSlotId];
+        }
     }
 
     /**
-     * Permite cambiar dinámicamente los slots desde el front (ej. al cambiar
-     * el selector de slot en una modal). Envía evento Livewire `set-slots`
-     * con `slots: [id, id, ...]` y el componente actualiza el listado.
+     * El theme usa esto para decidir si renderizar el selector visible.
+     * Regla: solo se muestra si hay 2+ opciones Y no hay un slot fijado externamente
+     * (ej. via slot único o slot preseleccionado en mount con slotOptions vacío).
+     */
+    public function showsSlotPicker(): bool
+    {
+        return count($this->slotOptions) >= 2;
+    }
+
+    /**
+     * Lifecycle hook: cuando el usuario cambia el selector integrado, sincroniza
+     * `$this->slots` para que `computeEffective()` use el slot nuevo en render().
+     */
+    public function updatedSelectedSlotId($value): void
+    {
+        if ($value === null || $value === '' || $value === '0') {
+            $this->selectedSlotId = null;
+            $this->slots = [];
+        } else {
+            $this->selectedSlotId = (int) $value;
+            $this->slots = [$this->selectedSlotId];
+        }
+    }
+
+    /**
+     * Permite cambiar dinámicamente los slots desde el front (legacy: el padre
+     * orquesta el slot picker fuera del componente). Para nuevos usos, preferir
+     * `slotOptions` + `selectedSlotId` integrados.
      */
     public function setSlots(array $slots): void
     {
         $this->slots = array_values(array_filter(array_map('intval', $slots)));
+    }
+
+    /**
+     * Normaliza las opciones del slot picker a un shape consistente.
+     * Acepta:
+     *   - array de arrays con keys (id, name, color?, description?)
+     *   - array de modelos Eloquent (toma id + name)
+     *   - colección Eloquent
+     */
+    protected function normalizeSlotOptions(array|\Illuminate\Support\Collection $options): array
+    {
+        $out = [];
+        foreach ($options as $opt) {
+            if ($opt instanceof Model) {
+                $out[] = [
+                    'id'    => (int) $opt->getKey(),
+                    'name'  => (string) ($opt->name ?? $opt->label ?? '#' . $opt->getKey()),
+                    'color' => $opt->color ?? null,
+                ];
+                continue;
+            }
+            if (is_array($opt) && isset($opt['id'])) {
+                $out[] = [
+                    'id'    => (int) $opt['id'],
+                    'name'  => (string) ($opt['name'] ?? $opt['label'] ?? '#' . $opt['id']),
+                    'color' => $opt['color'] ?? null,
+                ];
+            }
+        }
+        return $out;
     }
 
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
@@ -350,6 +474,13 @@ class LaracrateDropzoneDeferred extends Component
             'layout'            => $this->layout,
             'effectiveMaxFiles' => $effective['maxFiles'],
             'slotInfo'          => $effective['slotInfo'],
+            // Slot picker integrado
+            'showSlotPicker'    => $this->showsSlotPicker(),
+            'pickerOptions'     => $this->slotOptions,
+            'pickerLabel'       => $this->slotLabel,
+            'pickerPlaceholder' => $this->slotPlaceholder ?: __('laracrate::uploader.slot_placeholder'),
+            'pickerOptional'    => $this->slotOptional,
+            'requiresSlot'      => !$this->slotOptional && $this->selectedSlotId === null,
         ]);
     }
 }
