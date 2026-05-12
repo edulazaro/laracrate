@@ -51,7 +51,8 @@ trait HasFiles
     public function addFile(
         UploadedFile|FileUpload|string $file,
         string $collection,
-        array $metadata = []
+        array $metadata = [],
+        array $slots = []
     ): ?File {
         $config = $this->getCollectionConfig($collection);
 
@@ -63,6 +64,7 @@ trait HasFiles
             'metadata'   => $metadata,
             'creator'    => auth()->user(),
             'tenant'     => $this->resolveFileTenant(),
+            'slots'      => $slots,
         ]);
     }
 

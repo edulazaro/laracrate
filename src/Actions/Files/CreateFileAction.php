@@ -28,7 +28,15 @@ class CreateFileAction extends Action
         ?Model $tenant = null,
         ?File $parent = null,
         ?string $variant = null,
+        array $slots = [],
     ): ?File {
+        // Si vienen slots como IDs, los resolvemos a modelos
+        $slotModels = collect($slots)
+            ->map(fn ($s) => $s instanceof \EduLazaro\Laracrate\Models\FileSlot
+                ? $s
+                : \EduLazaro\Laracrate\Models\FileSlot::find($s))
+            ->filter()
+            ->values();
         $disk   = $config['disk']   ?? 'documents';
         $access = $config['access'] ?? 'private';
         $sensitive = (bool) ($config['sensitive'] ?? false);
@@ -89,6 +97,34 @@ class CreateFileAction extends Action
             }
         }
 
+        // 2c. Validación contra slots seleccionados (solo si se pasaron slots):
+        //   - acceptsExtension: el slot acepta la extensión del archivo
+        //   - canAcceptMore: el slot no ha alcanzado su quota (per_creator/global)
+        if ($slotModels->isNotEmpty()) {
+            $extension = strtolower($resolved['extension'] ?? '');
+            $creatorType = $creator?->getMorphClass();
+            $creatorId   = $creator?->getKey();
+
+            foreach ($slotModels as $slot) {
+                if (!$slot->acceptsExtension($extension)) {
+                    $allowed = implode(', ', array_map('strtoupper', $slot->allowed_extensions ?? []));
+                    throw new \InvalidArgumentException(
+                        "El slot '{$slot->name}' no acepta archivos .{$extension}. Permitidos: {$allowed}"
+                    );
+                }
+
+                $check = $slot->canAcceptMore($creatorType, $creatorId);
+                if (!$check['can']) {
+                    $reason = $check['reason'] === 'global'
+                        ? "límite global de {$check['limit']} archivos"
+                        : "tu límite de {$check['limit']} archivos";
+                    throw new \InvalidArgumentException(
+                        "El slot '{$slot->name}' ha alcanzado {$reason}."
+                    );
+                }
+            }
+        }
+
         // 2. Persistir File model
         $file = File::create([
             'slug'            => (string) Str::ulid(),
@@ -130,6 +166,11 @@ class CreateFileAction extends Action
 
         if ($upload instanceof FileUpload) {
             $upload->bindTo($file);
+        }
+
+        // Attach slots si vinieron en la llamada (ya validados arriba).
+        if ($slotModels->isNotEmpty()) {
+            $file->slots()->syncWithoutDetaching($slotModels->pluck('id')->all());
         }
 
         // TODO (siguiente fase): si la colección define variants y el tipo es image,
