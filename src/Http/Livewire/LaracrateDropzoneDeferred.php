@@ -93,7 +93,7 @@ class LaracrateDropzoneDeferred extends Component
         string $layout = 'grid',
         ?int $maxFiles = null,
         array $slots = [],
-        ?Model $creator = null,
+        mixed $creator = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -104,7 +104,7 @@ class LaracrateDropzoneDeferred extends Component
         $this->layout       = in_array($layout, ['grid', 'list'], true) ? $layout : 'grid';
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
         $this->slots        = array_values(array_filter(array_map('intval', $slots)));
-        if ($creator) {
+        if ($creator instanceof Model) {
             $this->creatorType = $creator->getMorphClass();
             $this->creatorId   = (int) $creator->getKey();
         }
