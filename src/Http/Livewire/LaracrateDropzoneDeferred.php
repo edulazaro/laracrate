@@ -94,6 +94,8 @@ class LaracrateDropzoneDeferred extends Component
         ?int $maxFiles = null,
         array $slots = [],
         mixed $creator = null,
+        ?string $creatorType = null,
+        ?int $creatorId = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -104,7 +106,13 @@ class LaracrateDropzoneDeferred extends Component
         $this->layout       = in_array($layout, ['grid', 'list'], true) ? $layout : 'grid';
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
         $this->slots        = array_values(array_filter(array_map('intval', $slots)));
-        if ($creator instanceof Model) {
+
+        // Resolver creator: prioriza creatorType/creatorId explícitos (más
+        // fiables que serializar un Model entre componentes Livewire).
+        if ($creatorType && $creatorId) {
+            $this->creatorType = $creatorType;
+            $this->creatorId   = (int) $creatorId;
+        } elseif ($creator instanceof Model) {
             $this->creatorType = $creator->getMorphClass();
             $this->creatorId   = (int) $creator->getKey();
         }
