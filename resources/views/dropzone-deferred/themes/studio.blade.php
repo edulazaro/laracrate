@@ -11,6 +11,13 @@
         persistQueue: @js($persistQueue),
         autoStart:    false,
     })"
+    @laracrate-start-batch.window="
+        if (($event.detail.fileableType ?? null) === @js($fileableType)
+            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
+            && ($event.detail.collection ?? null) === @js($collection)) {
+            startBatch();
+        }
+    "
     class="w-full"
 >
     {{-- Dropzone --}}
@@ -100,7 +107,9 @@
             </template>
         </div>
 
-        {{-- Acciones primarias centradas --}}
+        {{-- Acciones primarias centradas. Si hideActions, se ocultan: el trigger
+             vendrá de fuera vía evento `laracrate-start-batch` (footer de modal). --}}
+        @unless ($hideActions ?? false)
         <div x-show="!uploading && pendingCount > 0" class="flex flex-col items-center gap-2 pt-2">
             <button type="button" @click="startBatch()"
                 class="inline-flex items-center justify-center px-6 h-10 rounded-sm bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors">
@@ -112,5 +121,6 @@
                 {{ __('laracrate::uploader.cancel') }}
             </button>
         </div>
+        @endunless
     </div>
 </div>

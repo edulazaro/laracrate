@@ -43,18 +43,28 @@ class LaracrateDropzoneDeferred extends Component
     #[Locked]
     public bool $persistQueue = false;
 
+    /**
+     * Oculta los botones internos de "Subir/Cancelar" del tema. Útil cuando el
+     * trigger del batch vive fuera (footer de un modal). Para arrancar desde
+     * fuera dispatch `laracrate-start-batch` con detail `{ collection, fileableId }`.
+     */
+    #[Locked]
+    public bool $hideActions = false;
+
     public function mount(
         Model $model,
         string $collection,
         ?string $theme = null,
         bool $multiple = true,
         bool $persistQueue = false,
+        bool $hideActions = false,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
         $this->theme        = $theme;
         $this->multiple     = $multiple;
         $this->persistQueue = $persistQueue;
+        $this->hideActions  = $hideActions;
     }
 
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
@@ -169,6 +179,7 @@ class LaracrateDropzoneDeferred extends Component
 
         return view($view, [
             'config'       => $this->model->getCollectionConfig($this->collection),
+            'collection'   => $this->collection,
             'disk'         => $this->disk(),
             'fileableType' => $this->model->getMorphClass(),
             'fileableId'   => $this->model->getKey(),
@@ -177,6 +188,7 @@ class LaracrateDropzoneDeferred extends Component
             'maxSizeKb'    => $this->maxSizeKb(),
             'multiple'     => $this->multiple,
             'persistQueue' => $this->persistQueue,
+            'hideActions'  => $this->hideActions,
         ]);
     }
 }
