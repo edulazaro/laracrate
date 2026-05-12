@@ -67,10 +67,21 @@ class LaracrateDropzoneDeferred extends Component
 
     /**
      * IDs de FileSlot a los que se atará cada archivo subido. Si se pasa,
-     * CreateFileAction valida acceptsExtension + canAcceptMore antes de crear.
+     * CreateFileAction valida acceptsExtension + canAcceptMore antes de crear,
+     * y el front auto-deriva maxFiles y acceptedExtensions del slot.
      */
     #[Locked]
     public array $slots = [];
+
+    /**
+     * Creator polimórfico ("a quien se le atribuye el archivo"). Si no se
+     * pasa, default a auth()->user(). Útil cuando un admin sube en nombre
+     * de otro usuario: las quotas del slot se cuentan contra ese usuario.
+     */
+    #[Locked]
+    public ?string $creatorType = null;
+    #[Locked]
+    public ?int $creatorId = null;
 
     public function mount(
         Model $model,
@@ -82,6 +93,7 @@ class LaracrateDropzoneDeferred extends Component
         string $layout = 'grid',
         ?int $maxFiles = null,
         array $slots = [],
+        ?Model $creator = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -92,6 +104,10 @@ class LaracrateDropzoneDeferred extends Component
         $this->layout       = in_array($layout, ['grid', 'list'], true) ? $layout : 'grid';
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
         $this->slots        = array_values(array_filter(array_map('intval', $slots)));
+        if ($creator) {
+            $this->creatorType = $creator->getMorphClass();
+            $this->creatorId   = (int) $creator->getKey();
+        }
     }
 
     /**
@@ -114,7 +130,22 @@ class LaracrateDropzoneDeferred extends Component
             'size'          => $size,
         ]);
 
-        $file = $this->model->addFile($upload, $this->collection, slots: $this->slots);
+        // Resolver creator override si se pasó vía prop
+        $creator = null;
+        if ($this->creatorType && $this->creatorId) {
+            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->creatorType)
+                ?? $this->creatorType;
+            if (class_exists($class)) {
+                $creator = $class::find($this->creatorId);
+            }
+        }
+
+        $file = $this->model->addFile(
+            $upload,
+            $this->collection,
+            slots: $this->slots,
+            creator: $creator,
+        );
 
         if (! $file) {
             return null;
@@ -214,6 +245,42 @@ class LaracrateDropzoneDeferred extends Component
             ? "laracrate::dropzone-deferred.themes.{$theme}"
             : 'laracrate::dropzone-deferred.themes.default';
 
+        // Auto-derivación cuando hay slots: el cap visual y las extensiones
+        // aceptadas se calculan a partir de los slots (la opción más restrictiva
+        // gana). Si no hay slots, se respetan los props/config originales.
+        $effectiveMaxFiles    = $this->maxFiles;
+        $effectiveExtensions  = $this->acceptedExtensions();
+        $slotInfo             = []; // para que el theme muestre chips con nombres
+
+        if (!empty($this->slots)) {
+            $slotModels = \EduLazaro\Laracrate\Models\FileSlot::whereIn('id', $this->slots)->get();
+
+            foreach ($slotModels as $slot) {
+                // Capacidad restante por creator (si max_files_per_creator está set)
+                if ($slot->max_files_per_creator !== null) {
+                    $used = $slot->uploadedCount($this->creatorType, $this->creatorId);
+                    $remaining = max(0, $slot->max_files_per_creator - $used);
+                    $effectiveMaxFiles = $effectiveMaxFiles === null
+                        ? $remaining
+                        : min($effectiveMaxFiles, $remaining);
+                }
+
+                // Intersección de extensiones permitidas
+                if (!empty($slot->allowed_extensions)) {
+                    $slotExts = array_map('strtolower', $slot->allowed_extensions);
+                    $effectiveExtensions = empty($effectiveExtensions)
+                        ? $slotExts
+                        : array_values(array_intersect($effectiveExtensions, $slotExts));
+                }
+
+                $slotInfo[] = [
+                    'id'    => $slot->id,
+                    'name'  => $slot->name,
+                    'color' => $slot->color,
+                ];
+            }
+        }
+
         return view($view, [
             'config'       => $this->model->getCollectionConfig($this->collection),
             'collection'   => $this->collection,
@@ -221,13 +288,14 @@ class LaracrateDropzoneDeferred extends Component
             'fileableType' => $this->model->getMorphClass(),
             'fileableId'   => $this->model->getKey(),
             'acceptAttr'   => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
-            'extensions'   => $this->acceptedExtensions(),
+            'extensions'   => $effectiveExtensions,
             'maxSizeKb'    => $this->maxSizeKb(),
             'multiple'     => $this->multiple,
             'persistQueue' => $this->persistQueue,
             'hideActions'  => $this->hideActions,
             'layout'       => $this->layout,
-            'maxFiles'     => $this->maxFiles,
+            'maxFiles'     => $effectiveMaxFiles,
+            'slotInfo'     => $slotInfo,
         ]);
     }
 }
