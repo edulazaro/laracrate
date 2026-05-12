@@ -34,6 +34,20 @@
             startBatch();
         }
     "
+    @laracrate-deferred-config.window="
+        // Backup: el render() del componente dispatcha este evento con el maxFiles
+        // efectivo. Lo escuchamos aquí en caso de que el MutationObserver no se
+        // dispare (algunos paths de morphdom no notifican cambios de attribute).
+        if (($event.detail.fileableType ?? null) === @js($fileableType)
+            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
+            && ($event.detail.collection ?? null) === @js($collection)) {
+            const m = $event.detail.maxFiles;
+            cfg.maxFiles = (m === null || m === undefined) ? null : parseInt(m, 10);
+            if (cfg.maxFiles !== null && queue.length > cfg.maxFiles) {
+                queue = queue.slice(0, cfg.maxFiles);
+            }
+        }
+    "
     class="w-full"
 >
     {{-- Slot picker integrado (solo si hay 2+ opciones) --}}
