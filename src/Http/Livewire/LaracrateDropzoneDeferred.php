@@ -84,6 +84,15 @@ class LaracrateDropzoneDeferred extends Component
     public ?int $creatorId = null;
 
     /**
+     * Identificador opaco que el caller asocia al widget. Se incluye en el
+     * evento `laracrate-file-uploaded` para que el caller pueda routear
+     * el File al destino correcto cuando hay varios widgets en la misma
+     * página (ej. un campo por instancia en un form-builder).
+     */
+    #[Locked]
+    public ?string $contextKey = null;
+
+    /**
      * Opciones del selector de slot integrado en el componente.
      * Si está vacío, no se renderiza el selector y el comportamiento es el
      * clásico (cap derivado de `$slots` pasado como prop).
@@ -149,7 +158,9 @@ class LaracrateDropzoneDeferred extends Component
         ?string $slotPlaceholder = null,
         bool $slotOptional = true,
         ?int $selectedSlotId = null,
+        ?string $contextKey = null,
     ): void {
+        $this->contextKey = $contextKey;
         $this->model        = $model;
         $this->collection   = $collection;
         $this->theme        = $theme;
@@ -303,6 +314,7 @@ class LaracrateDropzoneDeferred extends Component
             'laracrate-file-uploaded',
             collection: $this->collection,
             fileId: $file->id,
+            contextKey: $this->contextKey,
         );
 
         return $file->id;
