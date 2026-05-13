@@ -9,6 +9,8 @@ use EduLazaro\Laracrate\Console\Commands\AbortStaleMultipartCommand;
 use EduLazaro\Laracrate\Console\Commands\PurgeExpiredFilesCommand;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzone;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneDeferred;
+use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingle;
+use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingleDeferred;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateUploader;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateUploaderDeferred;
 use Livewire\Livewire;
@@ -104,6 +106,8 @@ class LaracrateServiceProvider extends ServiceProvider
         Livewire::component('laracrate-uploader-deferred', LaracrateUploaderDeferred::class);
         Livewire::component('laracrate-dropzone', LaracrateDropzone::class);
         Livewire::component('laracrate-dropzone-deferred', LaracrateDropzoneDeferred::class);
+        Livewire::component('laracrate-dropzone-single', LaracrateDropzoneSingle::class);
+        Livewire::component('laracrate-dropzone-single-deferred', LaracrateDropzoneSingleDeferred::class);
     }
 
     protected function registerEmbeddingProvider(): void
