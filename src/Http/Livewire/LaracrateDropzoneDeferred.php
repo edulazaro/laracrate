@@ -432,6 +432,33 @@ class LaracrateDropzoneDeferred extends Component
         ];
     }
 
+    /**
+     * Detecta la categoría visual del dropzone (imagen, vídeo, audio, documento,
+     * mixto) a partir de las extensiones aceptadas. Usado por el theme para
+     * elegir el icono adecuado.
+     */
+    protected function detectIconCategory(array $extensions): string
+    {
+        if (empty($extensions)) {
+            return 'mixed';
+        }
+
+        $imageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif', 'svg', 'avif'];
+        $videoExt = ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'];
+        $audioExt = ['mp3', 'm4a', 'wav', 'ogg', 'webm', 'aac', 'flac'];
+        $docExt   = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'csv'];
+
+        $exts = array_map('strtolower', $extensions);
+        $allInCategory = fn(array $pool) => !empty(array_intersect($exts, $pool))
+            && empty(array_diff($exts, $pool));
+
+        if ($allInCategory($imageExt)) return 'image';
+        if ($allInCategory($videoExt)) return 'video';
+        if ($allInCategory($audioExt)) return 'audio';
+        if ($allInCategory($docExt))   return 'document';
+        return 'mixed';
+    }
+
     public function render()
     {
         $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');
@@ -463,6 +490,7 @@ class LaracrateDropzoneDeferred extends Component
             'fileableId'        => $this->model->getKey(),
             'acceptAttr'        => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
             'extensions'        => $effective['extensions'],
+            'iconCategory'      => $this->detectIconCategory($effective['extensions']),
             'maxSizeKb'         => $this->maxSizeKb(),
             // 'multiple' y 'maxFiles' son public props del componente y se exponen
             // automáticamente al view por Livewire. Las renombramos aquí para que
