@@ -116,6 +116,16 @@ class LaracrateDropzoneSingle extends Component
         );
     }
 
+    /**
+     * Callback que el shared `dropzone._script` invoca al terminar el batch.
+     * En single no hay batch real (un único archivo) pero el JS espera el
+     * método. Mantenerlo evita MethodNotFoundException.
+     */
+    public function batchCompleted(int $ok, int $error): void
+    {
+        // No-op. El render se refresca solo tras registerUploaded().
+    }
+
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);

@@ -104,6 +104,15 @@ class LaracrateDropzoneSingleDeferred extends Component
         );
     }
 
+    /**
+     * Callback que el shared `dropzone._script` invoca al terminar el batch.
+     * No-op en single — registerUploaded() ya disparó el evento al caller.
+     */
+    public function batchCompleted(int $ok, int $error): void
+    {
+        // No-op.
+    }
+
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);
