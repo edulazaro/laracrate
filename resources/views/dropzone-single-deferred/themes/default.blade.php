@@ -12,13 +12,6 @@
         autoStart:    false,
         maxFiles:     1,
     })"
-    @laracrate-start-batch.window="
-        if (($event.detail.fileableType ?? null) === @js($fileableType)
-            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
-            && ($event.detail.collection ?? null) === @js($collection)) {
-            startBatch();
-        }
-    "
     class="w-full"
 >
     @if ($existing)
@@ -26,7 +19,9 @@
             @if(($iconCategory ?? 'mixed') === 'image')
                 <img src="{{ $existing->url() }}" alt="" class="w-14 h-14 rounded-lg object-cover flex-shrink-0">
             @elseif($iconCategory === 'video')
-                <video controls class="w-24 h-14 rounded-lg bg-black object-cover flex-shrink-0"><source src="{{ $existing->url() }}"></video>
+                <video controls class="w-24 h-14 rounded-lg bg-black object-cover flex-shrink-0">
+                    <source src="{{ $existing->url() }}">
+                </video>
             @elseif($iconCategory === 'audio')
                 <audio controls class="flex-shrink-0 max-w-[200px]"><source src="{{ $existing->url() }}"></audio>
             @else
@@ -38,6 +33,9 @@
                 <p class="text-sm font-medium text-gray-900 truncate">{{ $existing->title ?? $existing->original_name }}</p>
                 <p class="text-xs text-gray-500">{{ number_format($existing->size / 1024, 1) }} KB</p>
             </div>
+            <a href="{{ $existing->url() }}" target="_blank" class="p-2 text-gray-500 hover:bg-gray-100 rounded-md" title="Ver">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </a>
             <button type="button" wire:click="removeFile" wire:confirm="¿Quitar este archivo?"
                     class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md" title="Quitar">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -45,7 +43,7 @@
         </div>
     @else
         <label
-            x-show="queue.length === 0"
+            x-show="!uploading && queue.length === 0"
             @dragover.prevent="dragOver = true"
             @dragleave.prevent="dragOver = false"
             @drop.prevent="dragOver = false; handleFiles($event.dataTransfer.files)"
@@ -64,29 +62,15 @@
             <p class="text-sm text-gray-600"><span class="font-semibold">{{ __('laracrate::uploader.drag_or_click') }}</span></p>
             <p class="text-xs text-gray-500 mt-1">
                 {{ __('laracrate::uploader.max_size_capital', ['size' => number_format($maxSizeKb / 1024, 1)]) }}
+                @if(!empty($extensions))
+                    · {{ implode(', ', array_map('strtoupper', $extensions)) }}
+                @endif
             </p>
             <input type="file" x-ref="input" accept="{{ $acceptAttr }}" class="hidden"
                 @change="handleFiles($event.target.files); $event.target.value = ''" />
         </label>
 
-        {{-- Staged: pending file --}}
-        <div x-show="queue.length > 0 && queue[0]?.status === 'pending'" x-cloak
-             class="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <svg class="w-6 h-6 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <div class="flex-1 min-w-0">
-                <p class="text-sm text-gray-900 truncate" x-text="queue[0].name"></p>
-                <p class="text-xs text-amber-700">{{ __('laracrate::uploader.pending') }}</p>
-            </div>
-            @if (!$hideActions)
-                <button type="button" @click="startBatch()" class="text-xs font-semibold px-3 py-1.5 bg-gray-900 text-white rounded-md hover:bg-black">{{ __('laracrate::uploader.submit') }}</button>
-            @endif
-            <button type="button" @click="removeItem(0)" class="p-1.5 text-gray-400 hover:text-red-600" title="Quitar">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-        </div>
-
-        {{-- Uploading --}}
-        <div x-show="queue.length > 0 && queue[0]?.status === 'uploading'" x-cloak
+        <div x-show="uploading || queue.length > 0" x-cloak
              class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
             <svg class="animate-spin w-5 h-5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
