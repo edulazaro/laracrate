@@ -49,18 +49,36 @@ class LaracrateDropzone extends Component
     #[Locked]
     public bool $persistQueue = false;
 
+    /**
+     * Cap visual de archivos aceptados en la cola. 0/null = ilimitado.
+     */
+    #[Locked]
+    public ?int $maxFiles = null;
+
+    /**
+     * Identificador opaco que el caller asocia al widget. Se incluye en el
+     * evento `laracrate-file-uploaded` para que el caller pueda routear
+     * el File al destino correcto cuando hay varios widgets en la misma página.
+     */
+    #[Locked]
+    public ?string $contextKey = null;
+
     public function mount(
         Model $model,
         string $collection,
         ?string $theme = null,
         bool $multiple = true,
         bool $persistQueue = false,
+        ?int $maxFiles = null,
+        ?string $contextKey = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
         $this->theme        = $theme;
         $this->multiple     = $multiple;
         $this->persistQueue = $persistQueue;
+        $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
+        $this->contextKey   = $contextKey;
     }
 
     /**
@@ -87,6 +105,7 @@ class LaracrateDropzone extends Component
             'laracrate-file-uploaded',
             collection: $this->collection,
             fileId: $file->id,
+            contextKey: $this->contextKey,
         );
 
         return $file->id;
