@@ -70,7 +70,22 @@
                 @change="handleFiles($event.target.files); $event.target.value = ''" />
         </label>
 
-        <div x-show="uploading || queue.length > 0" x-cloak
+        {{-- Pending: staged, waiting confirm --}}
+        <div x-show="queue.length > 0 && queue[0]?.status === 'pending'" x-cloak
+             class="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <svg class="w-6 h-6 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path stroke-linecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-gray-900 truncate" x-text="queue[0]?.name ?? '...'"></p>
+                <p class="text-xs text-amber-700">{{ __('laracrate::uploader.pending') }}</p>
+            </div>
+            <button type="button" @click="startBatch()" class="text-xs font-semibold px-3 py-1.5 bg-blue-500 text-white rounded-md hover:bg-blue-600">{{ __('laracrate::uploader.submit') }}</button>
+            <button type="button" @click="removeItem(0)" class="p-1.5 text-gray-400 hover:text-red-600 rounded-md" title="{{ __('laracrate::uploader.cancel') }}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        {{-- Uploading --}}
+        <div x-show="queue.length > 0 && queue[0]?.status === 'uploading'" x-cloak
              class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
             <svg class="animate-spin w-5 h-5 text-blue-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

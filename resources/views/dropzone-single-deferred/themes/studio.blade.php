@@ -102,8 +102,26 @@
                 @change="handleFiles($event.target.files); $event.target.value = ''" />
         </label>
 
+        {{-- Pending: staged, waiting confirm --}}
+        <div x-show="queue.length > 0 && queue[0]?.status === 'pending'" x-cloak
+             class="flex items-center gap-3 p-3 bg-white border border-gray-300 rounded-sm">
+            <div class="w-10 h-10 rounded-sm border border-gray-300 bg-gray-50 text-gray-700 inline-flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-[10px] font-mono uppercase tracking-wide text-gray-400">{{ __('laracrate::uploader.pending') }}</p>
+                <p class="text-sm font-medium text-gray-900 truncate" x-text="queue[0]?.name ?? '...'"></p>
+            </div>
+            <button type="button" @click="startBatch()"
+                class="inline-flex items-center justify-center h-9 px-4 rounded-sm bg-gray-900 text-white text-[11px] font-mono uppercase tracking-wide hover:bg-gray-800 flex-shrink-0">{{ __('laracrate::uploader.submit') }}</button>
+            <button type="button" @click="removeItem(0)" title="{{ __('laracrate::uploader.cancel') }}"
+                class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-sm flex-shrink-0">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
         {{-- Subiendo: progreso compacto in-place --}}
-        <div x-show="uploading || queue.length > 0" x-cloak
+        <div x-show="queue.length > 0 && queue[0]?.status === 'uploading'" x-cloak
              class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-sm">
             <svg class="animate-spin w-5 h-5 text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

@@ -21,7 +21,15 @@
             <p class="text-xs text-gray-400 mt-1">{{ __('laracrate::uploader.max_size_capital', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
             <input type="file" x-ref="input" accept="{{ $acceptAttr }}" class="hidden" @change="handleFiles($event.target.files); $event.target.value = ''"/>
         </label>
-        <div x-show="uploading || queue.length > 0" x-cloak class="border-l-2 border-blue-500 pl-4 py-3 flex items-center gap-3">
+        <div x-show="queue.length > 0 && queue[0]?.status === 'pending'" x-cloak class="border-l-2 border-amber-500 pl-4 py-3 flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+                <p class="text-[10px] uppercase tracking-wider text-amber-700">{{ __('laracrate::uploader.pending') }}</p>
+                <p class="text-sm text-gray-900 truncate" x-text="queue[0]?.name ?? '...'"></p>
+            </div>
+            <button type="button" @click="startBatch()" class="text-xs text-gray-900 hover:text-blue-600 underline font-semibold">{{ __('laracrate::uploader.submit') }}</button>
+            <button type="button" @click="removeItem(0)" class="text-xs text-gray-400 hover:text-red-600 underline">{{ __('laracrate::uploader.cancel') }}</button>
+        </div>
+        <div x-show="queue.length > 0 && queue[0]?.status === 'uploading'" x-cloak class="border-l-2 border-blue-500 pl-4 py-3 flex items-center gap-3">
             <svg class="animate-spin h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             <p class="text-sm text-gray-700 truncate" x-text="queue[0]?.name ?? '...'"></p><span class="text-xs text-gray-400 tabular-nums" x-text="batchProgress + '%'"></span>
         </div>
