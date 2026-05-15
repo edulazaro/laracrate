@@ -162,9 +162,16 @@ class StorageManager
         $client = $this->s3ClientOf($disk);
 
         if ($client) {
+            // El disk puede tener `root` configurado (ej. 'dev/'). Laravel lo aplica
+            // automáticamente en read/write vía PathPrefixer, pero al firmar un
+            // PUT directo de cliente lo tenemos que aplicar a mano — si no, el
+            // archivo se sube SIN prefix y luego ningún read del disk lo encuentra.
+            $root    = trim((string) config("filesystems.disks.{$disk}.root", ''), '/');
+            $fullKey = $root !== '' ? "{$root}/{$key}" : $key;
+
             $cmd = $client->getCommand('PutObject', array_filter([
                 'Bucket'        => config("filesystems.disks.{$disk}.bucket"),
-                'Key'           => $key,
+                'Key'           => $fullKey,
                 'ContentType'   => $mime,
                 'ContentLength' => $maxSize,
             ]));
@@ -175,7 +182,7 @@ class StorageManager
                 'url'        => (string) $request->getUri(),
                 'method'     => 'PUT',
                 'headers'    => ['Content-Type' => $mime],
-                'key'        => $key,
+                'key'        => $key,   // devolvemos la key RELATIVA (sin prefix) para que la DB la guarde así
                 'disk'       => $disk,
                 'expires_at' => now()->addMinutes($minutes)->toIso8601String(),
             ];
