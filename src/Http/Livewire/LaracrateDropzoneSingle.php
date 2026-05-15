@@ -10,21 +10,12 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
- * Dropzone single-file con upload directo a R2/S3 vía presigned PUT.
- *
- * Diferencia con `laracrate-dropzone`:
- *   - Solo acepta UN archivo. No hay cola. El archivo subido se muestra
- *     IN-PLACE (preview + nombre + tamaño + botón quitar) en lugar de
- *     debajo del área de drop. UX más limpio para formularios donde
- *     cada campo es 1 archivo.
- *   - Si el modelo ya tiene un File en esta colección, lo muestra como
- *     "ya subido" y permite reemplazarlo.
- *
- *   <livewire:laracrate-dropzone-single :model="$user" collection="avatar" />
- *   <livewire:laracrate-dropzone-single :model="$user" collection="cover" theme="studio" />
- *
- * Flujo presigned idéntico al dropzone multi: PUT directo a R2, el binario
- * no pasa por PHP. Tras `registerUploaded` dispatcha `laracrate-file-uploaded`.
+ * Dropzone single-file. Idéntico a `laracrate-dropzone` en lógica
+ * (mismo registerUploaded vía addFile, mismo batchCompleted), pero:
+ *   - maxFiles forzado a 1
+ *   - multiple=false
+ *   - usa views en `dropzone-single/themes/*` (preview in-place vs cola)
+ *   - prop `hideExisting` para casos donde el caller pinta su propio preview
  */
 class LaracrateDropzoneSingle extends Component
 {
@@ -37,19 +28,9 @@ class LaracrateDropzoneSingle extends Component
     #[Locked]
     public ?string $theme = null;
 
-    /**
-     * Identificador opaco que el caller asocia al widget. Se incluye en el
-     * evento `laracrate-file-uploaded` para que el caller pueda routear
-     * el File al destino correcto cuando hay varios widgets en la misma página.
-     */
     #[Locked]
     public ?string $contextKey = null;
 
-    /**
-     * Si true, en lugar de mostrar el File ya existente (recuperado del modelo),
-     * siempre se muestra el dropzone vacío. Útil cuando el caller gestiona el
-     * estado del file fuera del widget (ej. fileable temporal de un draft).
-     */
     #[Locked]
     public bool $hideExisting = false;
 
@@ -67,10 +48,6 @@ class LaracrateDropzoneSingle extends Component
         $this->hideExisting = $hideExisting;
     }
 
-    /**
-     * Registra un archivo ya subido a R2 (key) como File del modelo.
-     * Llamado por el JS del blade después de que el PUT a R2 haya terminado.
-     */
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
     {
         $upload = FileUpload::fromArray([
@@ -81,8 +58,7 @@ class LaracrateDropzoneSingle extends Component
             'size'          => $size,
         ]);
 
-        // setFile en lugar de addFile: reemplaza el existente.
-        $file = $this->model->setFile($this->collection, $upload);
+        $file = $this->model->addFile($upload, $this->collection);
 
         if (! $file) {
             return null;
@@ -98,10 +74,16 @@ class LaracrateDropzoneSingle extends Component
         return $file->id;
     }
 
-    /**
-     * Elimina el File actual del modelo en esta colección. Útil para el botón
-     * "Quitar" cuando el archivo ya está subido y registrado.
-     */
+    public function batchCompleted(int $ok, int $error): void
+    {
+        $this->dispatch(
+            'laracrate-batch-completed',
+            collection: $this->collection,
+            ok: $ok,
+            error: $error,
+        );
+    }
+
     public function removeFile(): void
     {
         $existing = $this->model->files($this->collection)->first();
@@ -114,16 +96,6 @@ class LaracrateDropzoneSingle extends Component
             collection: $this->collection,
             contextKey: $this->contextKey,
         );
-    }
-
-    /**
-     * Callback que el shared `dropzone._script` invoca al terminar el batch.
-     * En single no hay batch real (un único archivo) pero el JS espera el
-     * método. Mantenerlo evita MethodNotFoundException.
-     */
-    public function batchCompleted(int $ok, int $error): void
-    {
-        // No-op. El render se refresca solo tras registerUploaded().
     }
 
     public function acceptedExtensions(): array
@@ -193,10 +165,6 @@ class LaracrateDropzoneSingle extends Component
         return $out;
     }
 
-    /**
-     * Detecta la categoría visual del dropzone a partir de las extensiones
-     * aceptadas. Para que el theme elija el icono correcto.
-     */
     protected function detectIconCategory(array $extensions): string
     {
         if (empty($extensions)) return 'mixed';

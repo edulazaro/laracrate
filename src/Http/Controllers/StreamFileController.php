@@ -5,6 +5,7 @@ namespace EduLazaro\Laracrate\Http\Controllers;
 use EduLazaro\Laracrate\Actions\Files\DecryptFileAction;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
@@ -40,6 +41,57 @@ class StreamFileController extends Controller
     {
         $this->validateAccess($request, $file);
         return $this->sendFile($request, $file, increment: true, attachment: true);
+    }
+
+    /**
+     * Modo "link": URL Laravel persistente que se resuelve al vuelo según
+     * el access real del File. Valida acceso (HMAC + policy) y redirige (302)
+     * a la URL apropiada:
+     *
+     *   public → URL pública del bucket (no caduca; redirect por consistencia)
+     *   signed → R2 signed URL generada en este instante (~30s, suficiente
+     *            para que el navegador siga el redirect)
+     *   stream → ruta interna de stream firmada al vuelo (proxea via Laravel)
+     *
+     * La URL en el HTML siempre es esta ruta `laracrate.files.link`, así
+     * el HTML no caduca aunque el TTL real de R2 sea corto.
+     */
+    public function link(Request $request, File $file): RedirectResponse|StreamedResponse
+    {
+        $this->validateAccess($request, $file);
+
+        $manager = app(StorageManager::class);
+        $disk    = $manager->diskFor($file);
+        $key     = $file->key;
+
+        if (!$disk->exists($key)) {
+            abort(404);
+        }
+
+        $this->audit($request, $file, increment: true, attachment: false);
+
+        $access = $file->access?->value ?? $file->access;
+
+        // public → URL del bucket público, no caduca
+        if ($access === 'public') {
+            return redirect()->away($disk->url($key), 302);
+        }
+
+        // stream → proxear vía Laravel (binario pasa por nosotros)
+        if ($access === 'stream') {
+            return $this->sendFile($request, $file, increment: false, attachment: false);
+        }
+
+        // signed (default) → firmar R2 al vuelo y redirigir
+        $driver = config("filesystems.disks.{$file->disk}.driver");
+        if ($driver === 's3') {
+            $redirectTtl = (int) config('laracrate.urls.link_redirect_ttl_seconds', 30);
+            $r2Url = $disk->temporaryUrl($key, now()->addSeconds($redirectTtl));
+            return redirect()->away($r2Url, 302);
+        }
+
+        // Fallback para disks no-s3 (local dev): servir el binario.
+        return $this->sendFile($request, $file, increment: false, attachment: false);
     }
 
     /* ------------------------------------------------------------------

@@ -100,7 +100,7 @@
             this.uploading = false;
             this.batchProgress = 0;
 
-            try { await $wire.batchCompleted(okCount, errCount); } catch (e) {}
+            try { await this.$wire.batchCompleted(okCount, errCount); } catch (e) {}
 
             if (!this.cfg.persistQueue) {
                 setTimeout(() => {
@@ -150,7 +150,7 @@
                 if (!putRes.ok) throw new Error(`put ${putRes.status}`);
 
                 item.key = presign.key;
-                const fileId = await $wire.registerUploaded(item.key, item.name, item.mime, item.size);
+                const fileId = await this.$wire.registerUploaded(item.key, item.name, item.mime, item.size);
                 if (!fileId) throw new Error('register');
 
                 item.status = 'done';
