@@ -13,6 +13,8 @@ class FileContent extends Model
         'file_id',
         'chunk_index',
         'text',
+        'summary',
+        'description',
         'embedding',
         'tokens',
         'provider',
@@ -47,6 +49,11 @@ class FileContent extends Model
     public function isFailed(): bool
     {
         return $this->status === 'failed';
+    }
+
+    public function isSkipped(): bool
+    {
+        return $this->status === 'skipped';
     }
 
     public function hasEmbedding(): bool
