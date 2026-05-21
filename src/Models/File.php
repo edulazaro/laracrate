@@ -117,6 +117,15 @@ class File extends Model
         return $this->hasMany(FileContent::class)->orderBy('chunk_index');
     }
 
+    /**
+     * Acceso 1:1 al primer chunk (chunk_index=0). Útil para apps que NO usan
+     * chunking y guardan todo el texto extraído en una sola fila por archivo.
+     */
+    public function content(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(FileContent::class)->where('chunk_index', 0);
+    }
+
     public function slots(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
         return $this->belongsToMany(
