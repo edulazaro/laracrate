@@ -61,7 +61,7 @@ trait HasFiles
      * ponlos bajo `data['metadata']`.
      */
     public function addFile(
-        UploadedFile|FileUpload|string $file,
+        UploadedFile|\EduLazaro\Laracrate\Support\Binary|FileUpload|string $file,
         string $collection,
         array $data = [],
         array $slots = [],
@@ -90,7 +90,7 @@ trait HasFiles
      */
     public function setFile(
         string $collection,
-        UploadedFile|FileUpload|string|null $file,
+        UploadedFile|\EduLazaro\Laracrate\Support\Binary|FileUpload|string|null $file,
         array $data = [],
         ?Model $creator = null,
         ?Model $owner = null,

@@ -5,14 +5,16 @@ namespace EduLazaro\Laracrate\Actions\Files;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\Binary;
 use EduLazaro\Laracrate\Support\FileUpload;
 use EduLazaro\Laractions\Action;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Orquestador. Acepta el upload (UploadedFile, FileUpload, o key string),
+ * Orquestador. Acepta el upload (UploadedFile, Binary, FileUpload, o key string),
  * decide la estrategia según el driver del disk de la colección, ejecuta
  * la subida al backend si hace falta, y persiste el File model.
  */
@@ -31,7 +33,7 @@ class CreateFileAction extends Action
         ?Model $fileable,
         string $collection,
         array $config,
-        UploadedFile|FileUpload|string $upload,
+        UploadedFile|Binary|FileUpload|string $upload,
         array $data = [],
         ?Model $creator = null,
         ?Model $owner = null,
@@ -61,13 +63,14 @@ class CreateFileAction extends Action
         $sensitive = (bool) ($config['sensitive'] ?? false);
         $encrypt   = (bool) ($config['encrypt'] ?? false);
 
-        // Validación crítica: encrypt requiere modo B (UploadedFile pasa por
-        // PHP que cifra antes de subir). Modo A (FileUpload/key) llega ya
-        // raw en R2 — sin posibilidad de cifrar a posteriori.
-        if ($encrypt && !$upload instanceof UploadedFile && !$parent) {
+        // Validación crítica: encrypt requiere que PHP tenga el binario (modo
+        // server-side: UploadedFile o Binary). Modo presigned (FileUpload/key)
+        // llega ya raw al backend — sin posibilidad de cifrar a posteriori.
+        $hasServerSideBinary = $upload instanceof UploadedFile || $upload instanceof Binary;
+        if ($encrypt && !$hasServerSideBinary && !$parent) {
             throw new \InvalidArgumentException(
                 "La colección '{$collection}' tiene encrypt=true. Sube el archivo " .
-                "directamente a través del servidor (UploadedFile), no via presigned upload."
+                "directamente vía servidor (UploadedFile o Binary), no via presigned."
             );
         }
 
@@ -162,13 +165,21 @@ class CreateFileAction extends Action
      * Extrae metadata declarada del upload SIN tocar el binario en el backend.
      * Devuelve mime_type, size y extension. Para validación pre-move.
      */
-    protected function declaredMetadata(UploadedFile|FileUpload|string $upload): array
+    protected function declaredMetadata(UploadedFile|Binary|FileUpload|string $upload): array
     {
         if ($upload instanceof UploadedFile) {
             return [
                 'mime_type' => $upload->getClientMimeType() ?: 'application/octet-stream',
                 'size'      => (int) $upload->getSize(),
                 'extension' => strtolower($upload->getClientOriginalExtension() ?: 'bin'),
+            ];
+        }
+
+        if ($upload instanceof Binary) {
+            return [
+                'mime_type' => $upload->mimeType,
+                'size'      => $upload->size(),
+                'extension' => $upload->extension(),
             ];
         }
 
@@ -264,7 +275,7 @@ class CreateFileAction extends Action
      * `name` = denormalización (basename) por comodidad de queries/display.
      */
     protected function resolveUpload(
-        UploadedFile|FileUpload|string $upload,
+        UploadedFile|Binary|FileUpload|string $upload,
         string $disk,
         string $collection,
         ?Model $fileable,
@@ -301,6 +312,28 @@ class CreateFileAction extends Action
             return $this->makeRow($key, basename($key), [
                 'mime_type' => 'application/octet-stream',
                 'size'      => 0,
+            ]);
+        }
+
+        // Caso D: Binary — contenido en memoria generado server-side. Escribimos
+        // al disk directamente; el paquete elige path canónico, el caller jamás
+        // toca Storage::*.
+        if ($upload instanceof Binary) {
+            $name = time() . '_' . Str::random(24) . '.' . $upload->extension();
+            $key  = trim($this->buildPath($collection, $fileable) . '/' . $name, '/');
+
+            $binary = $encrypt
+                ? EncryptFileAction::create()->run(['binary' => $upload->content])
+                : $upload->content;
+
+            $manager->writeBinary($disk, $key, $binary, $upload->mimeType);
+
+            return $this->makeRow($key, $upload->originalName, [
+                'mime_type' => $upload->mimeType,
+                'size'      => $upload->size(),
+                'width'     => $upload->width,
+                'height'    => $upload->height,
+                'duration'  => $upload->duration,
             ]);
         }
 
