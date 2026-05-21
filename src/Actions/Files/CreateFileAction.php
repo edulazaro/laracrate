@@ -87,7 +87,7 @@ class CreateFileAction extends Action
         );
 
         // 2. Validación pasada: ahora sí mover/subir el binario.
-        $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt);
+        $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt, $tenant);
 
         // Auto-position al final si no viene declarada explícitamente.
         if (!isset($data['position']) && !$parent) {
@@ -281,6 +281,7 @@ class CreateFileAction extends Action
         ?Model $fileable,
         StorageManager $manager,
         bool $encrypt = false,
+        ?Model $tenant = null,
     ): array {
         // Caso A: presigned upload completado por el cliente.
         if ($upload instanceof FileUpload) {
@@ -290,7 +291,7 @@ class CreateFileAction extends Action
             // server-side al path canónico (cero descarga al PHP).
             if (str_starts_with($key, 'temp/') && $fileable) {
                 $name     = basename($key);
-                $finalKey = trim($this->buildPath($collection, $fileable) . '/' . $name, '/');
+                $finalKey = trim($this->buildPath($collection, $fileable, $tenant) . '/' . $name, '/');
                 $manager->moveServerSide($disk, $key, $finalKey);
                 $key      = $finalKey;
             }
@@ -320,7 +321,7 @@ class CreateFileAction extends Action
         // toca Storage::*.
         if ($upload instanceof Binary) {
             $name = time() . '_' . Str::random(24) . '.' . $upload->extension();
-            $key  = trim($this->buildPath($collection, $fileable) . '/' . $name, '/');
+            $key  = trim($this->buildPath($collection, $fileable, $tenant) . '/' . $name, '/');
 
             $binary = $encrypt
                 ? EncryptFileAction::create()->run(['binary' => $upload->content])
@@ -340,7 +341,7 @@ class CreateFileAction extends Action
         // Caso C: UploadedFile — hay que subirlo al backend ahora.
         $extension = $upload->getClientOriginalExtension() ?: 'bin';
         $name      = time() . '_' . Str::random(24) . '.' . $extension;
-        $key       = trim($this->buildPath($collection, $fileable) . '/' . $name, '/');
+        $key       = trim($this->buildPath($collection, $fileable, $tenant) . '/' . $name, '/');
 
         $binary = $upload->get();
         if ($encrypt) {
@@ -371,12 +372,28 @@ class CreateFileAction extends Action
         ], $extras);
     }
 
-    protected function buildPath(string $collection, ?Model $fileable): string
+    /**
+     * Construye el path canónico de un file dentro del bucket. Si hay tenant
+     * resuelto, su id se usa como prefix raíz — aísla por tenant dentro del
+     * mismo bucket compartido, facilita auditoría y borrado RGPD ("rm -rf
+     * /{tenant_id}/*"), y prepara migración a bucket dedicado preservando
+     * estructura.
+     *
+     * Resultados típicos:
+     *   sin tenant:     case/123/documents
+     *   con tenant=42:  42/case/123/documents
+     */
+    protected function buildPath(string $collection, ?Model $fileable, ?Model $tenant = null): string
     {
-        if ($fileable) {
-            return $fileable->getMorphClass() . '/' . $fileable->getKey() . '/' . $collection;
+        $base = $fileable
+            ? $fileable->getMorphClass() . '/' . $fileable->getKey() . '/' . $collection
+            : $collection;
+
+        if ($tenant) {
+            return $tenant->getKey() . '/' . $base;
         }
-        return $collection;
+
+        return $base;
     }
 
 }
