@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Actions\Files\GeneratePublicUrlAction;
 use EduLazaro\Laracrate\Actions\Files\GenerateSensitiveStreamUrlAction;
 use EduLazaro\Laracrate\Actions\Files\GenerateSignedUrlAction;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Models\TenantBucket;
 use EduLazaro\Laracrate\Support\CollectionConfig;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -43,10 +44,49 @@ class StorageManager
     /**
      * Devuelve el filesystem del disk del File. Atajo para no andar
      * repitiendo `Storage::disk($file->disk)` por todo el paquete.
+     *
+     * Soporta dos convenciones en `$file->disk`:
+     *   - 'documents'  → disk del config global (shared, default).
+     *   - 'tb:{id}'    → bucket dedicado, resuelto vía TenantBucket en BD.
      */
     public function diskFor(File $file): \Illuminate\Contracts\Filesystem\Filesystem
     {
-        return Storage::disk($file->disk);
+        return $this->resolveDisk($file->disk);
+    }
+
+    /**
+     * Resuelve un nombre de disk a su instancia de Filesystem. Centraliza
+     * la convención `tb:{id}` para que todos los callers internos (writeBinary,
+     * moveServerSide, deleteFromBackend, etc.) la respeten sin duplicar lógica.
+     */
+    public function resolveDisk(string $disk): \Illuminate\Contracts\Filesystem\Filesystem
+    {
+        if (str_starts_with($disk, 'tb:')) {
+            return Storage::build($this->configFor($disk));
+        }
+
+        return Storage::disk($disk);
+    }
+
+    /**
+     * Devuelve el array de config del disk, sea del config global o de un
+     * TenantBucket. Útil para leer `driver`, `bucket`, `root`, etc. sin
+     * duplicar la lógica de discriminación `tb:{id}` vs nombre plano.
+     */
+    public function configFor(string $disk): array
+    {
+        if (str_starts_with($disk, 'tb:')) {
+            $bucketId = (int) substr($disk, 3);
+            $bucket = TenantBucket::find($bucketId);
+
+            if (!$bucket || !$bucket->is_active) {
+                throw new \RuntimeException("TenantBucket {$bucketId} no disponible (no existe o is_active=false).");
+            }
+
+            return $bucket->toDiskConfig();
+        }
+
+        return config("filesystems.disks.{$disk}", []);
     }
 
     /**
@@ -67,7 +107,7 @@ class StorageManager
     public function writeBinary(string $disk, string $key, string $content, ?string $mime = null): bool
     {
         $options = $mime ? ['ContentType' => $mime] : [];
-        return (bool) Storage::disk($disk)->put($key, $content, $options);
+        return (bool) $this->resolveDisk($disk)->put($key, $content, $options);
     }
 
     /**
@@ -75,7 +115,7 @@ class StorageManager
      */
     public function deleteFromBackend(string $disk, string $key): bool
     {
-        return (bool) Storage::disk($disk)->delete($key);
+        return (bool) $this->resolveDisk($disk)->delete($key);
     }
 
     /**
@@ -92,7 +132,7 @@ class StorageManager
         $client = $this->s3ClientOf($disk);
 
         if ($client) {
-            $bucket = config("filesystems.disks.{$disk}.bucket");
+            $bucket = $this->configFor($disk)['bucket'] ?? null;
 
             $client->copyObject([
                 'Bucket'     => $bucket,
@@ -109,7 +149,7 @@ class StorageManager
         }
 
         // Fallback para disks no-S3 (local): copy + delete vía Storage.
-        $disk_ = Storage::disk($disk);
+        $disk_ = $this->resolveDisk($disk);
         if (!$disk_->exists($fromKey)) {
             return false;
         }
@@ -127,16 +167,17 @@ class StorageManager
         $client = $this->s3ClientOf($disk);
 
         if (!$client) {
+            $resolved = $this->resolveDisk($disk);
             $deleted = 0;
             foreach ($keys as $key) {
-                if (Storage::disk($disk)->delete($key)) {
+                if ($resolved->delete($key)) {
                     $deleted++;
                 }
             }
             return $deleted;
         }
 
-        $bucket  = config("filesystems.disks.{$disk}.bucket");
+        $bucket  = $this->configFor($disk)['bucket'] ?? null;
         $deleted = 0;
 
         foreach (array_chunk($keys, 1000) as $chunk) {
@@ -166,11 +207,12 @@ class StorageManager
             // automáticamente en read/write vía PathPrefixer, pero al firmar un
             // PUT directo de cliente lo tenemos que aplicar a mano — si no, el
             // archivo se sube SIN prefix y luego ningún read del disk lo encuentra.
-            $root    = trim((string) config("filesystems.disks.{$disk}.root", ''), '/');
+            $cfg     = $this->configFor($disk);
+            $root    = trim((string) ($cfg['root'] ?? ''), '/');
             $fullKey = $root !== '' ? "{$root}/{$key}" : $key;
 
             $cmd = $client->getCommand('PutObject', array_filter([
-                'Bucket'        => config("filesystems.disks.{$disk}.bucket"),
+                'Bucket'        => $cfg['bucket'] ?? null,
                 'Key'           => $fullKey,
                 'ContentType'   => $mime,
                 'ContentLength' => $maxSize,
@@ -293,11 +335,11 @@ class StorageManager
      */
     public function s3ClientOf(string $disk): ?S3Client
     {
-        if (config("filesystems.disks.{$disk}.driver") !== 's3') {
+        if (($this->configFor($disk)['driver'] ?? null) !== 's3') {
             return null;
         }
 
-        $instance = Storage::disk($disk);
+        $instance = $this->resolveDisk($disk);
         if (!method_exists($instance, 'getClient')) {
             return null;
         }
@@ -307,14 +349,15 @@ class StorageManager
     }
 
     /**
-     * Devuelve el driver que tiene un disk según filesystems.php.
+     * Devuelve el driver del disk. Soporta nombres planos (lookup en
+     * filesystems.php) y `tb:{id}` (lookup en TenantBucket).
      */
     public function driverOf(string $disk): string
     {
-        $driver = config("filesystems.disks.{$disk}.driver");
+        $driver = $this->configFor($disk)['driver'] ?? null;
 
         if (!$driver) {
-            throw new \RuntimeException("Disk '{$disk}' no definido en config/filesystems.php.");
+            throw new \RuntimeException("Disk '{$disk}' no resolvible (ni en config/filesystems.php ni TenantBucket).");
         }
 
         return $driver;

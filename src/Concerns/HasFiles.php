@@ -69,6 +69,12 @@ trait HasFiles
         ?Model $owner = null,
     ): ?File {
         $config = $this->getCollectionConfig($collection);
+        $tenant = $this->resolveFileTenant();
+
+        // Override del disk si el tenant tiene un bucket dedicado para el
+        // base_disk que usa esta collection. Granularidad por disk del
+        // config (document/media/attachment), no por collection individual.
+        $config['disk'] = $this->resolveTenantBucketDisk($tenant, $config['disk']) ?? $config['disk'];
 
         return CreateFileAction::create()->run([
             'fileable'   => $this,
@@ -78,9 +84,29 @@ trait HasFiles
             'data'       => $data,
             'creator'    => $creator ?? auth()->user(),
             'owner'      => $owner,
-            'tenant'     => $this->resolveFileTenant(),
+            'tenant'     => $tenant,
             'slots'      => $slots,
         ]);
+    }
+
+    /**
+     * Devuelve 'tb:{id}' si el tenant tiene un bucket dedicado activo para
+     * el base_disk dado. Null = usar el disk del config plano (shared).
+     */
+    protected function resolveTenantBucketDisk(?Model $tenant, string $baseDisk): ?string
+    {
+        if (!$tenant) {
+            return null;
+        }
+
+        $bucket = \EduLazaro\Laracrate\Models\TenantBucket::query()
+            ->where('tenant_type', $tenant->getMorphClass())
+            ->where('tenant_id', $tenant->getKey())
+            ->where('base_disk', $baseDisk)
+            ->where('is_active', true)
+            ->first();
+
+        return $bucket ? 'tb:' . $bucket->id : null;
     }
 
     /**
