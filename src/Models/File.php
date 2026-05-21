@@ -27,6 +27,7 @@ class File extends Model
         'parent_id', 'variant',
         'fileable_type', 'fileable_id',
         'creator_type', 'creator_id',
+        'owner_type', 'owner_id',
         'tenant_type', 'tenant_id',
         'disk', 'path', 'name', 'original_name', 'extension', 'mime_type', 'size', 'digest',
         'context', 'collection', 'type', 'category',
@@ -79,9 +80,26 @@ class File extends Model
         return $this->morphTo();
     }
 
+    /**
+     * Destinatario / dueño semántico del archivo. Distinto del creator cuando
+     * un usuario sube/genera en nombre de otro. NULL cuando coincide con creator.
+     */
+    public function owner(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
     public function tenant(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Devuelve el owner real: explícito si está, en caso contrario el creator.
+     */
+    public function effectiveOwner(): ?\Illuminate\Database\Eloquent\Model
+    {
+        return $this->owner_id ? $this->owner : $this->creator;
     }
 
     public function parent(): BelongsTo

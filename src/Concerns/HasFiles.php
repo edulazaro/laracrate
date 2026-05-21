@@ -54,6 +54,7 @@ trait HasFiles
         array $metadata = [],
         array $slots = [],
         ?Model $creator = null,
+        ?Model $owner = null,
     ): ?File {
         $config = $this->getCollectionConfig($collection);
 
@@ -64,6 +65,7 @@ trait HasFiles
             'upload'     => $file,
             'metadata'   => $metadata,
             'creator'    => $creator ?? auth()->user(),
+            'owner'      => $owner,
             'tenant'     => $this->resolveFileTenant(),
             'slots'      => $slots,
         ]);
@@ -77,7 +79,9 @@ trait HasFiles
     public function setFile(
         string $collection,
         UploadedFile|FileUpload|string|null $file,
-        array $metadata = []
+        array $metadata = [],
+        ?Model $creator = null,
+        ?Model $owner = null,
     ): ?File {
         $existing = $this->files($collection)->get();
 
@@ -89,7 +93,7 @@ trait HasFiles
             return null;
         }
 
-        return $this->addFile($file, $collection, $metadata);
+        return $this->addFile($file, $collection, $metadata, creator: $creator, owner: $owner);
     }
 
     public function setDefaultFile(File $file): File
