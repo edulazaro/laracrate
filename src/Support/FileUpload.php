@@ -5,12 +5,16 @@ namespace EduLazaro\Laracrate\Support;
 use EduLazaro\Laracrate\Models\File;
 
 /**
- * Value object que representa un archivo ya presente en el backend (subido
- * vía presigned URL al S3, o por cualquier otro mecanismo), antes de
+ * Value object que representa un archivo YA presente en el backend (subido
+ * vía presigned URL a S3/R2, o por cualquier otro mecanismo), antes de
  * persistir el File model.
  *
  * Lo construye el cliente JS tras completar el upload directo y lo envía
  * de vuelta al servidor para que CreateFileAction lo materialice.
+ *
+ * Solo describe el binario físico (disk, key, mime, size, dimensiones,
+ * digest). Para atributos del File model (title, description, category,
+ * visibility, metadata JSON) usa el parámetro `$data` de `addFile()`.
  */
 class FileUpload
 {
@@ -20,11 +24,10 @@ class FileUpload
         public readonly string $originalName,
         public readonly string $mimeType,
         public readonly int $size,
-        public readonly ?string $title = null,
         public readonly ?int $width = null,
         public readonly ?int $height = null,
         public readonly ?int $duration = null,
-        public readonly array $metadata = [],
+        public readonly ?string $digest = null,
     ) {}
 
     public static function fromArray(array $data): self
@@ -35,11 +38,10 @@ class FileUpload
             originalName: $data['original_name'] ?? $data['originalName'] ?? 'unknown',
             mimeType:     $data['mime_type'] ?? $data['mimeType'] ?? 'application/octet-stream',
             size:         (int) ($data['size'] ?? 0),
-            title:        $data['title'] ?? null,
             width:        isset($data['width']) ? (int) $data['width'] : null,
             height:       isset($data['height']) ? (int) $data['height'] : null,
             duration:     isset($data['duration']) ? (int) $data['duration'] : null,
-            metadata:     $data['metadata'] ?? [],
+            digest:       $data['digest'] ?? null,
         );
     }
 

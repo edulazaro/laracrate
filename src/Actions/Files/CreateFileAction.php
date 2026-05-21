@@ -231,7 +231,7 @@ class CreateFileAction extends Action
             return $this->makeRow($key, $upload->originalName, [
                 'mime_type' => $upload->mimeType,
                 'size'      => $upload->size,
-                'digest'    => $upload->metadata['digest'] ?? null,
+                'digest'    => $upload->digest,
                 'width'     => $upload->width,
                 'height'    => $upload->height,
                 'duration'  => $upload->duration,
