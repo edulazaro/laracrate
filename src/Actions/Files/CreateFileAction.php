@@ -73,7 +73,17 @@ class CreateFileAction extends Action
 
         $manager = app(StorageManager::class);
 
-        // 1. Resolver upload → datos finales (key en backend, mime, size, etc.)
+        // 1. Validar PRIMERO con metadata declarada (sin tocar el binario aún).
+        //    Esto evita dejar binarios huérfanos en R2 si la collection rechaza
+        //    por type/mime/size/slot.
+        $declared = $this->declaredMetadata($upload);
+        $type = FileType::fromMime($declared['mime_type']);
+        $this->validateAgainstCollection(
+            $collection, $type, $declared,
+            $fileable, $parent, $manager, $slotModels, $creator
+        );
+
+        // 2. Validación pasada: ahora sí mover/subir el binario.
         $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt);
 
         // Auto-position al final si no viene declarada explícitamente.
@@ -86,8 +96,114 @@ class CreateFileAction extends Action
                 ->max('position') ?? -1) + 1;
         }
 
-        // 2. Validar que el type esté aceptado por la colección (si no es child).
-        $type = FileType::fromMime($resolved['mime_type']);
+        // 3. Persistir File model. Si algo falla aquí (BD lock, encrypt, etc.)
+        //    cleanup defensivo del binario que ya escribimos en el backend.
+        try {
+            $file = File::create([
+                'slug'            => (string) Str::ulid(),
+                'parent_id'       => $parent?->getKey(),
+                'variant'         => $variant,
+                'fileable_type'   => $fileable?->getMorphClass(),
+                'fileable_id'     => $fileable?->getKey(),
+                'creator_type'    => $creator?->getMorphClass(),
+                'creator_id'      => $creator?->getKey(),
+                'owner_type'      => $owner?->getMorphClass(),
+                'owner_id'        => $owner?->getKey(),
+                'tenant_type'     => $tenant?->getMorphClass(),
+                'tenant_id'       => $tenant?->getKey(),
+                'disk'            => $disk,
+                'path'            => $resolved['path'],
+                'name'            => $resolved['name'],
+                'original_name'   => $resolved['original_name'],
+                'extension'       => $resolved['extension'],
+                'mime_type'       => $resolved['mime_type'],
+                'size'            => $resolved['size'],
+                'digest'          => $resolved['digest'] ?? null,
+                'context'         => $config['context'] ?? $disk,
+                'collection'      => $collection,
+                'type'            => $type,
+                'category'        => $data['category'] ?? null,
+                'access'          => $access,
+                'visibility'      => $data['visibility'] ?? null,
+                'sensitive'       => $sensitive,
+                'is_encrypted'    => $encrypt,
+                'title'           => $data['title'] ?? $resolved['original_name'],
+                'description'     => $data['description'] ?? null,
+                'label'           => $data['label'] ?? null,
+                'default'         => $data['default'] ?? false,
+                'position'        => $data['position'] ?? 0,
+                'duration'        => $resolved['duration'] ?? null,
+                'width'           => $resolved['width'] ?? null,
+                'height'          => $resolved['height'] ?? null,
+                'metadata'        => $data['metadata'] ?? [],
+                'processing_status' => $resolved['needs_processing'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Storage::disk($disk)->delete($resolved['path']);
+            throw $e;
+        }
+
+        if ($upload instanceof FileUpload) {
+            $upload->bindTo($file);
+        }
+
+        // Attach slots si vinieron en la llamada (ya validados arriba).
+        if ($slotModels->isNotEmpty()) {
+            $file->slots()->syncWithoutDetaching($slotModels->pluck('id')->all());
+        }
+
+        // TODO (siguiente fase): si la colección define variants y el tipo es image,
+        // encolar GenerateVariantsAction. Si encrypt=true, encolar EncryptFileAction.
+
+        return $file;
+    }
+
+    /**
+     * Extrae metadata declarada del upload SIN tocar el binario en el backend.
+     * Devuelve mime_type, size y extension. Para validación pre-move.
+     */
+    protected function declaredMetadata(UploadedFile|FileUpload|string $upload): array
+    {
+        if ($upload instanceof UploadedFile) {
+            return [
+                'mime_type' => $upload->getClientMimeType() ?: 'application/octet-stream',
+                'size'      => (int) $upload->getSize(),
+                'extension' => strtolower($upload->getClientOriginalExtension() ?: 'bin'),
+            ];
+        }
+
+        if ($upload instanceof FileUpload) {
+            return [
+                'mime_type' => $upload->mimeType,
+                'size'      => $upload->size,
+                'extension' => strtolower(pathinfo($upload->originalName, PATHINFO_EXTENSION) ?: 'bin'),
+            ];
+        }
+
+        // string key: backend ya tiene el archivo, no podemos saber mime/size sin un HEAD.
+        // No validamos (asumimos confianza). Caller responsable.
+        return [
+            'mime_type' => 'application/octet-stream',
+            'size'      => 0,
+            'extension' => strtolower(pathinfo($upload, PATHINFO_EXTENSION) ?: 'bin'),
+        ];
+    }
+
+    /**
+     * Valida que la collection acepte el tipo declarado, su mime y tamaño,
+     * y que los slots seleccionados acepten la extensión y tengan quota.
+     * Sin tocar el binario en el backend.
+     */
+    protected function validateAgainstCollection(
+        string $collection,
+        FileType $type,
+        array $declared,
+        ?Model $fileable,
+        ?File $parent,
+        StorageManager $manager,
+        \Illuminate\Support\Collection $slotModels,
+        ?Model $creator,
+    ): void {
         if (!$parent) {
             $morphAlias = $fileable?->getMorphClass();
 
@@ -99,28 +215,23 @@ class CreateFileAction extends Action
 
             $typeConfig = $manager->getTypeConfig($collection, $type->value, $morphAlias);
 
-            // 2a. MIME real contra accepted_mime_types.
             $acceptedMimes = $typeConfig['accepted_mime_types'] ?? [];
-            if (!empty($acceptedMimes) && !in_array($resolved['mime_type'], $acceptedMimes, true)) {
+            if (!empty($acceptedMimes) && !in_array($declared['mime_type'], $acceptedMimes, true)) {
                 throw new \InvalidArgumentException(
-                    "MIME '{$resolved['mime_type']}' no aceptado por la colección '{$collection}'. Permitidos: " . implode(', ', $acceptedMimes)
+                    "MIME '{$declared['mime_type']}' no aceptado por la colección '{$collection}'. Permitidos: " . implode(', ', $acceptedMimes)
                 );
             }
 
-            // 2b. Tamaño máximo (en KB).
             $maxSizeKb = $typeConfig['max_file_size'] ?? null;
-            if ($maxSizeKb && $resolved['size'] > $maxSizeKb * 1024) {
+            if ($maxSizeKb && $declared['size'] > $maxSizeKb * 1024) {
                 throw new \InvalidArgumentException(
                     "El archivo excede el tamaño máximo de {$maxSizeKb} KB para la colección '{$collection}'."
                 );
             }
         }
 
-        // 2c. Validación contra slots seleccionados (solo si se pasaron slots):
-        //   - acceptsExtension: el slot acepta la extensión del archivo
-        //   - canAcceptMore: el slot no ha alcanzado su quota (per_creator/global)
         if ($slotModels->isNotEmpty()) {
-            $extension = strtolower($resolved['extension'] ?? '');
+            $extension = $declared['extension'];
             $creatorType = $creator?->getMorphClass();
             $creatorId   = $creator?->getKey();
 
@@ -143,61 +254,6 @@ class CreateFileAction extends Action
                 }
             }
         }
-
-        // 2. Persistir File model
-        $file = File::create([
-            'slug'            => (string) Str::ulid(),
-            'parent_id'       => $parent?->getKey(),
-            'variant'         => $variant,
-            'fileable_type'   => $fileable?->getMorphClass(),
-            'fileable_id'     => $fileable?->getKey(),
-            'creator_type'    => $creator?->getMorphClass(),
-            'creator_id'      => $creator?->getKey(),
-            'owner_type'      => $owner?->getMorphClass(),
-            'owner_id'        => $owner?->getKey(),
-            'tenant_type'     => $tenant?->getMorphClass(),
-            'tenant_id'       => $tenant?->getKey(),
-            'disk'            => $disk,
-            'path'            => $resolved['path'],
-            'name'            => $resolved['name'],
-            'original_name'   => $resolved['original_name'],
-            'extension'       => $resolved['extension'],
-            'mime_type'       => $resolved['mime_type'],
-            'size'            => $resolved['size'],
-            'digest'          => $resolved['digest'] ?? null,
-            'context'         => $config['context'] ?? $disk,
-            'collection'      => $collection,
-            'type'            => $type,
-            'category'        => $data['category'] ?? null,
-            'access'          => $access,
-            'visibility'      => $data['visibility'] ?? null,
-            'sensitive'       => $sensitive,
-            'is_encrypted'    => $encrypt,
-            'title'           => $data['title'] ?? $resolved['original_name'],
-            'description'     => $data['description'] ?? null,
-            'label'           => $data['label'] ?? null,
-            'default'         => $data['default'] ?? false,
-            'position'        => $data['position'] ?? 0,
-            'duration'        => $resolved['duration'] ?? null,
-            'width'           => $resolved['width'] ?? null,
-            'height'          => $resolved['height'] ?? null,
-            'metadata'        => $data['metadata'] ?? [],
-            'processing_status' => $resolved['needs_processing'] ?? null,
-        ]);
-
-        if ($upload instanceof FileUpload) {
-            $upload->bindTo($file);
-        }
-
-        // Attach slots si vinieron en la llamada (ya validados arriba).
-        if ($slotModels->isNotEmpty()) {
-            $file->slots()->syncWithoutDetaching($slotModels->pluck('id')->all());
-        }
-
-        // TODO (siguiente fase): si la colección define variants y el tipo es image,
-        // encolar GenerateVariantsAction. Si encrypt=true, encolar EncryptFileAction.
-
-        return $file;
     }
 
     /**
