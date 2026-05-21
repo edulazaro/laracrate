@@ -18,12 +18,21 @@ use Illuminate\Support\Str;
  */
 class CreateFileAction extends Action
 {
+    /**
+     * Keys aceptadas dentro de `$data`. Cualquier otra lanza error explícito
+     * para evitar descartes silenciosos por typo.
+     */
+    private const ALLOWED_DATA_KEYS = [
+        'title', 'description', 'category', 'visibility',
+        'label', 'default', 'position', 'metadata',
+    ];
+
     public function handle(
         ?Model $fileable,
         string $collection,
         array $config,
         UploadedFile|FileUpload|string $upload,
-        array $metadata = [],
+        array $data = [],
         ?Model $creator = null,
         ?Model $owner = null,
         ?Model $tenant = null,
@@ -31,6 +40,15 @@ class CreateFileAction extends Action
         ?string $variant = null,
         array $slots = [],
     ): ?File {
+        // Validación: keys inesperadas en $data son typos o conceptos perdidos.
+        $unknown = array_diff(array_keys($data), self::ALLOWED_DATA_KEYS);
+        if (!empty($unknown)) {
+            throw new \InvalidArgumentException(
+                "Unknown key(s) in \$data: " . implode(', ', $unknown) .
+                ". Allowed: " . implode(', ', self::ALLOWED_DATA_KEYS) .
+                ". Para datos arbitrarios usa \$data['metadata']."
+            );
+        }
         // Si vienen slots como IDs, los resolvemos a modelos
         $slotModels = collect($slots)
             ->map(fn ($s) => $s instanceof \EduLazaro\Laracrate\Models\FileSlot
@@ -59,8 +77,8 @@ class CreateFileAction extends Action
         $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt);
 
         // Auto-position al final si no viene declarada explícitamente.
-        if (!isset($metadata['position']) && !$parent) {
-            $metadata['position'] = (int) (File::query()
+        if (!isset($data['position']) && !$parent) {
+            $data['position'] = (int) (File::query()
                 ->where('fileable_type', $fileable?->getMorphClass())
                 ->where('fileable_id', $fileable?->getKey())
                 ->where('collection', $collection)
@@ -150,20 +168,20 @@ class CreateFileAction extends Action
             'context'         => $config['context'] ?? $disk,
             'collection'      => $collection,
             'type'            => $type,
-            'category'        => $metadata['category'] ?? null,
+            'category'        => $data['category'] ?? null,
             'access'          => $access,
-            'visibility'      => $metadata['visibility'] ?? null,
+            'visibility'      => $data['visibility'] ?? null,
             'sensitive'       => $sensitive,
             'is_encrypted'    => $encrypt,
-            'title'           => $metadata['title'] ?? $resolved['original_name'],
-            'description'     => $metadata['description'] ?? null,
-            'label'           => $metadata['label'] ?? null,
-            'default'         => $metadata['default'] ?? false,
-            'position'        => $metadata['position'] ?? 0,
+            'title'           => $data['title'] ?? $resolved['original_name'],
+            'description'     => $data['description'] ?? null,
+            'label'           => $data['label'] ?? null,
+            'default'         => $data['default'] ?? false,
+            'position'        => $data['position'] ?? 0,
             'duration'        => $resolved['duration'] ?? null,
             'width'           => $resolved['width'] ?? null,
             'height'          => $resolved['height'] ?? null,
-            'metadata'        => $metadata['extras'] ?? [],
+            'metadata'        => $data['metadata'] ?? [],
             'processing_status' => $resolved['needs_processing'] ?? null,
         ]);
 

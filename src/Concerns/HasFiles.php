@@ -48,10 +48,22 @@ trait HasFiles
         return $this->files($collection)->where('type', 'image');
     }
 
+    /**
+     * Añade un archivo a la collection.
+     *
+     * `$data` acepta keys que se reparten así:
+     *   - Columnas dedicadas: `title`, `description`, `category`, `visibility`,
+     *     `label`, `default`, `position`. Cada una va a su columna del modelo.
+     *   - `metadata`: array que se serializa tal cual a la columna JSON `metadata`.
+     *
+     * Cualquier otra key en `$data` lanza InvalidArgumentException — para evitar
+     * descartes silenciosos por typo. Si necesitas guardar datos arbitrarios,
+     * ponlos bajo `data['metadata']`.
+     */
     public function addFile(
         UploadedFile|FileUpload|string $file,
         string $collection,
-        array $metadata = [],
+        array $data = [],
         array $slots = [],
         ?Model $creator = null,
         ?Model $owner = null,
@@ -63,7 +75,7 @@ trait HasFiles
             'collection' => $collection,
             'config'     => $config,
             'upload'     => $file,
-            'metadata'   => $metadata,
+            'data'       => $data,
             'creator'    => $creator ?? auth()->user(),
             'owner'      => $owner,
             'tenant'     => $this->resolveFileTenant(),
@@ -79,7 +91,7 @@ trait HasFiles
     public function setFile(
         string $collection,
         UploadedFile|FileUpload|string|null $file,
-        array $metadata = [],
+        array $data = [],
         ?Model $creator = null,
         ?Model $owner = null,
     ): ?File {
@@ -93,7 +105,7 @@ trait HasFiles
             return null;
         }
 
-        return $this->addFile($file, $collection, $metadata, creator: $creator, owner: $owner);
+        return $this->addFile($file, $collection, $data, creator: $creator, owner: $owner);
     }
 
     public function setDefaultFile(File $file): File
