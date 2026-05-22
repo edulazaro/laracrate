@@ -32,21 +32,6 @@ Polymorphic file storage for Laravel with direct upload to R2/S3, granular acces
 
 ## Installation
 
-### 1. Path repository in your app's `composer.json` (until it ships on Packagist)
-
-```json
-{
-    "repositories": [
-        { "type": "path", "url": "packages/edulazaro/laracrate", "options": { "symlink": true } }
-    ],
-    "require": {
-        "edulazaro/laracrate": "@dev"
-    }
-}
-```
-
-### 2. Install and publish
-
 ```bash
 composer require edulazaro/laracrate
 php artisan vendor:publish --tag=laracrate-config
@@ -61,7 +46,7 @@ php artisan migrate
 
 The `laracrate_` prefix avoids clashing with legacy `files` tables that exist in many Laravel apps.
 
-### 3. Disks in `config/filesystems.php`
+### Disks in `config/filesystems.php`
 
 Add the disks you intend to use (R2/S3 for real storage, `local` for dev):
 
