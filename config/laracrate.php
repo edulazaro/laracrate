@@ -408,12 +408,11 @@ return [
         // intenta con el siguiente. Vacío = defaults built-in (Pdf + Plain).
         //
         // Patrón típico para PDFs escaneados:
-        //   PdfTextExtractor      (smalot, gratis y rápido — PDFs nativos)
-        //   AnthropicPdfTextExtractor  (OCR con Claude — PDFs escaneados)
-        //   OpenAiPdfTextExtractor     (alternativa OCR con OpenAI Responses API)
+        //   PdfTextExtractor       (smalot, gratis y rápido — PDFs nativos)
+        //   OcrPdfTextExtractor    (OCR con Claude/OpenAI — PDFs escaneados)
         'extractors' => [
             // \EduLazaro\Laracrate\Extractors\PdfTextExtractor::class,
-            // \EduLazaro\Laracrate\Extractors\AnthropicPdfTextExtractor::class,
+            // \EduLazaro\Laracrate\Extractors\OcrPdfTextExtractor::class,
             // \EduLazaro\Laracrate\Extractors\PlainTextExtractor::class,
         ],
 
@@ -425,20 +424,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | OCR providers
+    | OCR (PDF scanning fallback)
     |--------------------------------------------------------------------------
     |
-    | Config opcional de los extractors de OCR para PDFs escaneados.
-    | Solo se usan si añades la clase correspondiente a `embeddings.extractors`.
+    | Config del OcrPdfTextExtractor. Provider seleccionable via env.
+    | API keys con prefijo LARACRATE_ y fallback a la key genérica del provider.
     */
     'ocr' => [
+        // 'anthropic' | 'openai'
+        'provider' => env('LARACRATE_OCR_PROVIDER', 'anthropic'),
+
         'anthropic' => [
-            'api_key' => env('ANTHROPIC_API_KEY'),
-            'model'   => env('ANTHROPIC_OCR_MODEL', 'claude-haiku-4-5'),
+            'api_key' => env('LARACRATE_ANTHROPIC_API_KEY') ?: env('ANTHROPIC_API_KEY'),
+            'model'   => env('LARACRATE_OCR_ANTHROPIC_MODEL', env('LARACRATE_OCR_MODEL', 'claude-haiku-4-5')),
         ],
+
         'openai' => [
-            'api_key' => env('OPENAI_API_KEY'),
-            'model'   => env('OPENAI_OCR_MODEL', 'gpt-4o-mini'),
+            'api_key' => env('LARACRATE_OPENAI_API_KEY') ?: env('OPENAI_API_KEY'),
+            'model'   => env('LARACRATE_OCR_OPENAI_MODEL', env('LARACRATE_OCR_MODEL', 'gpt-4o-mini')),
         ],
     ],
 
