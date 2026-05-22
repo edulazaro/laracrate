@@ -168,8 +168,14 @@ class CreateFileAction extends Action
     protected function declaredMetadata(UploadedFile|Binary|FileUpload|string $upload): array
     {
         if ($upload instanceof UploadedFile) {
+            // `getMimeType()` detecta el mime con finfo sobre el archivo real
+            // (siempre funciona). `getClientMimeType()` lee del header del
+            // browser, pero Livewire's TemporaryUploadedFile NO se lo pasa
+            // a su parent constructor → siempre devuelve octet-stream y
+            // rompe la detección de tipo en uploads vía WithFileUploads.
+            $mime = $upload->getMimeType() ?: ($upload->getClientMimeType() ?: 'application/octet-stream');
             return [
-                'mime_type' => $upload->getClientMimeType() ?: 'application/octet-stream',
+                'mime_type' => $mime,
                 'size'      => (int) $upload->getSize(),
                 'extension' => strtolower($upload->getClientOriginalExtension() ?: 'bin'),
             ];

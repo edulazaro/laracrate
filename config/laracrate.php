@@ -402,6 +402,44 @@ return [
 
         // Tamaño de batch al llamar al provider (chunks por request).
         'batch_size' => 16,
+
+        // Chain de extractors de texto. La extracción itera por orden y, si un
+        // extractor devuelve menos texto del que define `min_text_per_file`,
+        // intenta con el siguiente. Vacío = defaults built-in (Pdf + Plain).
+        //
+        // Patrón típico para PDFs escaneados:
+        //   PdfTextExtractor      (smalot, gratis y rápido — PDFs nativos)
+        //   AnthropicPdfTextExtractor  (OCR con Claude — PDFs escaneados)
+        //   OpenAiPdfTextExtractor     (alternativa OCR con OpenAI Responses API)
+        'extractors' => [
+            // \EduLazaro\Laracrate\Extractors\PdfTextExtractor::class,
+            // \EduLazaro\Laracrate\Extractors\AnthropicPdfTextExtractor::class,
+            // \EduLazaro\Laracrate\Extractors\PlainTextExtractor::class,
+        ],
+
+        // Umbral mínimo de chars que un extractor debe producir para considerarse
+        // exitoso. Si está por debajo, se intenta con el siguiente extractor
+        // de la chain. 100 chars cubre PDFs vacíos / sólo metadata.
+        'min_text_per_file' => 100,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | OCR providers
+    |--------------------------------------------------------------------------
+    |
+    | Config opcional de los extractors de OCR para PDFs escaneados.
+    | Solo se usan si añades la clase correspondiente a `embeddings.extractors`.
+    */
+    'ocr' => [
+        'anthropic' => [
+            'api_key' => env('ANTHROPIC_API_KEY'),
+            'model'   => env('ANTHROPIC_OCR_MODEL', 'claude-haiku-4-5'),
+        ],
+        'openai' => [
+            'api_key' => env('OPENAI_API_KEY'),
+            'model'   => env('OPENAI_OCR_MODEL', 'gpt-4o-mini'),
+        ],
     ],
 
     /*

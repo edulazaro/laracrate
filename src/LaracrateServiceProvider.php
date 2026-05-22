@@ -129,12 +129,29 @@ class LaracrateServiceProvider extends ServiceProvider
 
     protected function registerTextExtractorRegistry(): void
     {
-        $this->app->singleton(TextExtractorRegistry::class, function () {
+        $this->app->singleton(TextExtractorRegistry::class, function ($app) {
             $registry = new TextExtractorRegistry();
 
-            // Orden importa: primer extractor que diga supports() gana.
-            $registry->add(new PdfTextExtractor());
-            $registry->add(new PlainTextExtractor());
+            // Si la app configura `embeddings.extractors` como array de FQCN,
+            // se usa esa lista (control total sobre orden + qué incluir).
+            // Si no, se cargan los defaults built-in del package.
+            $configured = (array) config('laracrate.embeddings.extractors', []);
+
+            if (! empty($configured)) {
+                foreach ($configured as $class) {
+                    $instance = $app->make($class);
+                    if (! $instance instanceof \EduLazaro\Laracrate\Contracts\TextExtractor) {
+                        throw new \RuntimeException(
+                            "Laracrate: configured extractor [$class] must implement TextExtractor"
+                        );
+                    }
+                    $registry->add($instance);
+                }
+            } else {
+                // Orden importa: primer extractor que diga supports() gana.
+                $registry->add(new PdfTextExtractor());
+                $registry->add(new PlainTextExtractor());
+            }
 
             return $registry;
         });
