@@ -387,14 +387,24 @@ If a collection sets `'encrypt' => true`, the binary is encrypted with `EncryptF
 
 ```php
 'embeddings' => [
-    'enabled'       => false,
-    'provider'      => 'openai',
-    'api_key'       => env('LARACRATE_EMBEDDINGS_API_KEY'),
-    'model'         => env('LARACRATE_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
-    'dimensions'    => 1536,
-    'chunk_size'    => 1000,
-    'chunk_overlap' => 100,
-    'batch_size'    => 16,
+    'enabled'           => false,
+    'provider'          => 'openai',
+    'api_key'           => env('LARACRATE_EMBEDDINGS_API_KEY'),
+    'model'             => env('LARACRATE_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
+    'dimensions'        => 1536,
+    'chunk_size'        => 1000,
+    'chunk_overlap'     => 100,
+    'batch_size'        => 16,
+
+    // Fallback chain of text extractors. Run in order; if one returns less
+    // than `min_text_per_file` chars, the next is tried. Empty = built-in
+    // defaults (PdfTextExtractor + PlainTextExtractor).
+    'extractors' => [
+        // \EduLazaro\Laracrate\Extractors\PdfTextExtractor::class,
+        // \EduLazaro\Laracrate\Extractors\OcrPdfTextExtractor::class,
+        // \EduLazaro\Laracrate\Extractors\PlainTextExtractor::class,
+    ],
+    'min_text_per_file' => 100,
 ],
 ```
 
@@ -423,7 +433,15 @@ $this->app->bind(
 Custom text extractor:
 
 ```php
-// AppServiceProvider::boot()
+// Option A: declarative, via config (recommended).
+'embeddings' => [
+    'extractors' => [
+        \EduLazaro\Laracrate\Extractors\PdfTextExtractor::class,
+        \App\Extractors\MyOcrExtractor::class,
+    ],
+],
+
+// Option B: imperative, registered at boot.
 $registry = app(\EduLazaro\Laracrate\Support\TextExtractorRegistry::class);
 $registry->add(new \App\Extractors\MyOcrExtractor());
 ```
@@ -432,8 +450,64 @@ Bundled implementations:
 
 - `OpenAiEmbeddingProvider` (default).
 - `NullEmbeddingProvider` (no-op for testing).
-- `PdfTextExtractor` (PDFs via `smalot/pdfparser`).
+- `PdfTextExtractor` (PDFs via `smalot/pdfparser`, native text only).
 - `PlainTextExtractor` (text/*).
+- `OcrPdfTextExtractor` (OCR fallback for scanned PDFs, configured below).
+
+### `ocr`, PDF scanning fallback
+
+For PDFs that don't have extractable native text (scanned documents), the
+package ships `OcrPdfTextExtractor`. It sends the PDF base64 to an API and
+gets back the extracted text. No Imagick, no Ghostscript, no `shell_exec`,
+no `pdftoppm`. Just PHP and HTTP.
+
+```php
+'ocr' => [
+    'provider' => env('LARACRATE_OCR_PROVIDER', 'anthropic'),  // 'anthropic' | 'openai'
+
+    'anthropic' => [
+        'api_key' => env('LARACRATE_ANTHROPIC_API_KEY') ?: env('ANTHROPIC_API_KEY'),
+        'model'   => env('LARACRATE_OCR_ANTHROPIC_MODEL', env('LARACRATE_OCR_MODEL', 'claude-haiku-4-5')),
+    ],
+
+    'openai' => [
+        'api_key' => env('LARACRATE_OPENAI_API_KEY') ?: env('OPENAI_API_KEY'),
+        'model'   => env('LARACRATE_OCR_OPENAI_MODEL', env('LARACRATE_OCR_MODEL', 'gpt-4o-mini')),
+    ],
+],
+```
+
+**API key resolution**, in order:
+
+1. Explicit constructor argument (advanced).
+2. Provider-specific `LARACRATE_*_API_KEY` (so the package has its own key, distinct from other usages in the app).
+3. Fallback to the generic provider env (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+
+**Model resolution**, in order:
+
+1. Provider-specific `LARACRATE_OCR_{PROVIDER}_MODEL` (e.g. `LARACRATE_OCR_ANTHROPIC_MODEL`).
+2. Generic `LARACRATE_OCR_MODEL` (applies to whichever provider is active).
+3. Hardcoded default (`claude-haiku-4-5` / `gpt-4o-mini`).
+
+**Recommended chain** for legal / scanned documents:
+
+```php
+'embeddings' => [
+    'extractors' => [
+        \EduLazaro\Laracrate\Extractors\PdfTextExtractor::class,     // 1. smalot, free, instant
+        \EduLazaro\Laracrate\Extractors\OcrPdfTextExtractor::class,  // 2. OCR fallback for scanned PDFs
+        \EduLazaro\Laracrate\Extractors\PlainTextExtractor::class,   // 3. text/*
+    ],
+    'min_text_per_file' => 100,  // if smalot returns < 100 chars, fall back to OCR
+],
+```
+
+**Cost reference per 10-page PDF** (rough estimates, may change):
+
+| Provider | Model | Cost | Native PDF |
+| --- | --- | --- | --- |
+| Anthropic | `claude-haiku-4-5` | ~$0.004 | yes (messages API `document` source) |
+| OpenAI | `gpt-4o-mini` | ~$0.005 | yes (Responses API `input_file`) |
 
 ### `watermark`, per-variant watermark
 
