@@ -538,4 +538,15 @@ class File extends Model
     {
         return $this->type === FileType::DOCUMENT;
     }
+
+    /**
+     * PDF check específico. Útil porque las apps suelen tener un extractor
+     * de PDF distinto al resto de documentos (escaneados vs nativos, OCR,
+     * extracción de texto con smalot/pdfparser, etc.).
+     */
+    public function isPdf(): bool
+    {
+        return $this->mime_type === 'application/pdf'
+            || strtolower($this->extension ?? '') === 'pdf';
+    }
 }
