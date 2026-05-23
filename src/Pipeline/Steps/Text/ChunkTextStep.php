@@ -3,11 +3,11 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Text;
 
 use EduLazaro\Laracrate\Actions\Files\ChunkTextAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Support\CollectionConfig;
+use EduLazaro\Laracrate\Support\ExtractionResolver;
 
-class ChunkTextStep implements ProcessingStep
+class ChunkTextStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {
@@ -15,15 +15,19 @@ class ChunkTextStep implements ProcessingStep
             return false;
         }
 
-        $colRoot = CollectionConfig::resolve($file->collection, $file->fileable_type);
-        $embed   = (bool) ($colRoot['embed'] ?? false);
-
-        if (!$embed) {
+        if (! ExtractionResolver::shouldEmbed($file)) {
             return false;
         }
 
-        // Solo si ExtractTextStep dejó texto en file_contents.
-        return $file->contents()->whereNotNull('text')->exists();
+        // Solo si ExtractTextStep dejó el sidecar `.json` en storage.
+        // El texto vive en storage (canonical) y se duplica en MySQL chunk
+        // por chunk durante este step (para keyword search FULLTEXT).
+        if (! $file->disk || ! $file->path) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk($file->disk)
+            ->exists($file->path . '.json');
     }
 
     public function priority(): int

@@ -3,12 +3,12 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Video;
 
 use EduLazaro\Laracrate\Actions\Files\Video\TranscodeVideoAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 
-class TranscodeVideoStep implements ProcessingStep
+class TranscodeVideoStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {

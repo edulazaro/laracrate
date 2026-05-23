@@ -4,7 +4,7 @@ namespace EduLazaro\Laracrate\Extractors;
 
 use EduLazaro\Laracrate\Contracts\TextExtractor;
 use EduLazaro\Laracrate\Models\File;
-use Illuminate\Support\Facades\Storage;
+use EduLazaro\Laracrate\Support\ExtractedContent;
 use RuntimeException;
 
 /**
@@ -13,6 +13,9 @@ use RuntimeException;
  * El package no fuerza la dependencia. Si la app necesita esta extracción,
  * tiene que añadir `composer require smalot/pdfparser`. Si no está
  * instalado, `supports()` devuelve false y el pipeline lo omite limpiamente.
+ *
+ * Extrae per-page (preservando page_number) para que apps puedan citar/mostrar
+ * por página.
  */
 class PdfTextExtractor implements TextExtractor
 {
@@ -25,7 +28,7 @@ class PdfTextExtractor implements TextExtractor
         return class_exists(\Smalot\PdfParser\Parser::class);
     }
 
-    public function extract(File $file): string
+    public function extract(File $file): ExtractedContent
     {
         if (!class_exists(\Smalot\PdfParser\Parser::class)) {
             throw new RuntimeException(
@@ -50,9 +53,20 @@ class PdfTextExtractor implements TextExtractor
 
             $parser = new \Smalot\PdfParser\Parser();
             $pdf = $parser->parseFile($tmpPath);
-            $text = $pdf->getText();
 
-            return trim(preg_replace('/\s+/u', ' ', (string) $text));
+            $pages = [];
+            foreach ($pdf->getPages() as $idx => $page) {
+                $text = trim(preg_replace('/\s+/u', ' ', (string) $page->getText()));
+                $pages[] = [
+                    'page_number' => $idx + 1,
+                    'text'        => $text,
+                ];
+            }
+
+            return ExtractedContent::fromPages($pages, [
+                'extractor'   => static::class,
+                'total_pages' => count($pages),
+            ]);
         } finally {
             if (file_exists($tmpPath)) {
                 @unlink($tmpPath);

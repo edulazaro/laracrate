@@ -3,13 +3,13 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Image;
 
 use EduLazaro\Laracrate\Actions\Files\Image\OptimizeImageAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\CollectionConfig;
 
-class OptimizeImageStep implements ProcessingStep
+class OptimizeImageStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {

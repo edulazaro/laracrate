@@ -3,12 +3,12 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Text;
 
 use EduLazaro\Laracrate\Actions\Files\ExtractTextAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Support\CollectionConfig;
+use EduLazaro\Laracrate\Support\ExtractionResolver;
 use EduLazaro\Laracrate\Support\TextExtractorRegistry;
 
-class ExtractTextStep implements ProcessingStep
+class ExtractTextStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {
@@ -16,11 +16,10 @@ class ExtractTextStep implements ProcessingStep
             return false;
         }
 
-        $colRoot     = CollectionConfig::resolve($file->collection, $file->fileable_type);
-        $extractText = (bool) ($colRoot['extract_text'] ?? false);
-        $embed       = (bool) ($colRoot['embed'] ?? false);
-
-        if (!$extractText && !$embed) {
+        // `extract` y `embed` admiten bool o array de FileTypes en la collection
+        // config. ExtractionResolver consulta tambien overrides app-level (org,
+        // case) si la app registr&oacute; uno via setOverrideResolver().
+        if (!ExtractionResolver::shouldExtract($file) && !ExtractionResolver::shouldEmbed($file)) {
             return false;
         }
 

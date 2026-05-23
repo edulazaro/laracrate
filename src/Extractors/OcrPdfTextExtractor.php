@@ -4,6 +4,7 @@ namespace EduLazaro\Laracrate\Extractors;
 
 use EduLazaro\Laracrate\Contracts\TextExtractor;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\ExtractedContent;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -43,7 +44,7 @@ class OcrPdfTextExtractor implements TextExtractor
             || strtolower($file->extension ?? '') === 'pdf';
     }
 
-    public function extract(File $file): string
+    public function extract(File $file): ExtractedContent
     {
         $bytes = Storage::disk($file->disk)->get($file->path);
         if ($bytes === null || $bytes === false) {
@@ -52,11 +53,67 @@ class OcrPdfTextExtractor implements TextExtractor
 
         $base64 = base64_encode($bytes);
 
-        return match ($this->provider) {
+        $raw = match ($this->provider) {
             'openai'    => $this->extractWithOpenAi($base64, $file),
             'anthropic' => $this->extractWithAnthropic($base64),
             default     => throw new RuntimeException("OCR provider desconocido: {$this->provider}"),
         };
+
+        // Intentamos parsear el output como JSON con páginas. Si la API
+        // devolvió texto plano (no estructurado), caemos a single-page.
+        $pages = $this->parsePagesFromResponse($raw);
+
+        if (! empty($pages)) {
+            return ExtractedContent::fromPages($pages, [
+                'extractor' => static::class,
+                'provider'  => $this->provider,
+            ]);
+        }
+
+        return ExtractedContent::singlePage($raw, [
+            'extractor' => static::class,
+            'provider'  => $this->provider,
+        ]);
+    }
+
+    /**
+     * Si el modelo siguió las instrucciones, la respuesta es JSON con
+     * `{pages: [{page_number, text}]}`. Si devolvió texto plano, parsea
+     * `### Page N` markers como fallback. Si nada match, devuelve [].
+     */
+    protected function parsePagesFromResponse(string $raw): array
+    {
+        $trimmed = trim($raw);
+
+        // 1) JSON puro o dentro de code-fence.
+        $jsonCandidate = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $trimmed);
+        $decoded = json_decode($jsonCandidate, true);
+        if (is_array($decoded) && isset($decoded['pages']) && is_array($decoded['pages'])) {
+            return array_values(array_filter(array_map(function ($p) {
+                if (! is_array($p)) return null;
+                return [
+                    'page_number' => (int) ($p['page_number'] ?? 0),
+                    'text'        => (string) ($p['text'] ?? ''),
+                ];
+            }, $decoded['pages'])));
+        }
+
+        // 2) Markdown markers `### Page N` (heurística simple).
+        if (preg_match_all('/^(?:#{1,3}\s*)?Page\s+(\d+)\s*$/mi', $trimmed, $matches, PREG_OFFSET_CAPTURE)) {
+            $pages = [];
+            for ($i = 0; $i < count($matches[0]); $i++) {
+                $pageNum = (int) $matches[1][$i][0];
+                $start = $matches[0][$i][1] + strlen($matches[0][$i][0]);
+                $end = $matches[0][$i + 1][1] ?? strlen($trimmed);
+                $pages[] = [
+                    'page_number' => $pageNum,
+                    'text'        => trim(substr($trimmed, $start, $end - $start)),
+                ];
+            }
+            return $pages;
+        }
+
+        return [];
     }
 
     protected function extractWithAnthropic(string $base64): string
@@ -102,7 +159,9 @@ class OcrPdfTextExtractor implements TextExtractor
                             'text' => 'Extract ALL text from this PDF document verbatim. '
                                 . 'Preserve the original structure (paragraphs, lists, tables as markdown). '
                                 . 'Do NOT summarize, paraphrase or add commentary. '
-                                . 'Output only the extracted text content.',
+                                . 'Output ONLY a valid JSON object with this exact shape: '
+                                . '{"pages":[{"page_number":1,"text":"..."},{"page_number":2,"text":"..."}]}. '
+                                . 'No markdown code fences. No commentary. JSON only.',
                         ],
                     ],
                 ]],
@@ -161,7 +220,9 @@ class OcrPdfTextExtractor implements TextExtractor
                             'text' => 'Extract ALL text from this PDF document verbatim. '
                                 . 'Preserve the original structure (paragraphs, lists, tables as markdown). '
                                 . 'Do NOT summarize, paraphrase or add commentary. '
-                                . 'Output only the extracted text content.',
+                                . 'Output ONLY a valid JSON object with this exact shape: '
+                                . '{"pages":[{"page_number":1,"text":"..."},{"page_number":2,"text":"..."}]}. '
+                                . 'No markdown code fences. No commentary. JSON only.',
                         ],
                     ],
                 ]],

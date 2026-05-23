@@ -3,12 +3,12 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Document;
 
 use EduLazaro\Laracrate\Actions\Files\Document\ExtractPdfPreviewAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 
-class ExtractPdfPreviewStep implements ProcessingStep
+class ExtractPdfPreviewStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {

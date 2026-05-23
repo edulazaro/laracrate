@@ -3,13 +3,17 @@
 namespace EduLazaro\Laracrate\Contracts;
 
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\ExtractedContent;
 
 /**
- * Extractor de texto plano de un File.
+ * Extractor de contenido textual de un File.
  *
- * Implementaciones: PdfTextExtractor (smalot/pdfparser), PlainTextExtractor
- * (text/*, csv), OcrTextExtractor (Tesseract sobre imágenes), AudioTextExtractor
- * (Whisper sobre audio). El package incluye los dos primeros.
+ * Implementaciones built-in:
+ *   - PdfTextExtractor (smalot/pdfparser, per-page con page_number real)
+ *   - PlainTextExtractor (text/*, single-page)
+ *   - OcrPdfTextExtractor (Claude/OpenAI con PDF nativo, single-page)
+ *
+ * Devuelve un DTO `ExtractedContent` con texto completo + páginas + metadata.
  */
 interface TextExtractor
 {
@@ -19,7 +23,7 @@ interface TextExtractor
     public function supports(File $file): bool;
 
     /**
-     * Devuelve el texto extraído. Lanza excepción si falla.
+     * Extrae el contenido estructurado del file. Lanza excepción si falla.
      */
-    public function extract(File $file): string;
+    public function extract(File $file): ExtractedContent;
 }

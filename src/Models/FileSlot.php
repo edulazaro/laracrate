@@ -39,6 +39,7 @@ class FileSlot extends Model
         'description',
         'color',
         'allowed_extensions',
+        'allowed_types',
         'max_files_per_creator',
         'max_files_total',
         'position',
@@ -46,6 +47,7 @@ class FileSlot extends Model
 
     protected $casts = [
         'allowed_extensions'    => 'array',
+        'allowed_types'         => 'array',
         'max_files_per_creator' => 'integer',
         'max_files_total'       => 'integer',
         'position'              => 'integer',
@@ -118,5 +120,31 @@ class FileSlot extends Model
         $extension = strtolower(trim($extension, '.'));
         if (empty($this->allowed_extensions)) return true;
         return in_array($extension, array_map('strtolower', $this->allowed_extensions), true);
+    }
+
+    /**
+     * Comprueba si el FileType (document/image/video/audio) está permitido
+     * por este slot. Lista vacía/null = todo permitido.
+     */
+    public function acceptsType(string $type): bool
+    {
+        if (empty($this->allowed_types)) return true;
+        return in_array($type, $this->allowed_types, true);
+    }
+
+    /**
+     * Validación completa del file contra el slot. Aplica AND entre extension
+     * y type: si ambas restricciones están declaradas, el file debe cumplir las
+     * dos. Si solo una está declarada, solo se valida esa.
+     */
+    public function accepts(File $file): bool
+    {
+        $extension = strtolower((string) $file->extension);
+        $type      = (string) ($file->type?->value ?? $file->type);
+
+        if (! $this->acceptsExtension($extension)) return false;
+        if (! $this->acceptsType($type)) return false;
+
+        return true;
     }
 }

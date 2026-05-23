@@ -32,7 +32,7 @@ use EduLazaro\Laracrate\Policies\FilePolicy;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Services\UsageReporter;
 use EduLazaro\Laracrate\Support\PolicyRegistry;
-use EduLazaro\Laracrate\Support\ProcessingPipelineRegistry;
+use EduLazaro\Laracrate\Support\FileActionRegistry;
 use EduLazaro\Laracrate\Support\TextExtractorRegistry;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -54,7 +54,7 @@ class LaracrateServiceProvider extends ServiceProvider
 
         $this->registerEmbeddingProvider();
         $this->registerTextExtractorRegistry();
-        $this->registerProcessingPipelineRegistry();
+        $this->registerFileActionRegistry();
     }
 
     public function boot(): void
@@ -162,10 +162,10 @@ class LaracrateServiceProvider extends ServiceProvider
      * pueden añadir / quitar pasos resolviendo el registry desde su propio
      * ServiceProvider.
      */
-    protected function registerProcessingPipelineRegistry(): void
+    protected function registerFileActionRegistry(): void
     {
-        $this->app->singleton(ProcessingPipelineRegistry::class, function () {
-            $registry = new ProcessingPipelineRegistry();
+        $this->app->singleton(FileActionRegistry::class, function () {
+            $registry = new FileActionRegistry();
 
             // Imagen
             $registry->add(new ExtractImageDimensionsStep());

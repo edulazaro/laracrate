@@ -75,17 +75,24 @@ class FileObserver
         }
 
         $key = $file->key;
+        $manager = app(StorageManager::class);
 
-        try {
-            app(StorageManager::class)->deleteFromBackend($file->disk, $key);
-        } catch (Throwable $e) {
-            // No reventamos por fallo del backend en deletes. Loggeamos.
-            logger()->warning('Laracrate: fallo al borrar asset del backend', [
-                'file_id' => $file->id,
-                'disk'    => $file->disk,
-                'key'     => $key,
-                'error'   => $e->getMessage(),
-            ]);
+        // Borramos el binario principal + sidecars de extracción/chunks.
+        // El contenido extraído y los chunks JSONL viven adyacentes al binario:
+        //   {path}.json         → contenido extraído estructurado (full_text + pages)
+        //   {path}.chunks.jsonl → chunks + embeddings (backup)
+        // No lanzamos si fallan: log y seguimos (best-effort).
+        foreach ([$key, $key . '.json', $key . '.chunks.jsonl'] as $assetKey) {
+            try {
+                $manager->deleteFromBackend($file->disk, $assetKey);
+            } catch (Throwable $e) {
+                logger()->warning('Laracrate: fallo al borrar asset del backend', [
+                    'file_id' => $file->id,
+                    'disk'    => $file->disk,
+                    'key'     => $assetKey,
+                    'error'   => $e->getMessage(),
+                ]);
+            }
         }
     }
 }

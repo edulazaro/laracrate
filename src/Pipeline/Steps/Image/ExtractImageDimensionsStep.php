@@ -3,11 +3,11 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Image;
 
 use EduLazaro\Laracrate\Actions\Files\Image\ExtractImageDimensionsAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 
-class ExtractImageDimensionsStep implements ProcessingStep
+class ExtractImageDimensionsStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {

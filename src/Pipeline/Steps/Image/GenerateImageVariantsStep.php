@@ -3,12 +3,12 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Image;
 
 use EduLazaro\Laracrate\Actions\Files\Image\GenerateImageVariantsAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 
-class GenerateImageVariantsStep implements ProcessingStep
+class GenerateImageVariantsStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {

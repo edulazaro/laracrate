@@ -4,7 +4,7 @@ namespace EduLazaro\Laracrate\Extractors;
 
 use EduLazaro\Laracrate\Contracts\TextExtractor;
 use EduLazaro\Laracrate\Models\File;
-use Illuminate\Support\Facades\Storage;
+use EduLazaro\Laracrate\Support\ExtractedContent;
 
 class PlainTextExtractor implements TextExtractor
 {
@@ -27,7 +27,7 @@ class PlainTextExtractor implements TextExtractor
         return str_starts_with((string) $file->mime_type, 'text/');
     }
 
-    public function extract(File $file): string
+    public function extract(File $file): ExtractedContent
     {
         $key = $file->key;
         $contents = app(\EduLazaro\Laracrate\Services\StorageManager::class)
@@ -35,9 +35,13 @@ class PlainTextExtractor implements TextExtractor
             ->get($key);
 
         if ($contents === null) {
-            return '';
+            return ExtractedContent::singlePage('', ['extractor' => static::class]);
         }
 
-        return mb_convert_encoding($contents, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
+        $text = mb_convert_encoding($contents, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252');
+
+        return ExtractedContent::singlePage($text, [
+            'extractor' => static::class,
+        ]);
     }
 }

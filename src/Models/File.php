@@ -36,6 +36,9 @@ class File extends Model
         'duration', 'width', 'height', 'bitrate', 'sample_rate',
         'metadata',
         'processing_status', 'processing_error', 'processing_started_at',
+        'processing_extractor', 'processing_provider', 'processing_model',
+        'summary',
+        'mysql_indexed_at', 'meili_indexed_at', 'storage_indexed_at',
         'downloads_count', 'last_downloaded_at',
     ];
 
@@ -59,6 +62,9 @@ class File extends Model
         'processing_status'     => ProcessingStatus::class,
         'last_downloaded_at'    => 'datetime',
         'processing_started_at' => 'datetime',
+        'mysql_indexed_at'      => 'datetime',
+        'meili_indexed_at'      => 'datetime',
+        'storage_indexed_at'    => 'datetime',
     ];
 
     public function getRouteKeyName(): string
@@ -112,18 +118,40 @@ class File extends Model
         return $this->hasMany(self::class, 'parent_id');
     }
 
-    public function contents(): HasMany
+    /**
+     * Chunks del file (registry). 1 fila por chunk con chunk_index, status,
+     * metadata. El payload pesado (text + embedding) vive en `FileChunkData`
+     * via `$chunk->data` (HasOne).
+     */
+    public function chunks(): HasMany
     {
-        return $this->hasMany(FileContent::class)->orderBy('chunk_index');
+        return $this->hasMany(FileChunk::class)->orderBy('chunk_index');
     }
 
     /**
      * Acceso 1:1 al primer chunk (chunk_index=0). Útil para apps que NO usan
-     * chunking y guardan todo el texto extraído en una sola fila por archivo.
+     * chunking y guardan todo el texto en una sola fila por archivo.
+     */
+    public function chunk(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(FileChunk::class)->where('chunk_index', 0);
+    }
+
+    /**
+     * @deprecated Usa `chunks()` en lugar de `contents()`. Alias temporal
+     *             para apps que migran del nombre viejo.
+     */
+    public function contents(): HasMany
+    {
+        return $this->chunks();
+    }
+
+    /**
+     * @deprecated Usa `chunk()` en lugar de `content()`.
      */
     public function content(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->hasOne(FileContent::class)->where('chunk_index', 0);
+        return $this->chunk();
     }
 
     public function slots(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
@@ -206,24 +234,14 @@ class File extends Model
     }
 
     /**
-     * Devuelve el texto extraído reuniendo todos los chunks en orden.
-     */
-    public function extractedText(): ?string
-    {
-        $chunks = $this->contents()->whereNotNull('text')->pluck('text');
-        if ($chunks->isEmpty()) return null;
-        return $chunks->implode("\n");
-    }
-
-    /**
      * True si todos los chunks tienen embedding generado.
      */
     public function hasEmbeddings(): bool
     {
-        $total = $this->contents()->count();
+        $total = $this->chunks()->count();
         if ($total === 0) return false;
 
-        $embedded = $this->contents()->whereNotNull('embedding')->count();
+        $embedded = $this->chunks()->whereHas('data', fn ($q) => $q->whereNotNull('embedding'))->count();
         return $embedded === $total;
     }
 
@@ -237,6 +255,23 @@ class File extends Model
     }
 
     public function scopeWithDescendants(Builder $query, int $depth = 2): Builder
+    {
+        $relation = rtrim(str_repeat('children.', $depth), '.');
+        return $query->with($relation);
+    }
+
+    /**
+     * Carga el árbol completo de variants del file: preview, sus thumbnails,
+     * cualquier variant derivado más abajo. Por defecto baja 3 niveles, que
+     * cubre la cadena típica `file → preview → thumbnail|small|medium|large`
+     * con margen para una capa extra (watermarked, etc).
+     *
+     *   File::withVariants()->get()
+     *   File::withVariants(2)->get()  ← solo file → preview → variants
+     *
+     * Luego se navega con `$file->variant('preview.thumbnail')` etc.
+     */
+    public function scopeWithVariants(Builder $query, int $depth = 3): Builder
     {
         $relation = rtrim(str_repeat('children.', $depth), '.');
         return $query->with($relation);
@@ -548,5 +583,83 @@ class File extends Model
     {
         return $this->mime_type === 'application/pdf'
             || strtolower($this->extension ?? '') === 'pdf';
+    }
+
+    /**
+     * Contenido extraído estructurado. Vive en storage como `{path}.json`:
+     * `{full_text, pages: [{page_number, text}], metadata}`.
+     *
+     * Devuelve null si la extracción no se ha ejecutado.
+     */
+    public function extractedContent(): ?\EduLazaro\Laracrate\Support\ExtractedContent
+    {
+        if (! $this->disk || ! $this->path) {
+            return null;
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk($this->disk);
+        $jsonPath = $this->path . '.json';
+
+        if (! $disk->exists($jsonPath)) {
+            return null;
+        }
+
+        $data = json_decode((string) $disk->get($jsonPath), true);
+        if (! is_array($data)) {
+            return null;
+        }
+
+        return \EduLazaro\Laracrate\Support\ExtractedContent::fromArray($data);
+    }
+
+    /**
+     * Texto completo extraído (atajo a `extractedContent()->fullText`).
+     */
+    public function extractedText(): ?string
+    {
+        return $this->extractedContent()?->fullText;
+    }
+
+    /**
+     * Texto de un chunk específico. Lee del JSONL sidecar.
+     *
+     * Para múltiples chunks, mejor `$this->chunksJsonl()` y reutilizar.
+     */
+    public function chunkText(int $chunkIndex): ?string
+    {
+        $chunks = $this->chunksJsonl();
+        return $chunks[$chunkIndex]['text'] ?? null;
+    }
+
+    /**
+     * Todos los chunks del JSONL como array indexado por chunk_index.
+     * Cada elemento: ['chunk_index', 'text', 'tokens', 'page_number',
+     * 'page_numbers', 'embedding'?].
+     *
+     * Devuelve [] si el JSONL no existe.
+     */
+    public function chunksJsonl(): array
+    {
+        if (! $this->disk || ! $this->path) {
+            return [];
+        }
+
+        $disk = \Illuminate\Support\Facades\Storage::disk($this->disk);
+        $jsonlPath = $this->path . '.chunks.jsonl';
+
+        if (! $disk->exists($jsonlPath)) {
+            return [];
+        }
+
+        $chunks = [];
+        foreach (explode("\n", trim($disk->get($jsonlPath))) as $line) {
+            if (empty($line)) continue;
+            $parsed = json_decode($line, true);
+            if (is_array($parsed) && isset($parsed['chunk_index'])) {
+                $chunks[$parsed['chunk_index']] = $parsed;
+            }
+        }
+
+        return $chunks;
     }
 }

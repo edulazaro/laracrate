@@ -3,12 +3,12 @@
 namespace EduLazaro\Laracrate\Pipeline\Steps\Text;
 
 use EduLazaro\Laracrate\Actions\Files\GenerateEmbeddingAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Events\EmbeddingsReady;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Support\CollectionConfig;
+use EduLazaro\Laracrate\Support\ExtractionResolver;
 
-class GenerateEmbeddingStep implements ProcessingStep
+class GenerateEmbeddingStep implements FileActionInterface
 {
     public function supports(File $file): bool
     {
@@ -16,15 +16,12 @@ class GenerateEmbeddingStep implements ProcessingStep
             return false;
         }
 
-        $colRoot = CollectionConfig::resolve($file->collection, $file->fileable_type);
-        $embed   = (bool) ($colRoot['embed'] ?? false);
-
-        if (!$embed) {
+        if (! ExtractionResolver::shouldEmbed($file)) {
             return false;
         }
 
         // Solo si hay chunks con texto pendientes de embedding.
-        return $file->contents()
+        return $file->chunks()
             ->whereNotNull('text')
             ->whereNull('embedding')
             ->exists();
