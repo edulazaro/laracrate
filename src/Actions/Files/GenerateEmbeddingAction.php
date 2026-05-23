@@ -30,6 +30,7 @@ class GenerateEmbeddingAction extends Action
 
         $pending = FileChunk::where('file_id', $file->id)
             ->whereNotNull('text')
+            ->whereRaw('LENGTH(TRIM(text)) > 0')
             ->whereNull('embedding')
             ->orderBy('chunk_index')
             ->get();

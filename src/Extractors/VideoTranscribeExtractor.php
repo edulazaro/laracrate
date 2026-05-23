@@ -82,16 +82,32 @@ class VideoTranscribeExtractor implements TextExtractor
             if (file_exists($tmpAudio)) @unlink($tmpAudio);
         }
 
-        $fullText = trim($audioText);
+        // Cada modalidad se emite como página separada con su `context` para
+        // que el chunker produzca filas independientes en `laracrate_file_chunks`
+        // (un embedding por modalidad: la búsqueda semántica matchea contra
+        // transcripción literal Y descripción visual por separado).
+        $audioText  = trim($audioText);
+        $framesText = trim($framesText);
+
+        $pages = [];
+        if ($audioText !== '') {
+            $pages[] = ['page_number' => 1, 'text' => $audioText, 'context' => 'text'];
+        }
         if ($framesText !== '') {
-            $fullText .= ($fullText !== '' ? "\n\n" : '') . "[Descripción visual]\n" . $framesText;
+            $pages[] = ['page_number' => count($pages) + 1, 'text' => $framesText, 'context' => 'description'];
         }
 
-        return ExtractedContent::singlePage($fullText, [
-            'extractor'    => static::class,
-            'provider'     => 'openai',
-            'has_audio'    => $audioText !== '',
-            'has_visual'   => $framesText !== '',
+        // Defensa: si no hay nada, devolvemos página vacía para que el pipeline
+        // marque el File como procesado sin texto.
+        if (empty($pages)) {
+            $pages[] = ['page_number' => 1, 'text' => ''];
+        }
+
+        return ExtractedContent::fromPages($pages, [
+            'extractor'  => static::class,
+            'provider'   => 'openai',
+            'has_audio'  => $audioText !== '',
+            'has_visual' => $framesText !== '',
         ]);
     }
 
