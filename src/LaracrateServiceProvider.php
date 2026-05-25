@@ -2,6 +2,8 @@
 
 namespace EduLazaro\Laracrate;
 
+use EduLazaro\Laracrate\Chunks\MysqlChunkStore;
+use EduLazaro\Laracrate\Contracts\ChunkStore;
 use EduLazaro\Laracrate\Contracts\EmbeddingProvider;
 use EduLazaro\Laracrate\Embeddings\NullEmbeddingProvider;
 use EduLazaro\Laracrate\Embeddings\OpenAiEmbeddingProvider;
@@ -25,6 +27,7 @@ use EduLazaro\Laracrate\Pipeline\Steps\Image\OptimizeImageStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\ChunkTextStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\ExtractTextStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\GenerateEmbeddingStep;
+use EduLazaro\Laracrate\Pipeline\Steps\Text\PersistChunksStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Video\ExtractVideoDimensionsStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Video\ExtractVideoPreviewStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Video\TranscodeVideoStep;
@@ -55,6 +58,61 @@ class LaracrateServiceProvider extends ServiceProvider
         $this->registerEmbeddingProvider();
         $this->registerTextExtractorRegistry();
         $this->registerFileActionRegistry();
+        $this->registerChunkStore();
+    }
+
+    /**
+     * Binding del backend de chunks (storage + búsqueda). Default `mysql`
+     * (sin dependencias externas). Apps pueden cambiar a `meilisearch`
+     * vía LARACRATE_CHUNKS_DRIVER y debe registrar Meilisearch\Client en
+     * el container.
+     *
+     * Drivers custom (Qdrant, pgvector...): la app puede bindear ChunkStore
+     * directamente a su implementación; este binding se ignora.
+     */
+    protected function registerChunkStore(): void
+    {
+        $this->app->singleton(ChunkStore::class, function ($app) {
+            $driver = config('laracrate.chunks.driver', 'mysql');
+
+            return match ($driver) {
+                'meilisearch' => $this->makeMeilisearchChunkStore($app),
+                default => new MysqlChunkStore(),
+            };
+        });
+    }
+
+    /**
+     * Construye el driver Meilisearch resolviendo Meilisearch\Client del
+     * container. La app es responsable de bindear el client; si no está,
+     * fallback a MysqlChunkStore con warning.
+     */
+    protected function makeMeilisearchChunkStore($app): ChunkStore
+    {
+        if (! class_exists(\Meilisearch\Client::class) || ! $app->bound(\Meilisearch\Client::class)) {
+            \Illuminate\Support\Facades\Log::warning(
+                'Laracrate: chunks.driver=meilisearch pero Meilisearch\\Client no está bindeado. ' .
+                'Fallback a MysqlChunkStore.'
+            );
+            return new MysqlChunkStore();
+        }
+
+        $client   = $app->make(\Meilisearch\Client::class);
+        $index    = config('laracrate.meilisearch.index', \EduLazaro\Laracrate\Search\MeilisearchSync::DEFAULT_INDEX);
+        $embedder = config('laracrate.meilisearch.embedder', \EduLazaro\Laracrate\Search\MeilisearchSync::DEFAULT_EMBEDDER);
+
+        $sync = new \EduLazaro\Laracrate\Search\MeilisearchSync(
+            client:   $client,
+            index:    $index,
+            embedder: $embedder,
+        );
+
+        return new \EduLazaro\Laracrate\Chunks\MeilisearchChunkStore(
+            client:   $client,
+            sync:     $sync,
+            index:    $index,
+            embedder: $embedder,
+        );
     }
 
     public function boot(): void
@@ -184,6 +242,7 @@ class LaracrateServiceProvider extends ServiceProvider
             $registry->add(new ExtractTextStep());
             $registry->add(new ChunkTextStep());
             $registry->add(new GenerateEmbeddingStep());
+            $registry->add(new PersistChunksStep());
 
             return $registry;
         });

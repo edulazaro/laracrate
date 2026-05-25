@@ -6,12 +6,17 @@ use EduLazaro\Laracrate\Actions\Local\GenerateLocalSignedUrlAction;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laractions\Action;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * URL firmada con TTL corto, cacheada server-side.
- * S3 usa Storage::disk()->temporaryUrl() (presigned GET nativo).
+ * S3 usa Storage::disk()->temporaryUrl() (presigned GET nativo, no network).
  * Local cae a una ruta firmada de Laravel que sirve el binario.
+ *
+ * Errores (credenciales mal, SDK roto, etc.) se tragan y devuelven null:
+ * el caller (StorageManager + File::url) lo traduce a placeholder. Así una
+ * página con N archivos no peta entera porque un disk concreto esté roto.
  */
 class GenerateSignedUrlAction extends Action
 {
@@ -26,12 +31,21 @@ class GenerateSignedUrlAction extends Action
             "laracrate:signed:{$file->id}:{$minutes}",
             $cacheTtl,
             function () use ($file, $key, $driver, $minutes) {
-                if ($driver === 's3') {
-                    return app(\EduLazaro\Laracrate\Services\StorageManager::class)
-                        ->diskFor($file)
-                        ->temporaryUrl($key, now()->addMinutes($minutes));
+                try {
+                    if ($driver === 's3') {
+                        return app(\EduLazaro\Laracrate\Services\StorageManager::class)
+                            ->diskFor($file)
+                            ->temporaryUrl($key, now()->addMinutes($minutes));
+                    }
+                    return GenerateLocalSignedUrlAction::create()->run(['file' => $file, 'minutes' => $minutes]);
+                } catch (\Throwable $e) {
+                    Log::warning('laracrate: signed url failed', [
+                        'file_id' => $file->id,
+                        'disk'    => $file->disk,
+                        'error'   => $e->getMessage(),
+                    ]);
+                    return null;
                 }
-                return GenerateLocalSignedUrlAction::create()->run(['file' => $file, 'minutes' => $minutes]);
             }
         );
     }

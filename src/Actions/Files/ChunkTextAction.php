@@ -3,20 +3,23 @@
 namespace EduLazaro\Laracrate\Actions\Files;
 
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Models\FileChunk;
 use EduLazaro\Laracrate\Support\ExtractedContent;
 use EduLazaro\Laractions\Action;
 use Illuminate\Support\Facades\Storage;
 
 /**
  * Trocea el contenido extraído (storage `{path}.json`) en N chunks según
- * config y persiste:
- *  - Una fila por chunk en `laracrate_file_chunks` con chunk_index, text,
- *    tokens, metadata (page_number, page_numbers). Embedding queda NULL —
- *    lo añade GenerateEmbeddingAction después.
- *  - `{path}.chunks.jsonl` con cada chunk como línea JSON (backup portable).
+ * config y los persiste como `.chunks.jsonl` (artefacto canónico de la
+ * pipeline, portable en R2).
  *
- * Idempotente: borra filas previas y reescribe el JSONL.
+ * NO escribe a BD ni a Meili. El persist al backend final lo hace
+ * `PersistChunksAction` al final de la pipeline a través del
+ * `ChunkStore` driver activo.
+ *
+ * Devuelve la lista de chunks generados (en memoria) por si el caller
+ * quiere usarlos directo sin re-leer JSONL.
+ *
+ * @return array<int,array{chunk_index:int,context:?string,text:string,tokens:int,metadata:array}>
  */
 class ChunkTextAction extends Action
 {
@@ -43,37 +46,27 @@ class ChunkTextAction extends Action
         }
 
         // Si CUALQUIER página declara `context`, troceamos por página y
-        // propagamos el context al chunk. Cada sección semántica (OCR text,
-        // descripción visual, transcript de audio segmentado, etc.) produce
-        // su(s) propio(s) chunk(s) con embedding independiente. Si ninguna
-        // página tiene context, comportamiento legacy: concatenamos todas y
-        // chunkeamos el texto completo (PDFs, transcripciones lineales).
+        // propagamos el context al chunk. Si ninguna lo tiene, concatenamos.
         $hasContext = collect($extracted->pages)->contains(fn ($p) => !empty($p['context'] ?? null));
 
-        FileChunk::where('file_id', $file->id)->delete();
-
-        $rows = [];
-        $jsonlLines = [];
+        $chunks = [];
         $globalIndex = 0;
 
         if ($hasContext) {
             foreach ($extracted->pages as $pageIdx => $page) {
-                $text    = trim((string) ($page['text'] ?? ''));
+                $text = trim((string) ($page['text'] ?? ''));
                 if ($text === '') continue;
 
                 $context = $page['context'] ?? null;
                 $pageNum = (int) ($page['page_number'] ?? ($pageIdx + 1));
 
                 foreach ($this->chunkString($text, $chunkSize, $overlap) as $piece) {
-                    [$row, $line] = $this->persistChunk(
-                        $file,
+                    $chunks[] = $this->makeChunk(
                         $globalIndex++,
                         $piece,
                         $context,
                         ['page_number' => $pageNum, 'page_numbers' => [$pageNum]],
                     );
-                    $rows[] = $row;
-                    $jsonlLines[] = $line;
                 }
             }
         } else {
@@ -83,26 +76,41 @@ class ChunkTextAction extends Action
                 $pageNumbers = $this->pagesForRange($charToPage, $chunk['start'], $chunk['end']);
                 $primaryPage = $pageNumbers[0] ?? 1;
 
-                [$row, $line] = $this->persistChunk(
-                    $file,
+                $chunks[] = $this->makeChunk(
                     $globalIndex++,
                     $chunk['text'],
                     null,
                     ['page_number' => $primaryPage, 'page_numbers' => $pageNumbers],
                 );
-                $rows[] = $row;
-                $jsonlLines[] = $line;
             }
         }
 
-        $disk->put($file->path . '.chunks.jsonl', implode("\n", $jsonlLines));
+        // Persistimos el JSONL (canónico). Cada línea es un chunk completo.
+        $jsonl = collect($chunks)
+            ->map(fn ($c) => json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
+            ->implode("\n");
 
-        return $rows;
+        $disk->put($file->path . '.chunks.jsonl', $jsonl);
+
+        return $chunks;
     }
 
     /**
-     * Trocea un texto en chunks (sin tracking de posición). Devuelve array
-     * de strings ya trimmed. chunkSize=0 → un único chunk con todo el texto.
+     * @return array{chunk_index:int,context:?string,text:string,tokens:int,metadata:array}
+     */
+    protected function makeChunk(int $index, string $text, ?string $context, array $metadata): array
+    {
+        return [
+            'chunk_index' => $index,
+            'context'     => $context,
+            'text'        => $text,
+            'tokens'      => (int) ceil(mb_strlen($text) / 4),
+            'metadata'    => $metadata,
+        ];
+    }
+
+    /**
+     * Trocea un texto en chunks. chunkSize=0 → un único chunk.
      *
      * @return array<int,string>
      */
@@ -161,37 +169,6 @@ class ChunkTextAction extends Action
         }
 
         return $chunks;
-    }
-
-    /**
-     * Persiste una fila de FileChunk y devuelve la fila + su línea JSONL.
-     *
-     * @return array{0:FileChunk,1:string}
-     */
-    protected function persistChunk(File $file, int $index, string $text, ?string $context, array $metadata): array
-    {
-        $tokens = (int) ceil(mb_strlen($text) / 4);
-
-        $row = FileChunk::create([
-            'file_id'     => $file->id,
-            'chunk_index' => $index,
-            'context'     => $context,
-            'text'        => $text,
-            'tokens'      => $tokens,
-            'metadata'    => $metadata,
-        ]);
-
-        $line = json_encode(array_merge(
-            [
-                'chunk_index' => $index,
-                'context'     => $context,
-                'text'        => $text,
-                'tokens'      => $tokens,
-            ],
-            $metadata,
-        ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-        return [$row, $line];
     }
 
     /** @return array{0:string,1:array<int,int>} */

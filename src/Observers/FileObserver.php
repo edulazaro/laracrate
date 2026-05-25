@@ -66,6 +66,24 @@ class FileObserver
     public function forceDeleted(File $file): void
     {
         $this->purgeFromBackend($file);
+        $this->purgeChunksFromStore($file);
+    }
+
+    /**
+     * Purga chunks del backend activo (Meili / Qdrant / etc). En modo MySQL
+     * la cascade FK de `laracrate_file_chunks.file_id` ya borra las filas;
+     * MysqlChunkStore lo ejecuta por idempotencia (re-builds, tests).
+     */
+    protected function purgeChunksFromStore(File $file): void
+    {
+        try {
+            app(\EduLazaro\Laracrate\Contracts\ChunkStore::class)->deleteByFile($file);
+        } catch (Throwable $e) {
+            logger()->warning('Laracrate: fallo al borrar chunks del ChunkStore', [
+                'file_id' => $file->id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function purgeFromBackend(File $file): void

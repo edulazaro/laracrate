@@ -280,10 +280,27 @@ class StorageManager
     }
 
     /**
-     * Config efectiva de un type dentro de una colección. Mergea defaults
-     * globales del type con el override declarado en la colección. Si la
-     * colección está restringida por modelo y se pasa $morphAlias, aplica
-     * primero el bloque per-model.
+     * Config efectiva de un type dentro de una colección.
+     *
+     * Estrategia de merge entre `laracrate.defaults.{type}` y el override
+     * declarado en la colección:
+     *
+     *   - Scalars y mapas de config (`max_file_size`, `quality`, `format`,
+     *     `max_width`, ...): merge por key — la collection sobrescribe el
+     *     valor del default solo para las keys que declara.
+     *
+     *   - Listas/sets de items con nombre (`variants`, `accepted_mime_types`,
+     *     `accepted_extensions`): si la collection las declara, REEMPLAZAN
+     *     completamente las de defaults. No tiene sentido mergear "variants"
+     *     o "accepted_extensions" key por key — el usuario quiere su lista,
+     *     no una unión silenciosa con los defaults.
+     *
+     *     Es la convención estándar en el ecosistema (Spatie Media Library,
+     *     Filament, Glide, LiipImagineBundle): los presets/conversions
+     *     declarados son los únicos que se usan, sin merge implícito.
+     *
+     * Si la colección está restringida por modelo y se pasa $morphAlias,
+     * aplica primero el bloque per-model.
      *
      * Devuelve [] si la colección no acepta ese type.
      */
@@ -297,7 +314,16 @@ class StorageManager
         }
 
         $defaults = config("laracrate.defaults.{$type}", []);
-        return array_replace_recursive($defaults, $types[$type]);
+        $merged   = array_replace_recursive($defaults, $types[$type]);
+
+        // Listas/sets: si la collection las declara, reemplazan enteras.
+        foreach (['variants', 'accepted_mime_types', 'accepted_extensions'] as $listKey) {
+            if (array_key_exists($listKey, $types[$type])) {
+                $merged[$listKey] = $types[$type][$listKey];
+            }
+        }
+
+        return $merged;
     }
 
     /**

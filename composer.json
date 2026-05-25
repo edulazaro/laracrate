@@ -5,8 +5,8 @@
     "type": "library",
     "keywords": ["laravel", "files", "storage", "r2", "s3", "media", "uploads"],
     "require": {
-        "php": "^8.2",
-        "laravel/framework": ">=11.0",
+        "php": ">=8.2",
+        "laravel/framework": ">=12.0",
         "edulazaro/laractions": "^1.0",
         "aws/aws-sdk-php": "^3.300",
         "intervention/image": "^3.0",

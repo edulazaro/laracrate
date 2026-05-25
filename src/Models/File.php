@@ -422,8 +422,13 @@ class File extends Model
             return $this->placeholderFor($forceType);
         }
 
-        return app(StorageManager::class)->urlFor($this)
-            ?? ($forceType !== null ? $this->placeholderFor($forceType) : null);
+        try {
+            $url = app(StorageManager::class)->urlFor($this);
+        } catch (\Throwable) {
+            $url = null;
+        }
+
+        return $url ?? ($forceType !== null ? $this->placeholderFor($forceType) : null);
     }
 
     /**
@@ -455,10 +460,18 @@ class File extends Model
      * URL del preview en tamaño thumbnail. Para vídeos/PDF/audio con variant
      * 'preview' fuerza tipo 'image' (devuelve placeholder image si la cadena
      * cae a un ancestro de tipo distinto).
+     *
+     * Cualquier excepción en la generación de URL (disk roto, S3 inalcanzable,
+     * credenciales mal) cae a placeholder en vez de propagar — un archivo
+     * que falla no debe romper la página entera.
      */
     public function getPreviewLinkAttribute(): string
     {
-        return $this->variant('preview.thumbnail')->url('image') ?? '';
+        try {
+            return $this->variant('preview.thumbnail')->url('image') ?? $this->placeholderFor('image');
+        } catch (\Throwable) {
+            return $this->placeholderFor('image');
+        }
     }
 
     /* ------------------------------------------------------------------

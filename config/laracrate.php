@@ -24,9 +24,22 @@ return [
     */
 
     'defaults' => [
+        // Listas "safe by default" por type. Cualquier collection que NO
+        // declare `accepted_extensions` / `accepted_mime_types` hereda éstas.
+        // Excluidas a propósito: SVG (puede llevar <script>), ICO (CVEs
+        // legacy), HTML/JS/PHP/EXE/BAT/SH (ejecutables), ZIP/RAR/7Z
+        // (contenedores con vectores de zip-slip / contenido oculto). Para
+        // permitirlos, override explícito en la collection con su propia
+        // política de validación/sanitización.
         'image' => [
-            'accepted_mime_types' => ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-            'accepted_extensions' => ['jpeg', 'jpg', 'png', 'gif', 'webp'],
+            'accepted_mime_types' => [
+                'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+                'image/heic', 'image/heif', 'image/bmp', 'image/tiff',
+            ],
+            'accepted_extensions' => [
+                'jpeg', 'jpg', 'png', 'gif', 'webp',
+                'heic', 'heif', 'bmp', 'tiff',
+            ],
             'max_file_size'       => 10240,
             'format'              => 'webp',
             'quality'             => 90,
@@ -44,20 +57,47 @@ return [
                 'application/pdf',
                 'application/msword',
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/vnd.oasis.opendocument.text',
+                'application/rtf',
+                'text/plain',
+                'text/markdown',
                 'application/vnd.ms-excel',
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'application/vnd.oasis.opendocument.spreadsheet',
+                'text/csv',
+                'application/vnd.ms-powerpoint',
+                'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'application/vnd.oasis.opendocument.presentation',
+                'application/epub+zip',
             ],
-            'accepted_extensions' => ['pdf', 'doc', 'docx', 'xls', 'xlsx'],
+            'accepted_extensions' => [
+                'pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md',
+                'xls', 'xlsx', 'ods', 'csv',
+                'ppt', 'pptx', 'odp',
+                'epub',
+            ],
             'max_file_size'       => 20480,
         ],
         'audio' => [
-            'accepted_mime_types' => ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg'],
-            'accepted_extensions' => ['webm', 'ogg', 'mp4', 'mp3'],
+            'accepted_mime_types' => [
+                'audio/mpeg', 'audio/wav', 'audio/x-wav',
+                'audio/ogg', 'audio/mp4',
+                'audio/flac', 'audio/aac',
+                'audio/opus', 'audio/webm',
+            ],
+            'accepted_extensions' => [
+                'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus', 'webm',
+            ],
             'max_file_size'       => 5120,
         ],
         'video' => [
-            'accepted_mime_types' => ['video/mp4', 'video/webm', 'video/quicktime'],
-            'accepted_extensions' => ['mp4', 'webm', 'mov'],
+            'accepted_mime_types' => [
+                'video/mp4', 'video/quicktime', 'video/webm',
+                'video/x-msvideo', 'video/x-matroska', 'video/ogg',
+            ],
+            'accepted_extensions' => [
+                'mp4', 'mov', 'webm', 'm4v', 'mkv', 'avi', 'ogv',
+            ],
             'max_file_size'       => 102400,
         ],
     ],
@@ -373,6 +413,41 @@ return [
     |   $registry->add(new MyOcrExtractor());
     |
     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | Chunks backend (persistencia + búsqueda)
+    |--------------------------------------------------------------------------
+    |
+    | Driver del store de chunks (ChunkStore contract):
+    |
+    |   - 'mysql'        → MysqlChunkStore. Persiste en `laracrate_file_chunks`
+    |                       (FULLTEXT keyword + cosine similarity en PHP).
+    |                       Sin dependencias externas. Escala bien hasta ~5K
+    |                       chunks por scope.
+    |
+    |   - 'meilisearch'  → MeilisearchChunkStore. Sincroniza chunks a un
+    |                       índice Meilisearch con embeddings inyectados
+    |                       (modo userProvided). Búsqueda híbrida nativa con
+    |                       `semanticRatio` (BM25 + vector) server-side.
+    |                       Requiere `meilisearch/meilisearch-php` y un
+    |                       binding de Meilisearch\Client en la app.
+    |
+    | Apps custom (Qdrant, pgvector) pueden bindear ChunkStore directamente.
+    */
+    'chunks' => [
+        'driver' => env('LARACRATE_CHUNKS_DRIVER', 'mysql'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Meilisearch (cuando chunks.driver = meilisearch)
+    |--------------------------------------------------------------------------
+    */
+    'meilisearch' => [
+        'index'    => env('LARACRATE_MEILISEARCH_INDEX', 'laracrate_file_chunks'),
+        'embedder' => env('LARACRATE_MEILISEARCH_EMBEDDER', 'default'),
+    ],
 
     'embeddings' => [
         // Master switch. Si false, ningún archivo se procesa para embedding

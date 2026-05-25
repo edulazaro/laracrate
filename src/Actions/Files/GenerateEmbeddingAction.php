@@ -4,7 +4,6 @@ namespace EduLazaro\Laracrate\Actions\Files;
 
 use EduLazaro\Laracrate\Contracts\EmbeddingProvider;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Models\FileChunk;
 use EduLazaro\Laractions\Action;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -12,48 +11,50 @@ use Throwable;
 /**
  * Genera embeddings para los chunks de un File que aún no los tengan.
  *
- * Lee text directamente de `laracrate_file_chunks.text` (MySQL), embedea
- * en batches y persiste:
- *  - `embedding` en `laracrate_file_chunks`.
- *  - re-escribe `{path}.chunks.jsonl` añadiendo `embedding` por chunk (backup).
- *  - actualiza el `File` con processing_provider, processing_model,
- *    mysql_indexed_at = now().
+ * Lee chunks de `{path}.chunks.jsonl` (escrito por ChunkTextAction), embedea
+ * en batches y reescribe el JSONL con el campo `embedding` añadido a cada
+ * chunk. NO toca BD ni Meili — eso lo hace después PersistChunksAction.
+ *
+ * Devuelve el número de chunks embebidos.
  */
 class GenerateEmbeddingAction extends Action
 {
     public function handle(File $file): int
     {
-        $provider = app(EmbeddingProvider::class);
+        $provider  = app(EmbeddingProvider::class);
         $batchSize = (int) config('laracrate.embeddings.batch_size', 16);
-        $disk = Storage::disk($file->disk);
+        $disk      = Storage::disk($file->disk);
         $jsonlPath = $file->path . '.chunks.jsonl';
 
-        $pending = FileChunk::where('file_id', $file->id)
-            ->whereNotNull('text')
-            ->whereRaw('LENGTH(TRIM(text)) > 0')
-            ->whereNull('embedding')
-            ->orderBy('chunk_index')
-            ->get();
-
-        if ($pending->isEmpty()) {
+        if (! $disk->exists($jsonlPath)) {
             return 0;
         }
 
-        $chunksByIndex = [];
-        if ($disk->exists($jsonlPath)) {
-            foreach (explode("\n", trim((string) $disk->get($jsonlPath))) as $line) {
-                if (empty($line)) continue;
-                $parsed = json_decode($line, true);
-                if (is_array($parsed) && isset($parsed['chunk_index'])) {
-                    $chunksByIndex[$parsed['chunk_index']] = $parsed;
-                }
+        $chunks = $this->readJsonl((string) $disk->get($jsonlPath));
+        if (empty($chunks)) {
+            return 0;
+        }
+
+        // Indices pendientes de embedear (sin `embedding` o vacío).
+        $pendingIndices = [];
+        foreach ($chunks as $idx => $chunk) {
+            $text = trim((string) ($chunk['text'] ?? ''));
+            if ($text === '') continue;
+
+            $hasEmbedding = ! empty($chunk['embedding']) && is_array($chunk['embedding']);
+            if (! $hasEmbedding) {
+                $pendingIndices[] = $idx;
             }
+        }
+
+        if (empty($pendingIndices)) {
+            return 0;
         }
 
         $embedded = 0;
 
-        foreach ($pending->chunk($batchSize) as $batch) {
-            $texts = $batch->pluck('text')->all();
+        foreach (array_chunk($pendingIndices, $batchSize) as $batch) {
+            $texts = array_map(fn ($i) => $chunks[$i]['text'], $batch);
 
             try {
                 $vectors = $provider->embed($texts);
@@ -71,36 +72,54 @@ class GenerateEmbeddingAction extends Action
                 throw $e;
             }
 
-            foreach ($batch->values() as $i => $chunk) {
-                $vector = $vectors[$i] ?? null;
+            foreach ($batch as $position => $chunkIdx) {
+                $vector = $vectors[$position] ?? null;
                 if (! is_array($vector) || empty($vector)) continue;
 
-                $chunk->update(['embedding' => $vector]);
-
-                if (isset($chunksByIndex[$chunk->chunk_index])) {
-                    $chunksByIndex[$chunk->chunk_index]['embedding'] = $vector;
-                }
-
+                $chunks[$chunkIdx]['embedding'] = $vector;
                 $embedded++;
             }
         }
 
-        if ($embedded > 0 && ! empty($chunksByIndex)) {
-            ksort($chunksByIndex);
-            $newJsonl = collect($chunksByIndex)
-                ->map(fn ($c) => json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
-                ->implode("\n");
-            $disk->put($jsonlPath, $newJsonl);
-        }
+        // Reescribe JSONL con embeddings.
+        $newJsonl = collect($chunks)
+            ->map(fn ($c) => json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
+            ->implode("\n");
+
+        $disk->put($jsonlPath, $newJsonl);
 
         if ($embedded > 0) {
             $file->forceFill([
                 'processing_provider' => $provider->name(),
                 'processing_model'    => $provider->model(),
-                'mysql_indexed_at'    => now(),
             ])->save();
         }
 
         return $embedded;
+    }
+
+    /**
+     * Parsea un JSONL en array de chunks. Líneas vacías o malformadas se
+     * descartan silenciosamente.
+     *
+     * @return array<int,array>
+     */
+    protected function readJsonl(string $jsonl): array
+    {
+        $chunks = [];
+        foreach (explode("\n", trim($jsonl)) as $line) {
+            $line = trim($line);
+            if ($line === '') continue;
+
+            $parsed = json_decode($line, true);
+            if (is_array($parsed) && isset($parsed['chunk_index'])) {
+                $chunks[] = $parsed;
+            }
+        }
+
+        // Orden estable por chunk_index.
+        usort($chunks, fn ($a, $b) => $a['chunk_index'] <=> $b['chunk_index']);
+
+        return $chunks;
     }
 }

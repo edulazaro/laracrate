@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Events\EmbeddingsReady;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Support\ExtractionResolver;
+use Illuminate\Support\Facades\Storage;
 
 class GenerateEmbeddingStep implements FileActionInterface
 {
@@ -20,11 +21,12 @@ class GenerateEmbeddingStep implements FileActionInterface
             return false;
         }
 
-        // Solo si hay chunks con texto pendientes de embedding.
-        return $file->chunks()
-            ->whereNotNull('text')
-            ->whereNull('embedding')
-            ->exists();
+        // Necesita el JSONL escrito por ChunkTextStep.
+        if (! $file->disk || ! $file->path) {
+            return false;
+        }
+
+        return Storage::disk($file->disk)->exists($file->path . '.chunks.jsonl');
     }
 
     public function priority(): int
