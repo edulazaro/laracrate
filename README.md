@@ -74,24 +74,36 @@ Add the disks you intend to use (R2/S3 for real storage, `local` for dev):
 ```
 id, slug (ulid)
 parent_id, variant                            (variants/preview hierarchy)
-fileable_type/id                              (polymorphic owner)
-creator_type/id                               (polymorphic creator)
-tenant_type/id                                (polymorphic tenant)
+fileable_type/id                              (polymorphic — what the file belongs to)
+creator_type/id                               (polymorphic — who uploaded it)
+owner_type/owner_id                           (polymorphic — for-whom; falls back to creator)
+tenant_type/id                                (polymorphic — multi-tenant scope)
 disk, path, name, original_name, extension, mime_type, size, digest
 context, collection, type (image/video/audio/document), category
 access (public/signed/stream), visibility, sensitive, is_encrypted
 title, description, label, default, position, published, is_verified
 duration, width, height, bitrate, sample_rate
+summary                                       (optional, set by extractors/LLMs)
 metadata (json)
 processing_status, processing_error, processing_started_at
+processing_extractor, processing_provider, processing_model   (audit trail of the pipeline run)
+mysql_indexed_at, meili_indexed_at, storage_indexed_at        (chunks-backend index trackers)
 downloads_count, last_downloaded_at
 timestamps + softDeletes
 ```
 
+The three `*_indexed_at` columns let a single deployment migrate between `ChunkStore` backends (mysql → meilisearch → custom) without re-running the whole pipeline: a re-index job only re-syncs files where the target backend's timestamp is null or older than `updated_at`.
+
+Visibility values come from the `FileVisibility` enum; processing states from `ProcessingStatus`.
+
 ### Auxiliary tables
 
-- `laracrate_file_contents`, one row per chunk of extracted text. If the collection sets `chunk_size: 0`, one row per File holds all the text.
-- `laracrate_multipart_uploads`, active multipart upload sessions for S3/R2. Typical lifetime of minutes to hours. The `laracrate:abort-stale-multipart` cron aborts those past `expires_at`.
+- `laracrate_file_chunks` — one row per chunk produced by the embeddings pipeline. Each row carries `text`, `embedding` (vector), `context` (optional discriminator when a single extraction yields multiple sections, e.g. OCR text + visual description), and `summary`/`description` if the extractor produced them. Indexed by FULLTEXT for keyword search; cosine similarity is computed in PHP by `MysqlChunkStore`, or pushed to Meilisearch by `MeilisearchChunkStore` (see `### chunks` below).
+- `laracrate_multipart_uploads` — active multipart upload sessions for S3/R2. Typical lifetime minutes to hours. The `laracrate:abort-stale-multipart` cron aborts those past `expires_at`. Status enum: `MultipartUploadStatus`.
+- `laracrate_file_slots` — optional structured "slots" with validation rules (max files, accepted mime types, required) for workflows like "upload your DNI: PDF only, 1 file max". The `FileSlot` model wraps the row; the `HasFiles` trait exposes helpers to fill, validate, and check slot completion.
+- `laracrate_tenant_buckets` — per-tenant bucket/disk overrides for multi-tenant or BYOA (bring-your-own-account) setups. A row maps `(tenant_type, tenant_id, base_disk)` to a concrete bucket + credentials. Resolved by `StorageManager::diskFor()` via the tenant relation on the File. Useful when each customer's data must live in their own S3 account for compliance or cost attribution.
+
+Each table has a matching Eloquent model under `EduLazaro\Laracrate\Models\` — `FileChunk`, `MultipartUpload`, `FileSlot`, `TenantBucket` — that you can query directly when you need fine-grained access (e.g. listing chunks for debugging, aborting a specific multipart session by id, attaching slot rules to a workflow).
 
 ### Key concepts
 
@@ -435,9 +447,71 @@ Bundled implementations:
 
 - `OpenAiEmbeddingProvider` (default).
 - `NullEmbeddingProvider` (no-op for testing).
-- `PdfTextExtractor` (PDFs via `smalot/pdfparser`, native text only).
-- `PlainTextExtractor` (text/*).
-- `OcrPdfTextExtractor` (OCR fallback for scanned PDFs, configured below).
+- `PdfTextExtractor` — PDFs via `smalot/pdfparser`, native text only.
+- `PlainTextExtractor` — text/* files.
+- `OcrPdfTextExtractor` — OCR fallback for scanned PDFs (Vision LLM), configured below.
+- `OcrImageTextExtractor` — OCR for image files (JPG, PNG, HEIC) via Anthropic Claude or OpenAI Vision.
+- `AudioTranscribeExtractor` — transcribes audio (mp3, wav, ogg, m4a, etc.) via OpenAI Whisper.
+- `VideoTranscribeExtractor` — extracts audio with ffmpeg, transcribes via Whisper, optionally adds visual frame descriptions via Vision LLM.
+
+Audio/video/image extractors call paid APIs — wire them in the `extractors` chain explicitly when you need them and check pricing for your workload.
+
+### `chunks`, persistence and search backend
+
+Chunks produced by the embeddings pipeline (text split + vector) need a place
+to live. Laracrate ships two `ChunkStore` implementations and lets you wire a
+third one yourself.
+
+```php
+'chunks' => [
+    'driver' => env('LARACRATE_CHUNKS_DRIVER', 'mysql'),
+],
+
+'meilisearch' => [
+    'index'    => env('LARACRATE_MEILISEARCH_INDEX', 'laracrate_file_chunks'),
+    'embedder' => env('LARACRATE_MEILISEARCH_EMBEDDER', 'default'),
+],
+```
+
+Drivers:
+
+- `mysql` — `MysqlChunkStore`. Persists to `laracrate_file_chunks` with a
+  FULLTEXT index for keyword search and cosine similarity computed in PHP
+  over the candidate pool. Zero external dependencies. Scales fine up to
+  roughly 5K chunks per scope.
+
+- `meilisearch` — `MeilisearchChunkStore`. Syncs chunks to a Meilisearch
+  index with user-provided embeddings, enabling native hybrid search
+  (BM25 + vector) via the `semanticRatio` parameter — all server-side, no
+  pool ceiling. Requires `meilisearch/meilisearch-php` and a bound
+  `Meilisearch\Client` in the app container.
+
+```php
+// AppServiceProvider::register()
+$this->app->singleton(\Meilisearch\Client::class, fn () =>
+    new \Meilisearch\Client(config('scout.meilisearch.host'), config('scout.meilisearch.key'))
+);
+```
+
+```php
+// .env
+LARACRATE_CHUNKS_DRIVER=meilisearch
+LARACRATE_MEILISEARCH_INDEX=laracrate_file_chunks
+LARACRATE_MEILISEARCH_EMBEDDER=default
+```
+
+Custom store (Qdrant, pgvector, Pinecone, etc.):
+
+```php
+// AppServiceProvider::register()
+$this->app->bind(
+    \EduLazaro\Laracrate\Contracts\ChunkStore::class,
+    \App\Search\MyQdrantChunkStore::class
+);
+```
+
+The `ChunkStore` contract has four methods: `upsert`, `delete`, `search` and
+`countForFile`. Pick whichever vector store fits your infra.
 
 ### `ocr`, PDF scanning fallback
 
@@ -767,9 +841,15 @@ If the File is deleted before the worker reaches the job (typical when `setFile(
 
 ### Extending the pipeline from your app
 
+There are **two extension points**, depending on whether your step should run for every file in the system or only for a specific collection.
+
+#### Global step (runs for every file)
+
+Register at boot in the `FileActionRegistry`. The step's own `supports()` decides which files it actually touches.
+
 ```php
 // AppServiceProvider::boot()
-$registry = app(\EduLazaro\Laracrate\Support\ProcessingPipelineRegistry::class);
+$registry = app(\EduLazaro\Laracrate\Support\FileActionRegistry::class);
 
 // Add your own step
 $registry->add(new \App\Files\Pipeline\VirusScanStep());
@@ -778,16 +858,41 @@ $registry->add(new \App\Files\Pipeline\VirusScanStep());
 $registry->remove(\EduLazaro\Laracrate\Pipeline\Steps\Image\OptimizeImageStep::class);
 ```
 
-Custom Step:
+#### Per-collection step (runs only for files in that collection)
+
+Declare it under `actions` in the collection config — no service-provider wiring needed. Useful for domain-specific work (deadlines detection, document classification) that only makes sense for one collection.
+
+```php
+'collections' => [
+    'documents' => [
+        // ...
+        'actions' => [
+            \App\Pipeline\Steps\ClassifyDocumentStep::class,
+        ],
+        'models' => [
+            // Optional: extra steps that only apply when the fileable
+            // is a specific morph type. Cumulative with the top-level
+            // 'actions' above — both run.
+            'case'    => ['actions' => [\App\Pipeline\Steps\DetectDeadlinesStep::class]],
+            'lawsuit' => ['actions' => [\App\Pipeline\Steps\AutofillLawsuitStep::class]],
+        ],
+    ],
+],
+```
+
+#### Writing a step
+
+Both registries expect classes implementing `FileActionInterface` (from `edulazaro/laractions`). `supports()` is optional; if absent, `handle()` runs for every file in scope.
 
 ```php
 namespace App\Files\Pipeline;
 
 use App\Files\Actions\VirusScanAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laractions\Action;
 
-class VirusScanStep implements ProcessingStep
+class VirusScanStep extends Action implements FileActionInterface
 {
     public function supports(File $file): bool
     {
@@ -806,6 +911,8 @@ class VirusScanStep implements ProcessingStep
     }
 }
 ```
+
+The global registry and the collection's `actions` array are merged, deduplicated (by class), and sorted by `priority()` ascending before each pipeline run. Use the priority bands documented above (0-19 metadata, 20-39 transforms, 40-59 derivatives, 60-79 semantic, 80-99 AI) to slot your step where it makes sense.
 
 ## Variants
 
@@ -890,24 +997,42 @@ $schedule->command('laracrate:abort-stale-multipart')->hourly();
 $schedule->command('laracrate:purge-expired')->hourly();
 ```
 
-## Optional Livewire component
+## Optional Livewire components
 
-The package ships an optional Livewire component, `LaracrateUploader`, ready to be used as a visual uploader for any collection. It is **fully optional**: the package core works without Livewire, and your app can build its own uploader or call `addFile()`/`setFile()` directly from your forms.
+The package ships **six Livewire components** that cover the common upload UIs. All are **fully optional**: the core works without Livewire, and your app can build its own uploader or call `addFile()`/`setFile()` directly from your forms.
+
+| Component | Use case |
+|---|---|
+| `LaracrateUploader` | Card-style uploader for a single collection (avatar, cover, single doc). |
+| `LaracrateDropzone` | Multi-file dropzone with progress bars and previews. |
+| `LaracrateDropzoneSingle` | Single-file dropzone variant. |
+| `LaracrateUploaderDeferred` | Same as `LaracrateUploader` but renders only after the parent dispatches `open`. |
+| `LaracrateDropzoneDeferred` | Deferred-mount variant of `LaracrateDropzone`. |
+| `LaracrateDropzoneSingleDeferred` | Deferred-mount variant of `LaracrateDropzoneSingle`. |
+
+Deferred variants are useful inside modals or tabs where you don't want JS/CSS to load until the user opens the panel.
 
 ```blade
+{{-- Single-collection card --}}
 <livewire:laracrate-uploader :model="$user" collection="avatar" />
 <livewire:laracrate-uploader :model="$user" collection="avatar" theme="ios" layout="portrait" />
+
+{{-- Multi-file dropzone --}}
+<livewire:laracrate-dropzone :model="$case" collection="documents" />
+
+{{-- Deferred — only mounts when the parent dispatches 'open-laracrate' --}}
+<livewire:laracrate-dropzone-deferred :model="$case" collection="documents" name="case-docs" />
 ```
 
-It supports 8 themes (`default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`) and 2 layouts (`row`, `portrait`). The global theme is configured at `config('laracrate.ui.default_theme')`.
+All components support 8 themes (`default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`) and 2 layouts for the card uploader (`row`, `portrait`). The global theme is configured at `config('laracrate.ui.default_theme')`.
 
-To customize the views:
+Publish the views to customize:
 
 ```bash
 php artisan vendor:publish --tag=laracrate-views
 ```
 
-If you do not use Livewire, simply ignore this section. Themes and the component are not loaded unless you render them.
+If you do not use Livewire, ignore this section. Themes and the components are not loaded unless rendered.
 
 ## Full API
 
@@ -1010,6 +1135,30 @@ $manager->acceptsType($collection, $type): bool
 $manager->driverOf($disk): string
 $manager->s3ClientOf($disk): ?S3Client
 ```
+
+### `UsageReporter` service
+
+Aggregates storage consumption across tenants, creators, or collections. Useful for billing, quotas, or dashboard widgets without writing custom SUM queries.
+
+```php
+$usage = app(\EduLazaro\Laracrate\Services\UsageReporter::class);
+
+$stats = $usage->forTenant($organization);     // total bytes used by an org/tenant
+$stats = $usage->forCreator($user);            // total bytes uploaded by a user
+$stats = $usage->forCollection('documents');   // total bytes in one collection
+```
+
+Each call returns a `UsageStats` value object:
+
+```php
+$stats->bytes              // raw byte count (int)
+$stats->files              // number of files (int)
+$stats->byCollection       // ['avatar' => 12345, 'documents' => 9876543, ...]
+$stats->human()            // "1.42 GB"
+$stats->exceeds($limit)    // bool, useful for quota checks
+```
+
+`forTenant` honors the polymorphic `tenant_*` columns and includes variants of those files. `forCollection` is global across tenants.
 
 ## Tests
 
