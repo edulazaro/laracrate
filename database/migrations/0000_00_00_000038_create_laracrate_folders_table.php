@@ -29,8 +29,10 @@ return new class extends Migration
 
             // Nombre del segmento ("2025") + path denormalizado desde raíz
             // ("Contratos/2025"). El observer recalcula el path en cada save.
+            // Path limitado a 500 chars para caber en el índice UNIQUE de
+            // abajo sin saltar el límite de 3072 bytes de InnoDB con utf8mb4.
             $table->string('name');
-            $table->string('path', 1024);
+            $table->string('path', 500);
 
             // Quién/qué la creó. Mismo morph que files.creator.
             $table->nullableMorphs('creator');
