@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Http\Livewire;
 
+use EduLazaro\Laracrate\Concerns\UploaderHasFolderTarget;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\FileUpload;
@@ -19,6 +20,8 @@ use Livewire\Component;
  */
 class LaracrateDropzoneSingle extends Component
 {
+    use UploaderHasFolderTarget;
+
     #[Locked]
     public Model $model;
 
@@ -40,12 +43,14 @@ class LaracrateDropzoneSingle extends Component
         ?string $theme = null,
         ?string $contextKey = null,
         bool $hideExisting = false,
+        ?int $folderId = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
         $this->theme        = $theme;
         $this->contextKey   = $contextKey;
         $this->hideExisting = $hideExisting;
+        $this->folderId     = $folderId;
     }
 
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
@@ -58,7 +63,7 @@ class LaracrateDropzoneSingle extends Component
             'size'          => $size,
         ]);
 
-        $file = $this->model->addFile($upload, $this->collection);
+        $file = $this->model->addFile($upload, $this->collection, folder: $this->folder());
 
         if (! $file) {
             return null;

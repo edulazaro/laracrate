@@ -3,6 +3,7 @@
 namespace EduLazaro\Laracrate\Concerns;
 
 use EduLazaro\Laracrate\Models\Folder;
+use EduLazaro\Laracrate\Models\Folderable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
@@ -74,5 +75,28 @@ trait HasFolders
         $folder->save();
 
         return $folder;
+    }
+
+    /**
+     * Devuelve la fila Folderable de este modelo para la collection dada.
+     * Null si la collection no tiene `track_usage` o aún no hay archivos
+     * trackeados (la fila se crea lazy en el primer `created`).
+     */
+    public function usage(string $collection): ?Folderable
+    {
+        return Folderable::query()
+            ->where('folderable_type', $this->getMorphClass())
+            ->where('folderable_id', $this->getKey())
+            ->where('collection', $collection)
+            ->first();
+    }
+
+    /**
+     * Shortcut: bytes ocupados por este modelo en la collection dada.
+     * 0 si aún no hay nada o si la collection no se trackea.
+     */
+    public function usageBytes(string $collection): int
+    {
+        return (int) ($this->usage($collection)?->total_size_bytes ?? 0);
     }
 }

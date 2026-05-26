@@ -9,6 +9,7 @@ use EduLazaro\Laracrate\Embeddings\NullEmbeddingProvider;
 use EduLazaro\Laracrate\Embeddings\OpenAiEmbeddingProvider;
 use EduLazaro\Laracrate\Console\Commands\AbortStaleMultipartCommand;
 use EduLazaro\Laracrate\Console\Commands\PurgeExpiredFilesCommand;
+use EduLazaro\Laracrate\Console\Commands\RecomputeUsageCommand;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzone;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneDeferred;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingle;
@@ -153,6 +154,7 @@ class LaracrateServiceProvider extends ServiceProvider
             $this->commands([
                 AbortStaleMultipartCommand::class,
                 PurgeExpiredFilesCommand::class,
+                RecomputeUsageCommand::class,
             ]);
         }
     }

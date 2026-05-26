@@ -41,6 +41,7 @@ class CreateFileAction extends Action
         ?File $parent = null,
         ?string $variant = null,
         array $slots = [],
+        ?\EduLazaro\Laracrate\Models\Folder $folder = null,
     ): ?File {
         // Validación: keys inesperadas en $data son typos o conceptos perdidos.
         $unknown = array_diff(array_keys($data), self::ALLOWED_DATA_KEYS);
@@ -108,6 +109,7 @@ class CreateFileAction extends Action
                 'variant'         => $variant,
                 'fileable_type'   => $fileable?->getMorphClass(),
                 'fileable_id'     => $fileable?->getKey(),
+                'folder_id'       => $folder?->getKey(),
                 'creator_type'    => $creator?->getMorphClass(),
                 'creator_id'      => $creator?->getKey(),
                 'owner_type'      => $owner?->getMorphClass(),

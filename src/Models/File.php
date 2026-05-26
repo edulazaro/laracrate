@@ -129,6 +129,27 @@ class File extends Model
     }
 
     /**
+     * Mueve el file a una carpeta (o a la raíz si null). Valida que la
+     * carpeta pertenezca al mismo fileable — no se permite mezclar dueños.
+     * El binario en R2 NO se mueve (su key no cambia); el "movimiento" es
+     * lógico, vive en folder_id.
+     */
+    public function moveToFolder(?\EduLazaro\Laracrate\Models\Folder $folder): void
+    {
+        if ($folder) {
+            if ($folder->folderable_type !== $this->fileable_type
+                || (string) $folder->folderable_id !== (string) $this->fileable_id) {
+                throw new \InvalidArgumentException(
+                    'La carpeta destino pertenece a otro fileable.'
+                );
+            }
+        }
+
+        $this->folder_id = $folder?->id;
+        $this->save();
+    }
+
+    /**
      * Chunks del file (registry). 1 fila por chunk con chunk_index, status,
      * metadata. El payload pesado (text + embedding) vive en `FileChunkData`
      * via `$chunk->data` (HasOne).

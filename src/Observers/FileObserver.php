@@ -6,6 +6,7 @@ use EduLazaro\Laracrate\Enums\ProcessingStatus;
 use EduLazaro\Laracrate\Events\VariantGenerated;
 use EduLazaro\Laracrate\Jobs\ProcessFileJob;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Models\Folderable;
 use EduLazaro\Laracrate\Services\StorageManager;
 use Throwable;
 
@@ -17,6 +18,9 @@ class FileObserver
 {
     public function created(File $file): void
     {
+        // Counter de usage: solo top-level (los variants no cuentan doble).
+        $this->incrementUsage($file);
+
         // Variants: solo evento, sin pipeline (su action ya las marca COMPLETED).
         if ($file->parent_id !== null) {
             VariantGenerated::dispatch($file, $file->parent);
@@ -65,8 +69,77 @@ class FileObserver
 
     public function forceDeleted(File $file): void
     {
+        $this->decrementUsage($file);
         $this->purgeFromBackend($file);
         $this->purgeChunksFromStore($file);
+    }
+
+    /**
+     * Si la collection del file tiene `track_usage = true` y es top-level
+     * (no variant), suma su tamaño + count a la fila Folderable correspondiente.
+     * UPSERT atómico: si no existe la fila, la crea.
+     */
+    protected function incrementUsage(File $file): void
+    {
+        if (! $this->shouldTrackUsage($file)) {
+            return;
+        }
+
+        try {
+            $row = Folderable::firstOrNew([
+                'folderable_type' => $file->fileable_type,
+                'folderable_id'   => $file->fileable_id,
+                'collection'      => $file->collection,
+            ]);
+            $row->total_size_bytes = (int) $row->total_size_bytes + (int) $file->size;
+            $row->files_count      = (int) $row->files_count + 1;
+            $row->save();
+        } catch (Throwable $e) {
+            logger()->warning('Laracrate: fallo al incrementar usage', [
+                'file_id'    => $file->id,
+                'collection' => $file->collection,
+                'error'      => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function decrementUsage(File $file): void
+    {
+        if (! $this->shouldTrackUsage($file)) {
+            return;
+        }
+
+        try {
+            $row = Folderable::query()
+                ->where('folderable_type', $file->fileable_type)
+                ->where('folderable_id', $file->fileable_id)
+                ->where('collection', $file->collection)
+                ->first();
+
+            if (! $row) return;
+
+            $row->total_size_bytes = max(0, (int) $row->total_size_bytes - (int) $file->size);
+            $row->files_count      = max(0, (int) $row->files_count - 1);
+            $row->save();
+        } catch (Throwable $e) {
+            logger()->warning('Laracrate: fallo al decrementar usage', [
+                'file_id'    => $file->id,
+                'collection' => $file->collection,
+                'error'      => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Solo trackeamos top-level (variants no cuentan, ya están en el padre)
+     * y collections con flag `track_usage = true` en config.
+     */
+    protected function shouldTrackUsage(File $file): bool
+    {
+        if ($file->parent_id !== null) return false;
+        if (! $file->fileable_type || ! $file->fileable_id) return false;
+
+        return Folderable::isTracked((string) $file->collection);
     }
 
     /**

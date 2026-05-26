@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Http\Livewire;
 
+use EduLazaro\Laracrate\Concerns\UploaderHasFolderTarget;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\FileUpload;
@@ -27,6 +28,8 @@ use Livewire\Component;
  */
 class LaracrateDropzone extends Component
 {
+    use UploaderHasFolderTarget;
+
     #[Locked]
     public Model $model;
 
@@ -71,6 +74,7 @@ class LaracrateDropzone extends Component
         bool $persistQueue = false,
         ?int $maxFiles = null,
         ?string $contextKey = null,
+        ?int $folderId = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -79,6 +83,7 @@ class LaracrateDropzone extends Component
         $this->persistQueue = $persistQueue;
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
         $this->contextKey   = $contextKey;
+        $this->folderId     = $folderId;
     }
 
     /**
@@ -95,7 +100,7 @@ class LaracrateDropzone extends Component
             'size'          => $size,
         ]);
 
-        $file = $this->model->addFile($upload, $this->collection);
+        $file = $this->model->addFile($upload, $this->collection, folder: $this->folder());
 
         if (! $file) {
             return null;

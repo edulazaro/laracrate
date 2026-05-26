@@ -5,6 +5,7 @@ namespace EduLazaro\Laracrate\Concerns;
 use EduLazaro\Laracrate\Actions\Files\CreateFileAction;
 use EduLazaro\Laracrate\Actions\Files\DeleteFileAction;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Models\Folder;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laracrate\Support\FileUpload;
@@ -67,6 +68,7 @@ trait HasFiles
         array $slots = [],
         ?Model $creator = null,
         ?Model $owner = null,
+        ?Folder $folder = null,
     ): ?File {
         $config = $this->getCollectionConfig($collection);
         $tenant = $this->resolveFileTenant();
@@ -75,6 +77,17 @@ trait HasFiles
         // base_disk que usa esta collection. Granularidad por disk del
         // config (document/media/attachment), no por collection individual.
         $config['disk'] = $this->resolveTenantBucketDisk($tenant, $config['disk']) ?? $config['disk'];
+
+        // Defensa: la carpeta destino debe pertenecer al mismo fileable.
+        // No se permite engancha files a carpetas de otro dueño.
+        if ($folder && (
+            $folder->folderable_type !== $this->getMorphClass()
+            || (string) $folder->folderable_id !== (string) $this->getKey()
+        )) {
+            throw new \InvalidArgumentException(
+                'La carpeta destino pertenece a otro fileable.'
+            );
+        }
 
         return CreateFileAction::create()->run([
             'fileable'   => $this,
@@ -86,6 +99,7 @@ trait HasFiles
             'owner'      => $owner,
             'tenant'     => $tenant,
             'slots'      => $slots,
+            'folder'     => $folder,
         ]);
     }
 

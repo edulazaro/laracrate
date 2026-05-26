@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Http\Livewire;
 
+use EduLazaro\Laracrate\Concerns\UploaderHasFolderTarget;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\FileUpload;
@@ -24,6 +25,8 @@ use Livewire\Component;
  */
 class LaracrateDropzoneDeferred extends Component
 {
+    use UploaderHasFolderTarget;
+
     #[Locked]
     public Model $model;
 
@@ -159,8 +162,10 @@ class LaracrateDropzoneDeferred extends Component
         bool $slotOptional = true,
         ?int $selectedSlotId = null,
         ?string $contextKey = null,
+        ?int $folderId = null,
     ): void {
         $this->contextKey = $contextKey;
+        $this->folderId   = $folderId;
         $this->model        = $model;
         $this->collection   = $collection;
         $this->theme        = $theme;
@@ -295,6 +300,7 @@ class LaracrateDropzoneDeferred extends Component
                 $this->collection,
                 slots: $this->slots,
                 creator: $creator,
+                folder: $this->folder(),
             );
         } catch (\InvalidArgumentException $e) {
             $this->dispatch(
