@@ -19,7 +19,9 @@ use Livewire\Livewire;
 use EduLazaro\Laracrate\Extractors\PdfTextExtractor;
 use EduLazaro\Laracrate\Extractors\PlainTextExtractor;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Models\Folder;
 use EduLazaro\Laracrate\Observers\FileObserver;
+use EduLazaro\Laracrate\Observers\FolderObserver;
 use EduLazaro\Laracrate\Pipeline\Steps\Document\ExtractPdfPreviewStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Image\ExtractImageDimensionsStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Image\GenerateImageVariantsStep;
@@ -123,6 +125,7 @@ class LaracrateServiceProvider extends ServiceProvider
         $this->loadTranslationsFrom(__DIR__ . '/../lang', 'laracrate');
 
         File::observe(FileObserver::class);
+        Folder::observe(FolderObserver::class);
 
         if (config('laracrate.policies.register_gate', true)) {
             Gate::policy(File::class, FilePolicy::class);

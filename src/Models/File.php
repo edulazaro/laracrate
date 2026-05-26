@@ -26,6 +26,7 @@ class File extends Model
         'slug',
         'parent_id', 'variant',
         'fileable_type', 'fileable_id',
+        'folder_id',
         'creator_type', 'creator_id',
         'owner_type', 'owner_id',
         'tenant_type', 'tenant_id',
@@ -116,6 +117,15 @@ class File extends Model
     public function children(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    /**
+     * Carpeta a la que pertenece (opcional). Null = está en la raíz del
+     * fileable. Ver Folder + HasFolders.
+     */
+    public function folder(): BelongsTo
+    {
+        return $this->belongsTo(\EduLazaro\Laracrate\Models\Folder::class, 'folder_id');
     }
 
     /**
