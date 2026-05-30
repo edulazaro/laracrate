@@ -18,6 +18,48 @@
         nextId: 0,
         uploadedTotal: 0,
 
+        /**
+         * Disparo externo del lote (deferred): un caller fuera del componente
+         * (ej. el botón de un footer de modal) hace
+         *   dispatch('laracrate-start-batch', { fileableType, fileableId, collection })
+         * y el dropzone que matchee arranca su batch. Centralizado aquí para que
+         * TODOS los temas y variantes lo hereden (antes vivía como atributo
+         * @laracrate-start-batch.window pegado solo en el tema studio del multi).
+         *
+         * No afecta a las variantes instant (autoStart=true): suben al
+         * soltar/seleccionar y aquí no hay nada pendiente que arrancar.
+         */
+        init() {
+            // Match por fileable + collection. `cfg.collection` puede ser null en
+            // algunos temas (p.ej. el multi studio lo deriva del route param); en
+            // ese caso no exigimos collection y matcheamos solo por fileable.
+            const matches = (d) => {
+                if ((d.fileableType ?? null) !== this.cfg.fileableType) return false;
+                if (String(d.fileableId ?? '') !== String(this.cfg.fileableId)) return false;
+                if (this.cfg.collection != null && (d.collection ?? null) !== this.cfg.collection) return false;
+                return true;
+            };
+            this._onStartBatch = (e) => {
+                if (matches(e.detail || {})) this.startBatch();
+            };
+            this._onDeferredConfig = (e) => {
+                const d = e.detail || {};
+                if (!matches(d)) return;
+                const m = d.maxFiles;
+                this.cfg.maxFiles = (m === null || m === undefined) ? null : parseInt(m, 10);
+                if (this.cfg.maxFiles !== null && this.queue.length > this.cfg.maxFiles) {
+                    this.queue = this.queue.slice(0, this.cfg.maxFiles);
+                }
+            };
+            window.addEventListener('laracrate-start-batch', this._onStartBatch);
+            window.addEventListener('laracrate-deferred-config', this._onDeferredConfig);
+        },
+
+        destroy() {
+            window.removeEventListener('laracrate-start-batch', this._onStartBatch);
+            window.removeEventListener('laracrate-deferred-config', this._onDeferredConfig);
+        },
+
         get pendingCount() { return this.queue.filter(i => i.status === 'pending').length; },
         get doneCount()    { return this.queue.filter(i => i.status === 'done').length; },
         get errorCount()   { return this.queue.filter(i => i.status === 'error').length; },

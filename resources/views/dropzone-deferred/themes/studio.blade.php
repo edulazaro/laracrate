@@ -24,23 +24,9 @@
         new MutationObserver(sync).observe($el, { attributes: true, attributeFilter: ['data-effective-max'] });
     })()"
     data-effective-max="{{ $effectiveMaxFiles ?? '' }}"
-    @laracrate-start-batch.window="
-        if (($event.detail.fileableType ?? null) === @js($fileableType)
-            && String($event.detail.fileableId ?? '') === @js((string) $fileableId)
-            && ($event.detail.collection ?? null) === @js($collection)) {
-            startBatch();
-        }
-    "
-    @laracrate-deferred-config.window="(() => {
-        if (($event.detail.fileableType ?? null) !== @js($fileableType)) return;
-        if (String($event.detail.fileableId ?? '') !== @js((string) $fileableId)) return;
-        if (($event.detail.collection ?? null) !== @js($collection)) return;
-        const m = $event.detail.maxFiles;
-        cfg.maxFiles = (m === null || m === undefined) ? null : parseInt(m, 10);
-        if (cfg.maxFiles !== null && queue.length > cfg.maxFiles) {
-            queue = queue.slice(0, cfg.maxFiles);
-        }
-    })()"
+    {{-- Los listeners laracrate-start-batch / laracrate-deferred-config viven ahora
+         en la factory compartida (dropzone/_script.blade.php), así los heredan
+         todos los temas y variantes, no solo este. --}}
     class="w-full"
 >
     {{-- Slot picker integrado (solo si hay 2+ opciones) --}}
