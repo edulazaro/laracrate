@@ -38,8 +38,8 @@
                 <p class="text-[11px] text-[#5D5D5D]">{{ __('laracrate::uploader.pending') }}</p>
                 <p class="text-[15px] text-[#0D0D0D] font-semibold truncate" x-text="queue[0]?.name ?? '...'"></p>
             </div>
-            <button type="button" @click="startBatch()" class="text-xs font-semibold px-4 py-2 bg-[#0D0D0D] text-white rounded-lg hover:bg-black shrink-0">{{ __('laracrate::uploader.submit') }}</button>
-            <button type="button" @click="removeItem(0)" class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-[#E5E5E5] text-[#5D5D5D] hover:text-red-700 shrink-0" title="{{ __('laracrate::uploader.cancel') }}">
+            <button type="button" @click="startBatch()" x-show="{{ ($hideActions ?? false) ? 'false' : 'true' }}" class="text-xs font-semibold px-4 py-2 bg-[#0D0D0D] text-white rounded-lg hover:bg-black shrink-0">{{ __('laracrate::uploader.submit') }}</button>
+            <button type="button" @click="removeItem(0)" x-show="{{ ($hideActions ?? false) ? 'false' : 'true' }}" class="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-[#E5E5E5] text-[#5D5D5D] hover:text-red-700 shrink-0" title="{{ __('laracrate::uploader.cancel') }}">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>

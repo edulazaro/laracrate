@@ -70,7 +70,7 @@
         </div>
 
         {{-- Acciones primarias centradas --}}
-        <div x-show="!uploading && pendingCount > 0" class="flex flex-col items-center gap-2 pt-2">
+        <div x-show="!uploading && pendingCount > 0 && {{ ($hideActions ?? false) ? 'false' : 'true' }}" class="flex flex-col items-center gap-2 pt-2">
             <button type="button" @click="startBatch()"
                 class="inline-flex items-center justify-center px-6 h-10 rounded-xl text-gray-700 text-sm font-semibold transition-all"
                 style="background: var(--neu-bg); box-shadow: 4px 4px 8px rgba(163,177,198,0.5), -4px -4px 8px rgba(255,255,255,0.85);">

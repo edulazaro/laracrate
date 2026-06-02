@@ -61,7 +61,7 @@
         </div>
 
         {{-- Acciones primarias centradas --}}
-        <div x-show="!uploading && pendingCount > 0" class="flex flex-col items-center gap-2 pt-2">
+        <div x-show="!uploading && pendingCount > 0 && {{ ($hideActions ?? false) ? 'false' : 'true' }}" class="flex flex-col items-center gap-2 pt-2">
             <button type="button" @click="startBatch()"
                 class="inline-flex items-center justify-center px-6 h-10 rounded-[4px] border border-neutral-900 bg-neutral-950 text-white text-xs font-bold uppercase tracking-[0.15em] hover:bg-neutral-800 shadow-[4px_4px_0_0_rgba(10,10,10,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[6px_6px_0_0_rgba(10,10,10,1)] transition-all duration-150">
                 {{ __('laracrate::uploader.submit') }}

@@ -75,9 +75,9 @@
                 <p class="text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-700">{{ __('laracrate::uploader.pending') }}</p>
                 <p class="text-sm font-bold text-neutral-950 truncate" x-text="queue[0]?.name ?? '...'"></p>
             </div>
-            <button type="button" @click="startBatch()"
+            <button type="button" @click="startBatch()" x-show="{{ ($hideActions ?? false) ? 'false' : 'true' }}"
                 class="inline-flex items-center justify-center h-9 px-4 rounded-[4px] border border-neutral-900 bg-neutral-950 text-white text-xs font-bold uppercase tracking-[0.15em] hover:bg-neutral-800 shrink-0">{{ __('laracrate::uploader.submit') }}</button>
-            <button type="button" @click="removeItem(0)" title="{{ __('laracrate::uploader.cancel') }}"
+            <button type="button" @click="removeItem(0)" x-show="{{ ($hideActions ?? false) ? 'false' : 'true' }}" title="{{ __('laracrate::uploader.cancel') }}"
                 class="inline-flex items-center justify-center w-9 h-9 rounded-[4px] border border-neutral-900 bg-white text-neutral-700 hover:bg-red-50 hover:text-red-700 shrink-0">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>

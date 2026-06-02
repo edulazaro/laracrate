@@ -65,8 +65,8 @@
                 <p class="text-[11px] text-[#6B6560] uppercase tracking-wider">{{ __('laracrate::uploader.pending') }}</p>
                 <p class="text-[15px] text-[#1A1A1A] font-semibold truncate" x-text="queue[0]?.name ?? '...'"></p>
             </div>
-            <button type="button" @click="startBatch()" class="text-xs font-semibold px-4 py-2 bg-[#C15F3C] text-white rounded-md hover:bg-[#A04E30] shrink-0">{{ __('laracrate::uploader.submit') }}</button>
-            <button type="button" @click="removeItem(0)" title="{{ __('laracrate::uploader.cancel') }}" class="inline-flex items-center justify-center w-9 h-9 rounded-md border border-[#1A1A1A]/[0.12] bg-white text-[#6B6560] hover:text-red-700 shrink-0">
+            <button type="button" @click="startBatch()" x-show="{{ ($hideActions ?? false) ? 'false' : 'true' }}" class="text-xs font-semibold px-4 py-2 bg-[#C15F3C] text-white rounded-md hover:bg-[#A04E30] shrink-0">{{ __('laracrate::uploader.submit') }}</button>
+            <button type="button" @click="removeItem(0)" x-show="{{ ($hideActions ?? false) ? 'false' : 'true' }}" title="{{ __('laracrate::uploader.cancel') }}" class="inline-flex items-center justify-center w-9 h-9 rounded-md border border-[#1A1A1A]/[0.12] bg-white text-[#6B6560] hover:text-red-700 shrink-0">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
