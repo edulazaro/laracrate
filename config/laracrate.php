@@ -363,6 +363,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | PDF preview (rasterizado de la primera página a imagen)
+    |--------------------------------------------------------------------------
+    |
+    | Motor que convierte una página de PDF en PNG para la variante 'preview'.
+    | No confundir con 'image.driver' (ese es para variantes/optimización).
+    |
+    |   'pdftoppm' → binario poppler-utils (apt install poppler-utils).
+    |                NO requiere Ghostscript ni tocar policy.xml de ImageMagick.
+    |   'imagick'  → extensión PHP imagick + binario Ghostscript (gs) + el
+    |                coder PDF habilitado en la policy.xml de ImageMagick.
+    |   'auto'     → intenta pdftoppm y, si no está disponible, cae a imagick.
+    |
+    | Override puntual por colección dentro del bloque 'preview':
+    |   'preview' => ['page' => 1, 'width' => 600, 'engine' => 'pdftoppm'],
+    |
+    */
+
+    'pdf_preview_engine' => 'auto',
+
+    /*
+    |--------------------------------------------------------------------------
     | Video (transcoding)
     |--------------------------------------------------------------------------
     */

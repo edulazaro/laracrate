@@ -37,6 +37,8 @@ class ExtractPdfPreviewStep implements FileActionInterface
             'page'            => ($preview['page'] ?? 1) - 1,
             'width'           => $preview['width'] ?? 2000,
             'previewVariants' => $preview['variants'] ?? [],
+            'engine'          => $preview['engine'] ?? config('laracrate.pdf_preview_engine', 'auto'),
+            'resolution'      => $preview['resolution'] ?? 150,
         ]);
     }
 

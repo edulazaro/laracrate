@@ -358,6 +358,31 @@ Endpoints:
 ],
 ```
 
+### `pdf_preview_engine`, PDF preview rasterization
+
+Selects the engine that turns a PDF page into a PNG for the `preview` variant.
+This is independent from `image.driver` (which only handles variants/optimization).
+
+```php
+'pdf_preview_engine' => 'auto', // 'auto' | 'pdftoppm' | 'imagick'
+```
+
+| Engine | How it works | Server requirements |
+| --- | --- | --- |
+| `pdftoppm` | Rasterizes the PDF directly with Poppler via the `pdftoppm` binary. | `poppler-utils` (`apt install poppler-utils`). **No Ghostscript, no policy.xml change.** |
+| `imagick` | Reads the PDF with the PHP Imagick extension, which delegates to Ghostscript. | PHP `imagick` extension **and** the `gs` (Ghostscript) binary **and** the `PDF` coder enabled in `policy.xml` (Debian/Ubuntu ship it disabled by default). |
+| `auto` | Tries `pdftoppm` first; falls back to `imagick` if the binary is missing or fails. | Either of the above. |
+
+`pdftoppm` is recommended on servers: it avoids the recurring `attempt to perform an operation not allowed by the security policy 'PDF'` error that Ghostscript-backed Imagick hits when `policy.xml` blocks the PDF coder. Downscaling to the configured `width` is done with GD when the rendered page is wider than the target.
+
+Override the engine per collection inside the `preview` block:
+
+```php
+'document' => [
+    'preview' => ['page' => 1, 'width' => 600, 'engine' => 'pdftoppm'],
+],
+```
+
 ### `video`, transcoding
 
 ```php
