@@ -210,6 +210,8 @@ For local development you can point the same disk names at the local filesystem 
 ],
 ```
 
+**Recommended: use real object storage in development too.** The `local` driver above is the quickest way to start, but for consistency with production it is strongly recommended to point your development disks at S3-compatible storage instead: either a free Cloudflare R2 bucket, or a local MinIO instance. The direct-upload flow (presigned `PUT`, multipart, and the server-side `copyObject` move from `temp/` to the canonical key) relies on real S3/R2 semantics that the `local` driver only emulates through signed-route fallbacks, so building against R2 or MinIO surfaces problems the local driver would otherwise hide. MinIO uses the same `s3` driver shown above: point `endpoint` at your MinIO URL (for example `http://localhost:9000`) and keep `use_path_style_endpoint => true`.
+
 Each collection declares its own disk in `config/laracrate.php`. The package raises an error on purpose if a collection has no disk, so there is no silent default. See the Configuration section for the full collection schema and the Multi-tenancy, buckets and usage section for per-tenant bucket overrides.
 
 ## Quick start
@@ -666,6 +668,60 @@ Resolution runs from most specific to most general:
 1. `config('laracrate.collections.{name}.placeholder')`
 2. `config('laracrate.placeholders.{type}')`
 3. `config('laracrate.placeholders.default')`
+
+#### Dynamic placeholders (initials avatars, generated SVGs)
+
+A placeholder can be a **callable** instead of a string. When it is, `fileLink()` and `fileRender()` invoke it with `(string $collection, string $type, Model $model)` and use the returned string as the URL. This is how you render a generated fallback (an initials avatar, a `ui-avatars` URL, a per-model SVG) when a model has no file.
+
+Use a **callable array** (`[Class::class, 'method']`), not a `Closure`. Closures are not serializable, so a `Closure` placeholder breaks `php artisan config:cache` in production.
+
+```php
+// config/laracrate.php
+'collections' => [
+    'avatar' => [
+        'disk'        => 'media',
+        'access'      => 'public',
+        'single'      => true,
+        'placeholder' => [\App\Support\InitialsAvatar::class, 'placeholderFor'],
+    ],
+],
+```
+
+```php
+// app/Support/InitialsAvatar.php
+namespace App\Support;
+
+class InitialsAvatar
+{
+    // The signature the package calls: (collection, type, model).
+    public static function placeholderFor($collection, $type, $model): ?string
+    {
+        return self::dataUri($model?->name);
+    }
+
+    public static function dataUri(?string $name, int $size = 200): ?string
+    {
+        $name = trim((string) $name);
+        if ($name === '') {
+            return null;
+        }
+
+        $initials = strtoupper(mb_substr($name, 0, 1));      // 1 to 2 letters from the name
+        $bg       = '#1E40AF';                               // derive a color from the name if you want variety
+        $font     = (int) round($size * 0.42);
+
+        $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' . $size . ' ' . $size . '">'
+             . '<rect width="100%" height="100%" fill="' . $bg . '"/>'
+             . '<text x="50%" y="50%" fill="#fff" font-size="' . $font . '" font-family="sans-serif"'
+             . ' text-anchor="middle" dominant-baseline="central">'
+             . htmlspecialchars($initials, ENT_QUOTES | ENT_XML1) . '</text></svg>';
+
+        return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    }
+}
+```
+
+Now `$user->fileLink('avatar', 'small')` returns the uploaded avatar when it exists, or the inline initials SVG when it does not, with no null checks in your views. A callable placeholder needs the model, so it resolves only through `fileLink()` and `fileRender()` (which carry it), not through the bare `$file->placeholderFor()`. String placeholders work everywhere.
 
 ### URL strategy
 
@@ -1997,7 +2053,9 @@ To register a custom extractor at runtime instead, resolve the registry and add 
 ```php
 use EduLazaro\Laracrate\Support\TextExtractorRegistry;
 
-app(TextExtractorRegistry::class)->add(new \App\Extractors\MyOcrExtractor());
+app(TextExtractorRegistry::class)
+    ->add(new \EduLazaro\Laracrate\Extractors\PdfTextExtractor())
+    ->add(new \App\Extractors\MyOcrExtractor());
 ```
 
 A custom extractor implements `EduLazaro\Laracrate\Contracts\TextExtractor` with two methods: `supports(File $file): bool` and `extract(File $file): ExtractedContent`. Build the return value with `ExtractedContent::singlePage($text, $metadata)` or `ExtractedContent::fromPages($pages, $metadata)`, where each page is `['page_number' => int, 'text' => string]` (and optionally `'context' => string`).
@@ -2765,6 +2823,13 @@ File::unpublished();
 File::default();
 ```
 
+Scopes, and the state helpers that return `self`, chain like any Eloquent call:
+
+```php
+File::published()->ordered()->forTenant($org)->get();
+$file->makeDefault()->publish();
+```
+
 ### `StorageManager` service
 
 `EduLazaro\Laracrate\Services\StorageManager`. The package facade over `Storage::disk()`. Resolve it with `app(StorageManager::class)`. See the Upload modes and Multi-tenancy, buckets and usage sections for context.
@@ -2856,8 +2921,7 @@ The items below are planned or under consideration. They are distilled from the 
 - **Sync processing in dev**: an option to run the processing pipeline inline when there is no queue worker (or when `queue.default` is `sync`), so a freshly uploaded file is not stuck showing its unoptimized original.
 - **`php artisan laracrate:doctor`**: an installation diagnostic that checks disks, backend connectivity, ffmpeg/ffprobe, Imagick/GD, the queue worker, and inconsistent rows.
 - **`php artisan laracrate:purge-orphan-tmp`**: cleanup of orphaned temporary uploads left behind when an upload fails midway.
-- **Publishable upgrade migrations**: shipping the `path` backfill and the table-rename migrations as optional publishable migrations for apps coming from older versions.
-- **Docs**: a "Migrating from older versions" README section, a `CHANGELOG.md` tracking breaking changes, and eventually a dedicated docs site.
+- **Docs site**: a dedicated documentation site once the README outgrows a single file.
 
 ## Sponsors
 
