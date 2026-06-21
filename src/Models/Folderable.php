@@ -6,12 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * Counter agregado de almacenamiento por (folderable, collection). El
- * FileObserver mantiene `total_size_bytes` y `files_count` en sync con los
- * laracrate_files de top-level (parent_id IS NULL) cuya collection tiene el
- * flag `track_usage = true`.
+ * Aggregated storage counter per (folderable, collection). The FileObserver
+ * keeps `total_size_bytes` and `files_count` in sync with the top-level
+ * laracrate_files (parent_id IS NULL) whose collection has the
+ * `track_usage = true` flag.
  *
- * Lectura típica: $organization->usage('drive')->total_size_bytes.
+ * Typical read: $organization->usage('drive')->total_size_bytes.
  */
 class Folderable extends Model
 {
@@ -34,14 +34,17 @@ class Folderable extends Model
         'last_recomputed_at' => 'datetime',
     ];
 
+    /**
+     * The owning model this usage counter belongs to.
+     */
     public function folderable(): MorphTo
     {
         return $this->morphTo();
     }
 
     /**
-     * Lee el flag track_usage del config laracrate para una collection.
-     * Si no existe en config, false (no se trackea).
+     * Reads the track_usage flag from the laracrate config for a collection.
+     * If absent in config, returns false (not tracked).
      */
     public static function isTracked(string $collection): bool
     {

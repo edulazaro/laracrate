@@ -11,12 +11,12 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
 /**
- * Uploader single-file de propósito general.
+ * General-purpose single-file uploader.
  *
- * Lee la config de la collection del paquete (mime aceptados, tamaño máximo,
- * placeholder, component...) y delega en `setFile()` del trait HasFiles del
- * modelo. La capa visual se elige con la prop `theme` (8 temas built-in,
- * publicables y overridables por la app).
+ * Reads the package's collection config (accepted mimes, max size, placeholder,
+ * component...) and delegates to the model's HasFiles trait `setFile()`. The
+ * visual layer is chosen with the `theme` prop (8 built-in themes, publishable
+ * and overridable by the app).
  *
  *   <livewire:laracrate-uploader :model="$user" collection="avatar" />
  *   <livewire:laracrate-uploader :model="$user" collection="avatar" theme="ios" variant="medium" />
@@ -41,25 +41,26 @@ class LaracrateUploader extends Component
     public string $layout = 'row';
 
     /**
-     * Override de redondeo del preview de la imagen. Valores estándar Tailwind:
+     * Override for the image preview rounding. Standard Tailwind values:
      * 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full'.
-     * Si null, cada tema usa su default propio.
+     * If null, each theme uses its own default.
      */
     #[Locked]
     public ?string $rounded = null;
 
     /**
-     * Buffer del upload temporal de Livewire. Cuando se asigna, `updatedUpload`
-     * dispara la validación y la persistencia vía `setFile()`.
+     * Buffer for the Livewire temporary upload. When assigned, `updatedUpload`
+     * triggers the validation and persistence via `setFile()`.
      */
     public $upload = null;
 
     /**
-     * Cuando el File queda en `pending`/`processing`, el view activa
-     * `wire:poll.{ms}ms="$refresh"` para refrescar hasta `completed`/`failed`.
+     * When the File stays in `pending`/`processing`, the view activates
+     * `wire:poll.{ms}ms="$refresh"` to refresh until `completed`/`failed`.
      */
     public int $pollMs = 1500;
 
+    /** Livewire mount: initialize the component props. */
     public function mount(
         Model $model,
         string $collection,
@@ -77,11 +78,11 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * Devuelve la clase Tailwind correspondiente al valor de la prop `rounded`,
-     * o cadena vacía si no se ha pasado (cada tema fallback a su propio default).
+     * Returns the Tailwind class matching the `rounded` prop value, or an empty
+     * string if not passed (each theme falls back to its own default).
      *
-     * Las clases aparecen literales en el match() para que Tailwind las
-     * detecte al escanear los archivos PHP del paquete.
+     * The classes appear literal in the match() so Tailwind detects them when
+     * scanning the package's PHP files.
      */
     public function roundedClass(): string
     {
@@ -98,6 +99,7 @@ class LaracrateUploader extends Component
         };
     }
 
+    /** Lifecycle hook: validate and persist the file when the temp upload completes. */
     public function updatedUpload(): void
     {
         if (! $this->upload instanceof TemporaryUploadedFile) {
@@ -119,6 +121,7 @@ class LaracrateUploader extends Component
         }
     }
 
+    /** Delete the current file of the collection. */
     public function delete(): void
     {
         $file = $this->currentFile();
@@ -132,7 +135,7 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * File top-level actual de la (model + collection). Single mode → 0 o 1.
+     * Current top-level File of the (model + collection). Single mode -> 0 or 1.
      */
     public function currentFile(): ?File
     {
@@ -140,8 +143,8 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * 'idle' (sin file) | 'pending' | 'processing' | 'completed' | 'failed'.
-     * Driver del polling y del badge de estado en los temas.
+     * 'idle' (no file) | 'pending' | 'processing' | 'completed' | 'failed'.
+     * Drives the polling and the status badge in the themes.
      */
     public function processingState(): string
     {
@@ -154,8 +157,8 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * URL del File para preview (variant si está disponible, sino master,
-     * sino placeholder configurado de la collection).
+     * File URL for preview (variant if available, otherwise master, otherwise
+     * the collection's configured placeholder).
      */
     public function previewUrl(): ?string
     {
@@ -163,8 +166,8 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * Reglas Livewire para `upload`. Se construyen desde el config de la
-     * collection: mimes (mapeados a extensiones), tamaño máx en KB.
+     * Livewire rules for `upload`. Built from the collection config: mimes
+     * (mapped to extensions), max size in KB.
      */
     protected function validationRules(): array
     {
@@ -178,8 +181,8 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * Extensiones aceptadas por TODOS los types declarados en la collection.
-     * Para el atributo `accept=` del input y la validación `mimes:`.
+     * Extensions accepted across ALL types declared in the collection.
+     * For the input's `accept=` attribute and the `mimes:` validation.
      */
     public function acceptedExtensions(): array
     {
@@ -199,8 +202,8 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * Mime types aceptados (para el atributo `accept=` HTML5, más estricto que
-     * extensiones porque los browsers respetan mime types del file picker).
+     * Accepted mime types (for the HTML5 `accept=` attribute, stricter than
+     * extensions because browsers respect the file picker's mime types).
      */
     public function acceptedMimeTypes(): array
     {
@@ -220,9 +223,8 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * Tamaño máximo en KB del primer type declarado. Para single uploaders
-     * con un solo type (avatar, logo, cv...) es suficiente; collections
-     * multi-tipo tendrían que extender el componente.
+     * Max size in KB. For single uploaders with one type (avatar, logo, cv...)
+     * it is enough; multi-type collections would need to extend the component.
      */
     public function maxSizeKb(): int
     {
@@ -239,6 +241,7 @@ class LaracrateUploader extends Component
         return $max ?: 10240;
     }
 
+    /** Normalize the collection types config to an associative map. */
     protected function normalizeTypes(array $types): array
     {
         $out = [];
@@ -252,13 +255,14 @@ class LaracrateUploader extends Component
         return $out;
     }
 
+    /** Render the uploader theme view. */
     public function render()
     {
         $theme  = $this->theme ?? config('laracrate.ui.default_theme', 'default');
         $layout = $this->layout;
 
-        // Resolución: themes/{theme}/{layout}.blade.php → themes/{theme}.blade.php
-        // (back-compat con temas single-file).
+        // Resolution: themes/{theme}/{layout}.blade.php -> themes/{theme}.blade.php
+        // (back-compat with single-file themes).
         $view = view()->exists("laracrate::uploader.themes.{$theme}.{$layout}")
             ? "laracrate::uploader.themes.{$theme}.{$layout}"
             : "laracrate::uploader.themes.{$theme}";

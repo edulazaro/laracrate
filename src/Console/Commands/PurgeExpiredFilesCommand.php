@@ -7,9 +7,9 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Borra Files cuyas colecciones tengan TTL definido y hayan superado el plazo.
+ * Deletes Files whose collections have a TTL defined and have passed the deadline.
  *
- * Convención: en `config/laracrate.php` cada colección puede declarar
+ * Convention: in `config/laracrate.php` each collection may declare
  *
  *   'temp_uploads' => [
  *       'disk'      => 'r2',
@@ -17,24 +17,24 @@ use Throwable;
  *       // ...
  *   ],
  *
- * y este comando, programado típicamente cada hora, elimina los Files de
- * esa colección con `created_at < now() - ttl_hours`. Usa `forceDelete()`
- * para que el `FileObserver::forceDeleted` purgue también el binario en
- * el backend.
+ * and this command, typically scheduled hourly, removes the Files of that
+ * collection with `created_at < now() - ttl_hours`. It uses `forceDelete()`
+ * so that `FileObserver::forceDeleted` also purges the binary in the backend.
  *
- * Ejecución sugerida:
+ * Suggested run:
  *
  *   Schedule::command('laracrate:purge-expired')->hourly();
  */
 class PurgeExpiredFilesCommand extends Command
 {
     protected $signature = 'laracrate:purge-expired
-                            {--collection= : Limita a una colección concreta}
-                            {--dry-run : Solo lista, no borra}
-                            {--limit=1000 : Máximo de archivos a procesar por colección}';
+                            {--collection= : Limit to a specific collection}
+                            {--dry-run : Only list, do not delete}
+                            {--limit=1000 : Maximum files to process per collection}';
 
-    protected $description = 'Borra Files de colecciones con TTL configurado que ya han expirado';
+    protected $description = 'Deletes Files from collections with a configured TTL that have already expired';
 
+    /** Deletes (or lists, in dry-run) expired Files per collection based on ttl_hours. */
     public function handle(): int
     {
         $only  = $this->option('collection');
@@ -43,7 +43,7 @@ class PurgeExpiredFilesCommand extends Command
 
         $collections = config('laracrate.collections', []);
         if (!is_array($collections) || $collections === []) {
-            $this->info('No hay colecciones configuradas.');
+            $this->info('No collections configured.');
             return self::SUCCESS;
         }
 
@@ -55,7 +55,7 @@ class PurgeExpiredFilesCommand extends Command
                 continue;
             }
 
-            // Resolución sin morph alias: devuelve la base, ignora `models`.
+            // Resolution without morph alias: returns the base, ignores `models`.
             $config   = \EduLazaro\Laracrate\Support\CollectionConfig::resolve($name);
             $ttlHours = $config['ttl_hours'] ?? null;
             if ($ttlHours === null || $ttlHours <= 0) {
@@ -67,7 +67,7 @@ class PurgeExpiredFilesCommand extends Command
             $expired = File::withTrashed()
                 ->where('collection', $name)
                 ->where('created_at', '<', $cutoff)
-                ->whereNull('parent_id')  // variants se borran en cascada al borrar el padre
+                ->whereNull('parent_id')  // variants are deleted in cascade when the parent is deleted
                 ->limit($limit)
                 ->get();
 
@@ -76,8 +76,8 @@ class PurgeExpiredFilesCommand extends Command
             }
 
             $this->info(sprintf(
-                "%s '%s' (ttl=%dh): %d archivo(s) expirado(s)%s.",
-                $dry ? 'Encontrados en' : 'Procesando',
+                "%s '%s' (ttl=%dh): %d expired file(s)%s.",
+                $dry ? 'Found in' : 'Processing',
                 $name,
                 $ttlHours,
                 $expired->count(),
@@ -94,13 +94,13 @@ class PurgeExpiredFilesCommand extends Command
                     $totalDeleted++;
                 } catch (Throwable $e) {
                     $totalFailed++;
-                    $this->error("    fallo: {$e->getMessage()}");
+                    $this->error("    failed: {$e->getMessage()}");
                 }
             }
         }
 
         if (!$dry) {
-            $this->info("Borrados: {$totalDeleted}. Fallidos: {$totalFailed}.");
+            $this->info("Deleted: {$totalDeleted}. Failed: {$totalFailed}.");
         }
 
         return self::SUCCESS;

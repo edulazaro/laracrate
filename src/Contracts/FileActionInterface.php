@@ -5,21 +5,21 @@ namespace EduLazaro\Laracrate\Contracts;
 use EduLazaro\Laracrate\Models\File;
 
 /**
- * Acción del pipeline de procesamiento de un File.
+ * Action of a File's processing pipeline.
  *
- * Cada acción es una pieza independiente que decide si aplica al File dado
- * (`supports`) y qué hacer (`handle`). El registry las ejecuta ordenadas
- * por `priority` ascendente. Convención de prioridades:
+ * Each action is an independent piece that decides whether it applies to the
+ * given File (`supports`) and what to do (`handle`). The registry runs them
+ * ordered by ascending `priority`. Priority convention:
  *
  *   0-19   : metadata (dimensions, duration)
- *   20-39  : transformación del original (optimize, transcode, encrypt)
- *   40-59  : derivados (variants, previews, thumbnails)
- *   60-79  : extracción semántica (texto, OCR, transcripción)
- *   80-99  : IA (chunking, embeddings, classification)
+ *   20-39  : transformation of the original (optimize, transcode, encrypt)
+ *   40-59  : derivatives (variants, previews, thumbnails)
+ *   60-79  : semantic extraction (text, OCR, transcription)
+ *   80-99  : AI (chunking, embeddings, classification)
  *   100+   : app-specific post-processing
  *
- * Las apps registran sus propias acciones declarativamente en la collection
- * de `config/laracrate.php`:
+ * Apps register their own actions declaratively in the collection
+ * in `config/laracrate.php`:
  *
  *   'documents' => [
  *       'actions' => [
@@ -30,28 +30,28 @@ use EduLazaro\Laracrate\Models\File;
 interface FileActionInterface
 {
     /**
-     * Ejecuta la acción sobre el file. Lanza excepción si falla —
-     * el orquestador decide la política.
+     * Runs the action on the file. Throws on failure: the
+     * orchestrator decides the policy.
      */
     public function handle(File $file): void;
 
     /**
-     * Prioridad ascendente. Acciones con menor número corren primero.
+     * Ascending priority. Actions with a lower number run first.
      */
     public function priority(): int;
 
     /*
-     * OPCIONAL: cada implementación puede declarar
+     * OPTIONAL: each implementation may declare
      *
      *   public function supports(File $file): bool;
      *
-     * para gating per-file extra (ej. solo si hay texto extraído, solo si
-     * cierto metadata existe, etc.). Si el método no existe, ProcessFileAction
-     * asume true y siempre invoca handle().
+     * for extra per-file gating (e.g. only if there is extracted text, only if
+     * certain metadata exists, etc.). If the method does not exist, ProcessFileAction
+     * assumes true and always invokes handle().
      *
-     * El scope por fileable y por collection se hace declarativamente en
-     * `config.collections.*.actions` y `config.collections.*.models.X.actions`,
-     * no en supports(). Las variants tampoco llegan aquí — ProcessFileAction
-     * las filtra antes (isVariant check).
+     * The scope by fileable and by collection is done declaratively in
+     * `config.collections.*.actions` and `config.collections.*.models.X.actions`,
+     * not in supports(). Variants do not reach here either: ProcessFileAction
+     * filters them out beforehand (isVariant check).
      */
 }

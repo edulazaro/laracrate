@@ -9,14 +9,14 @@ use Meilisearch\Client;
 use RuntimeException;
 
 /**
- * Sincroniza chunks de file_contents con un índice de Meilisearch para
- * búsqueda híbrida (BM25 + vector).
+ * Synchronizes file_contents chunks with a Meilisearch index for hybrid search
+ * (BM25 + vector).
  *
- * Embedder configurado como `userProvided`: laracrate genera los embeddings
- * con OpenAI (o cualquier `EmbeddingProvider`) y los inyecta en
- * `_vectors.{embedder}`. Meili los almacena y los usa para `vector` queries.
+ * Embedder configured as `userProvided`: laracrate generates the embeddings
+ * with OpenAI (or any `EmbeddingProvider`) and injects them into
+ * `_vectors.{embedder}`. Meili stores them and uses them for `vector` queries.
  *
- * Estructura del documento Meili (una fila por chunk):
+ * Meili document structure (one row per chunk):
  *   {
  *     "chunk_id":      "f42-c0",
  *     "file_id":       42,
@@ -32,14 +32,17 @@ use RuntimeException;
  *     "_vectors":      { "default": [0.014, ...] }
  *   }
  *
- * Apps que necesiten campos adicionales en cada doc pueden extender esta
- * clase y override `formatDocument()`.
+ * Apps that need extra fields in each doc can extend this class and override
+ * `formatDocument()`.
  */
 class MeilisearchSync
 {
     public const DEFAULT_INDEX = 'laracrate_file_chunks';
     public const DEFAULT_EMBEDDER = 'default';
 
+    /**
+     * Create a new Meilisearch sync helper.
+     */
     public function __construct(
         protected Client $client,
         protected ?string $index = null,
@@ -52,8 +55,8 @@ class MeilisearchSync
     }
 
     /**
-     * Crea el índice (idempotente) y configura filterable/sortable/searchable
-     * attributes + embedder userProvided con las dimensiones esperadas.
+     * Create the index (idempotent) and configure filterable/sortable/searchable
+     * attributes + the userProvided embedder with the expected dimensions.
      */
     public function ensureIndex(): void
     {
@@ -87,9 +90,9 @@ class MeilisearchSync
                 ],
             ]);
         } catch (\Throwable $e) {
-            // updateEmbedders puede fallar si la versión de Meili no soporta
-            // el feature (antes de 1.10). Log y sigue: la app puede indexar
-            // chunks sin vectores y solo usar BM25.
+            // updateEmbedders can fail if the Meili version does not support the
+            // feature (before 1.10). Log and continue: the app can index chunks
+            // without vectors and use BM25 only.
             Log::warning('Laracrate: could not configure Meilisearch embedder', [
                 'embedder' => $this->embedder,
                 'error'    => $e->getMessage(),
@@ -98,8 +101,8 @@ class MeilisearchSync
     }
 
     /**
-     * Indexa todos los chunks de un File. Si el file no tiene chunks o no
-     * tiene embeddings, no hace nada.
+     * Index all chunks of a File. If the file has no chunks or no embeddings,
+     * does nothing.
      */
     public function indexFile(File $file): int
     {
@@ -123,7 +126,7 @@ class MeilisearchSync
     }
 
     /**
-     * Borra todos los chunks de un File del índice. Idempotente.
+     * Remove all chunks of a File from the index. Idempotent.
      */
     public function removeFile(File $file): void
     {
@@ -133,7 +136,7 @@ class MeilisearchSync
     }
 
     /**
-     * Formatea un chunk como documento Meili. Subclases pueden override.
+     * Format a chunk as a Meili document. Subclasses may override.
      */
     protected function formatDocument(File $file, FileChunk $chunk): ?array
     {

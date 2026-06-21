@@ -9,22 +9,23 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 /**
- * Endpoint para que el cliente consulte el estado de procesamiento de uno o
- * varios archivos. Pensado para polling tras un upload async.
+ * Endpoint for the client to query the processing status of one or several
+ * files. Intended for polling after an async upload.
  *
- *   GET  /laracrate/files/{file:slug}/status   → un archivo
- *   POST /laracrate/files/status               → batch (varios slugs)
+ *   GET  /laracrate/files/{file:slug}/status   -> a single file
+ *   POST /laracrate/files/status               -> batch (several slugs)
  *
- * Cada respuesta incluye:
+ * Each response includes:
  *   - status:   pending | processing | completed | failed
- *   - ready:    bool (true si completed)
- *   - url:      URL final si está ready, null si no
- *   - variants: { name => url } de los variants ya generados
- *   - preview:  URL del variant 'preview.thumbnail' si existe
- *   - error:    processing_error si status=failed
+ *   - ready:    bool (true if completed)
+ *   - url:      final URL if ready, null otherwise
+ *   - variants: { name => url } of the variants already generated
+ *   - preview:  URL of the 'preview.thumbnail' variant if it exists
+ *   - error:    processing_error if status=failed
  */
 class FileStatusController extends Controller
 {
+    /** Return the processing status of a single file. */
     public function show(Request $request, File $file): JsonResponse
     {
         if (!$file->canView($request->user())) {
@@ -34,6 +35,7 @@ class FileStatusController extends Controller
         return response()->json($this->payload($file));
     }
 
+    /** Return the processing status of several files by slug. */
     public function batch(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -56,6 +58,7 @@ class FileStatusController extends Controller
         return response()->json($results);
     }
 
+    /** Build the status payload for a single file. */
     protected function payload(File $file): array
     {
         $status = $file->processing_status;
@@ -75,9 +78,9 @@ class FileStatusController extends Controller
     }
 
     /**
-     * Mapa nombre→URL de los variants/children de primer nivel.
-     * Para preview nested (preview.thumbnail) la app navega con
-     * $file->variant() si lo necesita; aquí damos los planos.
+     * Name->URL map of the first-level variants/children.
+     * For nested previews (preview.thumbnail) the app navigates with
+     * $file->variant() if it needs to; here we give the flat ones.
      */
     protected function collectVariants(File $file): array
     {
@@ -88,8 +91,8 @@ class FileStatusController extends Controller
 
             $out[$child->variant] = $child->url();
 
-            // Si el child es un preview con sus propios variants, los exponemos
-            // anidados con dot notation: preview.thumbnail, preview.medium...
+            // If the child is a preview with its own variants, expose them
+            // nested with dot notation: preview.thumbnail, preview.medium...
             foreach ($child->children as $grandchild) {
                 if ($grandchild->variant) {
                     $out["{$child->variant}.{$grandchild->variant}"] = $grandchild->url();

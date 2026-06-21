@@ -10,30 +10,36 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
- * Transcribe audio usando OpenAI Whisper. No hay alternativa de Anthropic
- * (Claude no transcribe audio nativo), así que este extractor es OpenAI-only.
+ * Transcribes audio using OpenAI Whisper. There is no Anthropic alternative
+ * (Claude does not transcribe audio natively), so this extractor is OpenAI-only.
  *
- * Coste: ~$0.006/minuto (whisper-1).
- * Límite: 25MB por archivo en la API.
+ * Cost: ~$0.006/minute (whisper-1).
+ * Limit: 25MB per file in the API.
  *
  * Config:
  *   LARACRATE_OPENAI_API_KEY      = (fallback: OPENAI_API_KEY)
- *   LARACRATE_AUDIO_MODEL         = (opcional, default: whisper-1)
+ *   LARACRATE_AUDIO_MODEL         = (optional, default: whisper-1)
  */
 class AudioTranscribeExtractor implements TextExtractor
 {
+    /**
+     * Create a new audio transcribe extractor.
+     */
     public function __construct(
         protected ?string $apiKey = null,
         protected ?string $model = null,
         protected int $timeout = 300,
     ) {}
 
+    /**
+     * Determine whether this extractor can handle the given file.
+     */
     public function supports(File $file): bool
     {
         if (! str_starts_with((string) $file->mime_type, 'audio/')) {
             return false;
         }
-        // Sin OpenAI API key → no aplicamos (silent skip, no throw).
+        // Without an OpenAI API key, skip silently (no throw).
         return ! empty(
             $this->apiKey
             ?? config('laracrate.openai.api_key')
@@ -42,6 +48,9 @@ class AudioTranscribeExtractor implements TextExtractor
         );
     }
 
+    /**
+     * Transcribe the audio file and return the extracted text.
+     */
     public function extract(File $file): ExtractedContent
     {
         $apiKey = $this->apiKey
@@ -50,18 +59,18 @@ class AudioTranscribeExtractor implements TextExtractor
             ?: env('OPENAI_API_KEY');
 
         if (! $apiKey) {
-            throw new RuntimeException('OpenAI API key no configurada para AudioTranscribeExtractor.');
+            throw new RuntimeException('OpenAI API key not configured for AudioTranscribeExtractor.');
         }
 
         $model = $this->model
             ?? config('laracrate.audio.model')
             ?: env('LARACRATE_AUDIO_MODEL', 'whisper-1');
 
-        // Whisper requiere el archivo en multipart. Lo bajamos a tmp para
-        // poder enviarlo con `attach()`.
+        // Whisper requires the file as multipart. Download it to a tmp file so
+        // it can be sent with `attach()`.
         $bytes = Storage::disk($file->disk)->get($file->path);
         if ($bytes === null || $bytes === false) {
-            throw new RuntimeException("AudioTranscribe: no se pudo leer {$file->path}");
+            throw new RuntimeException("AudioTranscribe: could not read {$file->path}");
         }
 
         $tmpPath = tempnam(sys_get_temp_dir(), 'laracrate_audio_');

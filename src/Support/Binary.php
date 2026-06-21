@@ -3,11 +3,11 @@
 namespace EduLazaro\Laracrate\Support;
 
 /**
- * Value object para upload de contenido binario generado server-side.
+ * Value object for uploading binary content generated server-side.
  *
- * Caso de uso: PDFs generados con mPDF, imágenes generadas con GD, exports
- * en memoria, etc. El caller pasa el contenido bruto + mime + nombre lógico;
- * el paquete decide path canónico, valida y sube.
+ * Use case: PDFs generated with mPDF, images generated with GD, in-memory
+ * exports, etc. The caller passes the raw content + mime + logical name;
+ * the package decides the canonical path, validates and uploads.
  *
  *   $case->addFile(new Binary(
  *       content: $pdfContent,
@@ -15,16 +15,17 @@ namespace EduLazaro\Laracrate\Support;
  *       originalName: 'Contrato_firmado.pdf',
  *   ), 'documents', data: [...]);
  *
- * Diferencias frente a UploadedFile:
- *   - UploadedFile = subida HTTP, archivo en `php://input` o tmp local.
- *   - Binary       = contenido en memoria, sin archivo intermedio.
+ * Differences from UploadedFile:
+ *   - UploadedFile = HTTP upload, file in `php://input` or local tmp.
+ *   - Binary       = content in memory, no intermediate file.
  *
- * Diferencias frente a FileUpload (presigned):
- *   - FileUpload = el cliente ya subió a `temp/X` en R2; el paquete mueve.
- *   - Binary     = el server tiene los bytes; el paquete escribe al disk final.
+ * Differences from FileUpload (presigned):
+ *   - FileUpload = the client already uploaded to `temp/X` on R2; the package moves it.
+ *   - Binary     = the server holds the bytes; the package writes to the final disk.
  */
 class Binary
 {
+    /** Create a binary value object from raw server-side content. */
     public function __construct(
         public readonly string $content,
         public readonly string $mimeType,
@@ -34,11 +35,13 @@ class Binary
         public readonly ?int $duration = null,
     ) {}
 
+    /** Size of the content in bytes. */
     public function size(): int
     {
         return strlen($this->content);
     }
 
+    /** Lowercased file extension derived from the original name. */
     public function extension(): string
     {
         return strtolower(pathinfo($this->originalName, PATHINFO_EXTENSION) ?: 'bin');

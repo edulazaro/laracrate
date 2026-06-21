@@ -7,10 +7,10 @@ return [
     | Default collection / context
     |--------------------------------------------------------------------------
     |
-    | Valor que aplica el schema cuando un File se inserta sin especificar
-    | collection o context (p. ej. variants creados sin override). Cualquier
-    | string vale; la convención es 'default'. Cambiarlo aquí re-migrando
-    | actualiza la DEFAULT del schema.
+    | Value the schema applies when a File is inserted without an explicit
+    | collection or context (e.g. variants created without an override). Any
+    | string works; the convention is 'default'. Changing it here and
+    | re-migrating updates the schema DEFAULT.
     |
     */
 
@@ -19,18 +19,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Defaults por tipo de archivo
+    | Per file type defaults
     |--------------------------------------------------------------------------
     */
 
     'defaults' => [
-        // Listas "safe by default" por type. Cualquier collection que NO
-        // declare `accepted_extensions` / `accepted_mime_types` hereda éstas.
-        // Excluidas a propósito: SVG (puede llevar <script>), ICO (CVEs
-        // legacy), HTML/JS/PHP/EXE/BAT/SH (ejecutables), ZIP/RAR/7Z
-        // (contenedores con vectores de zip-slip / contenido oculto). Para
-        // permitirlos, override explícito en la collection con su propia
-        // política de validación/sanitización.
+        // "Safe by default" lists per type. Any collection that does NOT
+        // declare `accepted_extensions` / `accepted_mime_types` inherits these.
+        // Excluded on purpose: SVG (can carry <script>), ICO (legacy CVEs),
+        // HTML/JS/PHP/EXE/BAT/SH (executables), ZIP/RAR/7Z (containers with
+        // zip-slip vectors / hidden content). To allow them, override
+        // explicitly in the collection with its own validation/sanitization
+        // policy.
         'image' => [
             'accepted_mime_types' => [
                 'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -104,29 +104,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Colecciones
+    | Collections
     |--------------------------------------------------------------------------
     |
-    | Cada colección define disk, access, single, sensitive, variants override.
-    | Los modelos pueden sobreescribir vía $fileCollections.
+    | Each collection defines disk, access, single, sensitive, variants
+    | override. Models can override via $fileCollections.
     |
-    | Opcional: `ttl_hours` declara TTL para los Files de la colección. El
-    | comando `laracrate:purge-expired` (programable hourly) borra los Files
-    | con created_at < now() - ttl_hours, cascadeando a variants y al binario
-    | en backend. Útil para colecciones tipo `temp_uploads`, exports caducos,
-    | drafts pendientes de promoción.
+    | Optional: `ttl_hours` declares a TTL for the collection's Files. The
+    | `laracrate:purge-expired` command (schedulable hourly) deletes Files
+    | with created_at < now() - ttl_hours, cascading to variants and the
+    | backend binary. Useful for collections like `temp_uploads`, expiring
+    | exports, drafts pending promotion.
     |
-    | Opcional: `quota_bytes` para que la app consulte vía `UsageReporter`
-    | si un tenant excede su cuota antes de aceptar más uploads. El paquete
-    | NO impone cuotas — la app valida con `UsageReporter` + esta constante
-    | en el endpoint de presign.
+    | Optional: `quota_bytes` so the app can check via `UsageReporter` whether
+    | a tenant exceeds its quota before accepting more uploads. The package
+    | does NOT enforce quotas, the app validates with `UsageReporter` plus this
+    | constant in the presign endpoint.
+    |
+    | These 2 are EXAMPLE collections, not the config of any specific app.
+    | They use standard Laravel disks (`public`, `s3`) so the package boots
+    | as-is after install. Copy them and adapt to your real disks /
+    | collections in your app's published config.
     |
     */
 
     'collections' => [
-        // Avatar: solo image, defaults globales (string suelto = sin override)
+        // Example 1: user avatar. Public image on the `public` disk (present
+        // out-of-the-box in any Laravel), one per model, with cropped square
+        // variants.
         'avatar' => [
-            'disk'   => 'media',
+            'disk'   => 'public',
             'access' => 'public',
             'single' => true,
             'types'  => [
@@ -140,33 +147,11 @@ return [
             ],
         ],
 
-        // Galería: image + video con config propia para cada uno
-        'gallery' => [
-            'disk'   => 'media',
-            'access' => 'public',
-            'types'  => [
-                'image' => [
-                    'variants' => [
-                        'thumbnail' => ['width' => 300,  'height' => 300, 'fit' => true],
-                        'medium'    => ['width' => 800,  'height' => 800],
-                        'large'     => ['width' => 1600, 'height' => 1600],
-                    ],
-                ],
-                'video' => [
-                    'preview' => [
-                        'frame_at' => '00:00:01',
-                        'variants' => [
-                            'thumbnail' => ['width' => 300,  'height' => 300, 'fit' => true],
-                            'medium'    => ['width' => 800,  'height' => 800],
-                        ],
-                    ],
-                ],
-            ],
-        ],
-
-        // Documentos: PDF con preview de primera página, signed URL
+        // Example 2: private PDF documents on the `s3` disk (already present in
+        // Laravel's default filesystems.php), served via a temporary signed URL
+        // with a rasterized preview of the first page.
         'documents' => [
-            'disk'   => 'documents',
+            'disk'   => 's3',
             'access' => 'signed',
             'types'  => [
                 'document' => [
@@ -181,28 +166,6 @@ return [
                 ],
             ],
         ],
-
-        // Identidad: stream + bind viewer + encrypt. La marca de agua se
-        // configura per-variant (ver bloque 'watermark' al final del config).
-        'identity' => [
-            'disk'      => 'documents',
-            'access'    => 'stream',
-            'sensitive' => true,
-            'encrypt'   => true,
-            'types'     => [
-                'image' => [
-                    'variants' => [
-                        'display' => ['width' => 1200, 'watermark' => true],
-                    ],
-                ],
-                'document' => [
-                    'preview' => [
-                        'page'  => 1,
-                        'width' => 2000,
-                    ],
-                ],
-            ],
-        ],
     ],
 
     /*
@@ -210,14 +173,14 @@ return [
     | Placeholders
     |--------------------------------------------------------------------------
     |
-    | Cadena de fallback cuando un File / variant no existe o no es del tipo
-    | esperado por el render. Resolución (más específico → más general):
+    | Fallback chain when a File / variant does not exist or is not the type
+    | expected by the render. Resolution (most specific to most general):
     |
     |   1. config('laracrate.collections.{name}.placeholder')
     |   2. config('laracrate.placeholders.{type}')
     |   3. config('laracrate.placeholders.default')
     |
-    | Cada app sobreescribe en su config publicado.
+    | Each app overrides these in its published config.
     |
     */
 
@@ -234,11 +197,11 @@ return [
     | URL strategy
     |--------------------------------------------------------------------------
     |
-    | signed_ttl:           TTL en minutos para signed URLs de R2 (defecto 5).
-    | signed_cache_ttl:     TTL del cache server-side de la signed URL (defecto 4 min).
-    | sensitive_redirect_ttl: TTL ultra corto para signed URL después de validar
-    |                        en el stream controller (segundos).
-    | route_signed_ttl:     TTL en minutos del HMAC de la ruta /files/{slug}/stream.
+    | signed_ttl:           TTL in minutes for R2 signed URLs (default 5).
+    | signed_cache_ttl:     TTL of the server-side cache of the signed URL (default 4 min).
+    | sensitive_redirect_ttl: ultra short TTL for the signed URL after validating
+    |                        in the stream controller (seconds).
+    | route_signed_ttl:     TTL in minutes of the HMAC of the /files/{slug}/stream route.
     |
     */
 
@@ -255,20 +218,20 @@ return [
     | Policies (Gate bridge)
     |--------------------------------------------------------------------------
     |
-    | El paquete usa `PolicyRegistry` como sitio canónico para declarar la
-    | lógica de autorización por `fileable_type`. Si `register_gate` está
-    | activo (default), el ServiceProvider además ata `FilePolicy` al Gate
-    | de Laravel para que la app pueda usar las ergonomías nativas:
+    | The package uses `PolicyRegistry` as the canonical place to declare
+    | authorization logic per `fileable_type`. If `register_gate` is active
+    | (default), the ServiceProvider also binds `FilePolicy` to Laravel's Gate
+    | so the app can use the native ergonomics:
     |
     |   @can('view', $file)
     |   $user->can('update', $file)
     |   $this->authorize('delete', $file)
     |   Route::middleware('can:view,file')
     |
-    | Mapping: Gate `view`/`update`/`delete` ↔ registry `canView`/`canEdit`/`canDelete`.
+    | Mapping: Gate `view`/`update`/`delete` to registry `canView`/`canEdit`/`canDelete`.
     |
-    | Apps que ya tengan su propia FilePolicy registrada o no quieran el
-    | bridge ponen `register_gate => false`.
+    | Apps that already have their own FilePolicy registered, or that do not
+    | want the bridge, set `register_gate => false`.
     |
     */
 
@@ -283,9 +246,9 @@ return [
     */
 
     'stream' => [
-        // Prefijo "laracrate/" para evitar colisiones con rutas existentes del
-        // proyecto bajo /files/... — muy común en apps que ya tienen un
-        // FileController propio. Cámbialo solo si sabes que no choca.
+        // "laracrate/" prefix to avoid collisions with existing project routes
+        // under /files/..., very common in apps that already have their own
+        // FileController. Change it only if you know it does not clash.
         'route_prefix'        => 'laracrate/files',
         'route_name_prefix'   => 'laracrate.files',
         'middleware'          => ['web', 'auth'],
@@ -298,9 +261,9 @@ return [
     | Status polling
     |--------------------------------------------------------------------------
     |
-    | Endpoints para consultar estado de procesamiento tras un upload async.
-    |   GET  /laracrate/files/{slug}/status   → un archivo
-    |   POST /laracrate/files/status          → batch (varios slugs)
+    | Endpoints to query processing status after an async upload.
+    |   GET  /laracrate/files/{slug}/status   -> a single file
+    |   POST /laracrate/files/status          -> batch (several slugs)
     |
     */
 
@@ -311,16 +274,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Uploads directos (presigned a R2/S3)
+    | Direct uploads (presigned to R2/S3)
     |--------------------------------------------------------------------------
     |
-    | route_prefix:  prefijo URL de los endpoints de presign / cancel.
-    | middleware:    middleware del grupo de rutas de uploads. La app es
-    |                responsable de la autorización (auth, throttle, etc.).
-    | allowed_disks: lista blanca de disks a los que se permite subir
-    |                directamente (se valida en presign y multipart init).
-    |                Vacío = sin restricción. El bloque multipart hereda este
-    |                middleware cuando el suyo es null.
+    | route_prefix:  URL prefix of the presign / cancel endpoints.
+    | middleware:    middleware of the uploads route group. The app is
+    |                responsible for authorization (auth, throttle, etc.).
+    | allowed_disks: allow-list of disks that direct uploads are permitted to
+    |                (validated on presign and multipart init). Empty = no
+    |                restriction. The multipart block inherits this middleware
+    |                when its own is null.
     |
     */
 
@@ -332,24 +295,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Multipart upload (archivos grandes a S3/R2)
+    | Multipart upload (large files to S3/R2)
     |--------------------------------------------------------------------------
     |
-    | threshold:        umbral en bytes para que el cliente decida usar
-    |                   multipart. < umbral → single PUT con `presignedUpload`,
-    |                   >= umbral → multipart vía endpoints /laracrate/multipart.
-    |                   El servidor NO impone esto — lo decide el frontend
-    |                   según `file.size`. Aquí solo es la sugerencia oficial.
-    | part_size:        tamaño de cada parte en bytes (mín. 5 MB en S3).
-    |                   10 MB es buen balance: 100 partes para 1 GB, 800 para 8 GB.
-    | expire_minutes:   TTL de la sesión multipart. Tras esto, el cron
-    |                   `laracrate:abort-stale-multipart` la aborta.
-    | url_ttl_minutes:  TTL de las presigned URLs de cada parte. Si una parte
-    |                   no se sube en ese tiempo, el cliente debe pedir nuevas
-    |                   URLs vía POST /multipart/{id}/parts.
-    | route_prefix:     prefijo URL de los endpoints multipart.
-    | middleware:       middleware aplicado al grupo de rutas. Si null, hereda
-    |                   del bloque uploads.
+    | threshold:        threshold in bytes for the client to decide to use
+    |                   multipart. < threshold -> single PUT with `presignedUpload`,
+    |                   >= threshold -> multipart via /laracrate/multipart endpoints.
+    |                   The server does NOT enforce this, the frontend decides
+    |                   based on `file.size`. This is just the official hint.
+    | part_size:        size of each part in bytes (min. 5 MB in S3).
+    |                   10 MB is a good balance: 100 parts for 1 GB, 800 for 8 GB.
+    | expire_minutes:   TTL of the multipart session. After this, the
+    |                   `laracrate:abort-stale-multipart` cron aborts it.
+    | url_ttl_minutes:  TTL of each part's presigned URLs. If a part is not
+    |                   uploaded in that time, the client must request new URLs
+    |                   via POST /multipart/{id}/parts.
+    | route_prefix:     URL prefix of the multipart endpoints.
+    | middleware:       middleware applied to the route group. If null, inherits
+    |                   from the uploads block.
     |
     */
 
@@ -364,13 +327,13 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Image (procesamiento de imágenes)
+    | Image (image processing)
     |--------------------------------------------------------------------------
     |
-    | driver:             'imagick' (recomendado) | 'gd'
-    | optimize_originals: true → re-encodea originales a webp con max dims
-    | max_width/height:   límite del original tras optimize
-    | quality:            calidad webp/jpeg del original
+    | driver:             'imagick' (recommended) | 'gd'
+    | optimize_originals: true -> re-encodes originals to webp with max dims
+    | max_width/height:   limit of the original after optimize
+    | quality:            webp/jpeg quality of the original
     |
     */
 
@@ -384,19 +347,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | PDF preview (rasterizado de la primera página a imagen)
+    | PDF preview (rasterize the first page to an image)
     |--------------------------------------------------------------------------
     |
-    | Motor que convierte una página de PDF en PNG para la variante 'preview'.
-    | No confundir con 'image.driver' (ese es para variantes/optimización).
+    | Engine that converts a PDF page into a PNG for the 'preview' variant.
+    | Not to be confused with 'image.driver' (that one is for variants/optimization).
     |
-    |   'pdftoppm' → binario poppler-utils (apt install poppler-utils).
-    |                NO requiere Ghostscript ni tocar policy.xml de ImageMagick.
-    |   'imagick'  → extensión PHP imagick + binario Ghostscript (gs) + el
-    |                coder PDF habilitado en la policy.xml de ImageMagick.
-    |   'auto'     → intenta pdftoppm y, si no está disponible, cae a imagick.
+    |   'pdftoppm' -> poppler-utils binary (apt install poppler-utils).
+    |                Does NOT require Ghostscript or touching ImageMagick's policy.xml.
+    |   'imagick'  -> PHP imagick extension + Ghostscript binary (gs) + the PDF
+    |                coder enabled in ImageMagick's policy.xml.
+    |   'auto'     -> tries pdftoppm and, if unavailable, falls back to imagick.
     |
-    | Override puntual por colección dentro del bloque 'preview':
+    | Per-collection override inside the 'preview' block:
     |   'preview' => ['page' => 1, 'width' => 600, 'engine' => 'pdftoppm'],
     |
     */
@@ -430,27 +393,27 @@ return [
     | Embeddings
     |--------------------------------------------------------------------------
     |
-    | Soporte de extracción de texto + embeddings vectoriales por collection.
-    | Activación opt-in (la mayoría de uploads no lo necesitan).
+    | Support for text extraction + vector embeddings per collection. Opt-in
+    | activation (most uploads do not need it).
     |
-    | Para activarlo en una collection:
+    | To enable it on a collection:
     |   'collections' => [
     |       'documents' => [
-    |           'extract_text' => true,    // extrae texto del PDF/text
-    |           'embed'        => true,    // genera embedding del texto
+    |           'extract_text' => true,    // extracts text from the PDF/text
+    |           'embed'        => true,    // generates an embedding of the text
     |           ...
     |       ],
     |   ]
     |
-    | Las apps registran su propio EmbeddingProvider en su ServiceProvider:
+    | Apps register their own EmbeddingProvider in their ServiceProvider:
     |   $this->app->bind(
     |       EduLazaro\Laracrate\Contracts\EmbeddingProvider::class,
     |       MyCustomProvider::class
     |   );
     |
-    | El package incluye OpenAiEmbeddingProvider como default.
+    | The package includes OpenAiEmbeddingProvider as the default.
     |
-    | Igual con extractors de texto:
+    | Same goes for text extractors:
     |   $registry = app(EduLazaro\Laracrate\Support\TextExtractorRegistry::class);
     |   $registry->add(new MyOcrExtractor());
     |
@@ -458,24 +421,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Chunks backend (persistencia + búsqueda)
+    | Chunks backend (persistence + search)
     |--------------------------------------------------------------------------
     |
-    | Driver del store de chunks (ChunkStore contract):
+    | Driver of the chunk store (ChunkStore contract):
     |
-    |   - 'mysql'        → MysqlChunkStore. Persiste en `laracrate_file_chunks`
-    |                       (FULLTEXT keyword + cosine similarity en PHP).
-    |                       Sin dependencias externas. Escala bien hasta ~5K
-    |                       chunks por scope.
+    |   - 'mysql'        -> MysqlChunkStore. Persists to `laracrate_file_chunks`
+    |                       (FULLTEXT keyword + cosine similarity in PHP).
+    |                       No external dependencies. Scales well up to ~5K
+    |                       chunks per scope.
     |
-    |   - 'meilisearch'  → MeilisearchChunkStore. Sincroniza chunks a un
-    |                       índice Meilisearch con embeddings inyectados
-    |                       (modo userProvided). Búsqueda híbrida nativa con
-    |                       `semanticRatio` (BM25 + vector) server-side.
-    |                       Requiere `meilisearch/meilisearch-php` y un
-    |                       binding de Meilisearch\Client en la app.
+    |   - 'meilisearch'  -> MeilisearchChunkStore. Syncs chunks to a Meilisearch
+    |                       index with injected embeddings (userProvided mode).
+    |                       Native hybrid search with `semanticRatio`
+    |                       (BM25 + vector) server-side. Requires
+    |                       `meilisearch/meilisearch-php` and a binding of
+    |                       Meilisearch\Client in the app.
     |
-    | Apps custom (Qdrant, pgvector) pueden bindear ChunkStore directamente.
+    | Custom apps (Qdrant, pgvector) can bind ChunkStore directly.
     */
     'chunks' => [
         'driver' => env('LARACRATE_CHUNKS_DRIVER', 'mysql'),
@@ -483,7 +446,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Meilisearch (cuando chunks.driver = meilisearch)
+    | Meilisearch (when chunks.driver = meilisearch)
     |--------------------------------------------------------------------------
     */
     'meilisearch' => [
@@ -492,50 +455,50 @@ return [
     ],
 
     'embeddings' => [
-        // Master switch. Si false, ningún archivo se procesa para embedding
-        // aunque la collection lo pida.
+        // Master switch. If false, no file is processed for embedding even if
+        // the collection requests it.
         'enabled' => false,
 
-        // Provider implementation (clase que implementa EmbeddingProvider).
-        // El registro real se hace en LaracrateServiceProvider.
+        // Provider implementation (class implementing EmbeddingProvider). The
+        // actual registration happens in LaracrateServiceProvider.
         'provider' => 'openai',
 
-        // API key del provider (para OpenAI). Si null, lee OPENAI_API_KEY del env.
+        // Provider API key (for OpenAI). If null, reads OPENAI_API_KEY from env.
         'api_key' => env('LARACRATE_EMBEDDINGS_API_KEY'),
 
-        // Modelo del provider. Puede variar por entorno (dev/prod), por eso
-        // permite override desde env.
+        // Provider model. Can vary per environment (dev/prod), hence it allows
+        // an override from env.
         'model' => env('LARACRATE_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
 
-        // Dimensiones del vector. Fijado por el modelo — solo cambiar si
-        // se cambia el modelo a uno con otras dimensiones.
+        // Vector dimensions. Fixed by the model, only change it if you switch
+        // the model to one with different dimensions.
         'dimensions' => 1536,
 
-        // Tokens aprox por chunk. 0 = sin chunking (1 fila por File).
+        // Approx tokens per chunk. 0 = no chunking (1 row per File).
         'chunk_size' => 1000,
 
-        // Solapamiento entre chunks consecutivos (en tokens).
+        // Overlap between consecutive chunks (in tokens).
         'chunk_overlap' => 100,
 
-        // Tamaño de batch al llamar al provider (chunks por request).
+        // Batch size when calling the provider (chunks per request).
         'batch_size' => 16,
 
-        // Chain de extractors de texto. La extracción itera por orden y, si un
-        // extractor devuelve menos texto del que define `min_text_per_file`,
-        // intenta con el siguiente. Vacío = defaults built-in (Pdf + Plain).
+        // Text extractor chain. Extraction iterates in order and, if an
+        // extractor returns less text than `min_text_per_file` defines, it
+        // tries the next one. Empty = built-in defaults (Pdf + Plain).
         //
-        // Patrón típico para PDFs escaneados:
-        //   PdfTextExtractor       (smalot, gratis y rápido — PDFs nativos)
-        //   OcrPdfTextExtractor    (OCR con Claude/OpenAI — PDFs escaneados)
+        // Typical pattern for scanned PDFs:
+        //   PdfTextExtractor       (smalot, free and fast, native PDFs)
+        //   OcrPdfTextExtractor    (OCR with Claude/OpenAI, scanned PDFs)
         'extractors' => [
             // \EduLazaro\Laracrate\Extractors\PdfTextExtractor::class,
             // \EduLazaro\Laracrate\Extractors\OcrPdfTextExtractor::class,
             // \EduLazaro\Laracrate\Extractors\PlainTextExtractor::class,
         ],
 
-        // Umbral mínimo de chars que un extractor debe producir para considerarse
-        // exitoso. Si está por debajo, se intenta con el siguiente extractor
-        // de la chain. 100 chars cubre PDFs vacíos / sólo metadata.
+        // Minimum char threshold an extractor must produce to be considered
+        // successful. Below it, the next extractor in the chain is tried.
+        // 100 chars covers empty / metadata-only PDFs.
         'min_text_per_file' => 100,
     ],
 
@@ -544,8 +507,8 @@ return [
     | OCR (PDF scanning fallback)
     |--------------------------------------------------------------------------
     |
-    | Config del OcrPdfTextExtractor. Provider seleccionable via env.
-    | API keys con prefijo LARACRATE_ y fallback a la key genérica del provider.
+    | Config for OcrPdfTextExtractor. Provider selectable via env. API keys
+    | prefixed with LARACRATE_ with a fallback to the provider's generic key.
     */
     'ocr' => [
         // 'anthropic' | 'openai'
@@ -567,18 +530,18 @@ return [
     | Watermark
     |--------------------------------------------------------------------------
     |
-    | Marca de agua que se incrusta en el binario de variants concretas.
-    | El original (master) NUNCA lleva watermark — solo las variants que
-    | lo declaren explícitamente.
+    | Watermark embedded into the binary of specific variants. The original
+    | (master) NEVER carries a watermark, only the variants that declare it
+    | explicitly.
     |
-    | Activación per-variant en la config de la colección:
+    | Per-variant activation in the collection config:
     |   'collections' => [
     |       'identity' => [
     |           'types' => [
     |               'image' => [
     |                   'variants' => [
-    |                       'thumbnail' => ['width' => 300, ...],         // sin watermark
-    |                       'display'   => ['width' => 1200, 'watermark' => true],  // CON
+    |                       'thumbnail' => ['width' => 300, ...],         // no watermark
+    |                       'display'   => ['width' => 1200, 'watermark' => true],  // WITH
     |                   ],
     |               ],
     |           ],
@@ -588,44 +551,45 @@ return [
     */
 
     'watermark' => [
-        // Path absoluto o relativo a public_path() de la PNG a superponer.
-        // null = no se aplica imagen (puede ir solo el texto si está configurado).
-        // Se mantiene en env porque el path real cambia por entorno (dev/prod).
+        // Absolute path or path relative to public_path() of the PNG to
+        // overlay. null = no image applied (text only can be used if
+        // configured). Kept in env because the real path changes per
+        // environment (dev/prod).
         'image_path' => env('LARACRATE_WATERMARK_IMAGE', null),
 
-        // Ancho del watermark como fracción del ancho de la variant (0.0 - 1.0).
-        // 0.40 = ocupa el 40% del ancho de la imagen, escala proporcional.
+        // Watermark width as a fraction of the variant width (0.0 - 1.0).
+        // 0.40 = takes 40% of the image width, scaled proportionally.
         'size' => 0.40,
 
-        // Opacidad de la PNG superpuesta (0-100). Convención de Intervention.
+        // Opacity of the overlaid PNG (0-100). Intervention convention.
         'opacity' => 30,
 
-        // Posición de la PNG. 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'.
+        // PNG position. 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'.
         'position' => 'center',
 
-        // Texto auxiliar opcional (incrustado además de la PNG).
+        // Optional auxiliary text (embedded in addition to the PNG).
         'text' => [
-            // Contenido del texto:
-            //   - null  → sin texto
-            //   - string → texto fijo
-            //   - closure(File): ?string → texto dinámico por File
-            // (Como esto no se puede declarar en env, se override en
-            // app/Providers o publicando el config y usando una closure.)
+            // Text content:
+            //   - null  -> no text
+            //   - string -> fixed text
+            //   - closure(File): ?string -> dynamic text per File
+            // (Since this cannot be declared in env, override it in
+            // app/Providers or by publishing the config and using a closure.)
             'content' => null,
 
-            // Tamaño de fuente como fracción del ancho de la imagen (1.95% por defecto).
+            // Font size as a fraction of the image width (1.95% by default).
             'font_size_ratio' => 0.0195,
 
-            // Color en formato rgba CSS.
+            // Color in CSS rgba format.
             'color' => 'rgba(255, 255, 255, 0.60)',
 
-            // Posición. 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'.
+            // Position. 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'.
             'position' => 'bottom-left',
 
-            // Padding desde el borde, en píxeles.
+            // Padding from the edge, in pixels.
             'padding' => 20,
 
-            // Path al .ttf de la fuente. null = fuente del sistema.
+            // Path to the font .ttf. null = system font.
             'font_path' => null,
         ],
     ],
@@ -635,12 +599,12 @@ return [
     | UI (Livewire uploader)
     |--------------------------------------------------------------------------
     |
-    | Tema por defecto para `<livewire:laracrate-uploader>` cuando no se pasa
-    | la prop `theme=`. Temas built-in:
+    | Default theme for `<livewire:laracrate-uploader>` when the `theme=` prop
+    | is not passed. Built-in themes:
     |   default · brutalist · material · ios · glassmorphism · neon · minimal · neumorphism
     |
-    | Para temas custom: `vendor:publish --tag=laracrate-views` y crea el
-    | blade en `resources/views/vendor/laracrate/uploader/themes/{nombre}.blade.php`.
+    | For custom themes: `vendor:publish --tag=laracrate-views` and create the
+    | blade in `resources/views/vendor/laracrate/uploader/themes/{name}.blade.php`.
     |
     */
 

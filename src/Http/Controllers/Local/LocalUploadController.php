@@ -7,11 +7,12 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Recibe el binario del cliente para el "presigned" del disk local.
- * La firma de la URL ya la valida el middleware `signed`.
+ * Receives the client binary for the local disk "presigned" upload.
+ * The URL signature is already validated by the `signed` middleware.
  */
 class LocalUploadController extends Controller
 {
+    /** Store the request body at the given key on the local disk. */
     public function store(Request $request)
     {
         $disk = $request->query('disk');

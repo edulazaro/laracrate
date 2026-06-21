@@ -8,11 +8,14 @@ use EduLazaro\Laractions\Action;
 use Throwable;
 
 /**
- * Extrae width y height de una imagen leyendo su binario y los persiste
- * en el File. No-op si las dimensiones ya están set.
+ * Extracts width and height from an image by reading its binary and persists
+ * them on the File. No-op if the dimensions are already set.
  */
 class ExtractImageDimensionsAction extends Action
 {
+    /**
+     * Reads the image binary and stores its width/height on the File.
+     */
     public function handle(File $file): File
     {
         if ($file->width && $file->height) {
@@ -34,7 +37,7 @@ class ExtractImageDimensionsAction extends Action
                 ])->save();
             }
         } catch (Throwable $e) {
-            logger()->warning('Laracrate: fallo al extraer dimensiones de imagen', [
+            logger()->warning('Laracrate: failed to extract image dimensions', [
                 'file_id' => $file->id,
                 'error'   => $e->getMessage(),
             ]);

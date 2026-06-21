@@ -9,22 +9,23 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Aborta sesiones multipart que pasaron expires_at sin completar.
+ * Aborts multipart sessions that passed expires_at without completing.
  *
- * CRÍTICO en producción: sin esto, las partes ya subidas a S3/R2 quedan
- * ocupando storage y facturándote indefinidamente. Programar en
- * `routes/console.php` o equivalente:
+ * CRITICAL in production: without this, the parts already uploaded to S3/R2
+ * keep occupying storage and billing you indefinitely. Schedule it in
+ * `routes/console.php` or equivalent:
  *
  *   Schedule::command('laracrate:abort-stale-multipart')->hourly();
  */
 class AbortStaleMultipartCommand extends Command
 {
     protected $signature = 'laracrate:abort-stale-multipart
-                            {--dry-run : Solo lista, no aborta}
-                            {--limit=500 : Máximo de sesiones a procesar por ejecución}';
+                            {--dry-run : Only list, do not abort}
+                            {--limit=500 : Maximum sessions to process per run}';
 
-    protected $description = 'Aborta sesiones multipart de S3/R2 que han expirado';
+    protected $description = 'Aborts expired S3/R2 multipart sessions';
 
+    /** Aborts stale multipart sessions, or lists them in dry-run mode. */
     public function handle(): int
     {
         $limit = (int) $this->option('limit');
@@ -33,13 +34,13 @@ class AbortStaleMultipartCommand extends Command
         $stale = MultipartUpload::stale()->limit($limit)->get();
 
         if ($stale->isEmpty()) {
-            $this->info('No hay sesiones multipart expiradas.');
+            $this->info('No expired multipart sessions.');
             return self::SUCCESS;
         }
 
         $this->info(sprintf(
-            '%s %d sesion(es) expirada(s)%s.',
-            $dry ? 'Encontradas' : 'Procesando',
+            '%s %d expired session(s)%s.',
+            $dry ? 'Found' : 'Processing',
             $stale->count(),
             $dry ? ' (dry-run)' : '',
         ));
@@ -68,12 +69,12 @@ class AbortStaleMultipartCommand extends Command
                 $aborted++;
             } catch (Throwable $e) {
                 $failed++;
-                $this->error("    fallo: {$e->getMessage()}");
+                $this->error("    failed: {$e->getMessage()}");
             }
         }
 
         if (!$dry) {
-            $this->info("Abortadas: {$aborted}. Fallidas: {$failed}.");
+            $this->info("Aborted: {$aborted}. Failed: {$failed}.");
         }
 
         return self::SUCCESS;

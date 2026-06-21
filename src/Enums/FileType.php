@@ -2,6 +2,9 @@
 
 namespace EduLazaro\Laracrate\Enums;
 
+/**
+ * Broad category of a File derived from its MIME type.
+ */
 enum FileType: string
 {
     case IMAGE    = 'image';
@@ -9,6 +12,7 @@ enum FileType: string
     case AUDIO    = 'audio';
     case DOCUMENT = 'document';
 
+    /** Resolve the file type from a MIME string, defaulting to DOCUMENT. */
     public static function fromMime(string $mime): self
     {
         return match (true) {

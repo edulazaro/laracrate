@@ -11,12 +11,12 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
- * Dropzone single-file. Idéntico a `laracrate-dropzone` en lógica
- * (mismo registerUploaded vía addFile, mismo batchCompleted), pero:
- *   - maxFiles forzado a 1
+ * Single-file dropzone. Identical to `laracrate-dropzone` in logic
+ * (same registerUploaded via addFile, same batchCompleted), but:
+ *   - maxFiles forced to 1
  *   - multiple=false
- *   - usa views en `dropzone-single/themes/*` (preview in-place vs cola)
- *   - prop `hideExisting` para casos donde el caller pinta su propio preview
+ *   - uses views in `dropzone-single/themes/*` (in-place preview vs queue)
+ *   - `hideExisting` prop for cases where the caller renders its own preview
  */
 class LaracrateDropzoneSingle extends Component
 {
@@ -37,6 +37,7 @@ class LaracrateDropzoneSingle extends Component
     #[Locked]
     public bool $hideExisting = false;
 
+    /** Livewire mount: initialize the component props. */
     public function mount(
         Model $model,
         string $collection,
@@ -53,6 +54,7 @@ class LaracrateDropzoneSingle extends Component
         $this->folderId     = $folderId;
     }
 
+    /** Register an uploaded file as a File of the model. */
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
     {
         $upload = FileUpload::fromArray([
@@ -79,6 +81,7 @@ class LaracrateDropzoneSingle extends Component
         return $file->id;
     }
 
+    /** Notify that the batch finished (all files processed). */
     public function batchCompleted(int $ok, int $error): void
     {
         $this->dispatch(
@@ -89,6 +92,7 @@ class LaracrateDropzoneSingle extends Component
         );
     }
 
+    /** Remove the current file of the collection and notify the caller. */
     public function removeFile(): void
     {
         $existing = $this->model->files($this->collection)->first();
@@ -103,6 +107,7 @@ class LaracrateDropzoneSingle extends Component
         );
     }
 
+    /** Extensions accepted across all types declared in the collection. */
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);
@@ -120,6 +125,7 @@ class LaracrateDropzoneSingle extends Component
         return array_values(array_unique($exts));
     }
 
+    /** Mime types accepted across all types declared in the collection. */
     public function acceptedMimeTypes(): array
     {
         $manager = app(StorageManager::class);
@@ -137,6 +143,7 @@ class LaracrateDropzoneSingle extends Component
         return array_values(array_unique($mimes));
     }
 
+    /** Largest max file size (in KB) across the collection's types. */
     public function maxSizeKb(): int
     {
         $manager = app(StorageManager::class);
@@ -152,11 +159,13 @@ class LaracrateDropzoneSingle extends Component
         return $max ?: 10240;
     }
 
+    /** Disk configured for this collection. */
     public function disk(): string
     {
         return $this->model->getDiskFor($this->collection);
     }
 
+    /** Normalize the collection types config to an associative map. */
     protected function normalizeTypes(array $types): array
     {
         $out = [];
@@ -170,6 +179,7 @@ class LaracrateDropzoneSingle extends Component
         return $out;
     }
 
+    /** Detect the visual category (image, video, audio, document, mixed) from extensions. */
     protected function detectIconCategory(array $extensions): string
     {
         if (empty($extensions)) return 'mixed';
@@ -190,6 +200,7 @@ class LaracrateDropzoneSingle extends Component
         return 'mixed';
     }
 
+    /** Render the single dropzone theme view. */
     public function render()
     {
         $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');

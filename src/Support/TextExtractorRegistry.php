@@ -6,23 +6,24 @@ use EduLazaro\Laracrate\Contracts\TextExtractor;
 use EduLazaro\Laracrate\Models\File;
 
 /**
- * Registry de extractors de texto encadenados.
+ * Registry of chained text extractors.
  *
- * El orden de registro define la prioridad: el primero se prueba antes que
- * el segundo. Si un extractor devuelve texto por debajo del umbral mínimo
- * (`min_text_per_file`), el siguiente se prueba como fallback.
+ * Registration order defines priority: the first is tried before the second.
+ * If an extractor returns text below the minimum threshold
+ * (`min_text_per_file`), the next one is tried as a fallback.
  *
- * Patrón típico: extractor rápido/gratis primero (smalot para PDFs nativos)
- * → extractor lento/de pago como fallback (OCR sobre PDFs escaneados).
+ * Typical pattern: fast/free extractor first (smalot for native PDFs),
+ * slow/paid extractor as a fallback (OCR over scanned PDFs).
  *
- * Las apps pueden añadir sus propios extractors via `add()` o configurando
- * `laracrate.embeddings.extractors` como array de FQCN.
+ * Apps can add their own extractors via `add()` or by configuring
+ * `laracrate.embeddings.extractors` as an array of FQCNs.
  */
 class TextExtractorRegistry
 {
     /** @var TextExtractor[] */
     protected array $extractors = [];
 
+    /** Register a text extractor in the chain. */
     public function add(TextExtractor $extractor): static
     {
         $this->extractors[] = $extractor;
@@ -30,8 +31,8 @@ class TextExtractorRegistry
     }
 
     /**
-     * Devuelve el primer extractor que soporta el file (legacy compat — apps
-     * que llaman directo a `for($file)` siguen funcionando, sin fallback).
+     * Return the first extractor that supports the file (legacy compat: apps
+     * calling `for($file)` directly keep working, without fallback).
      */
     public function for(File $file): ?TextExtractor
     {
@@ -45,8 +46,8 @@ class TextExtractorRegistry
     }
 
     /**
-     * Devuelve TODOS los extractors que soportan el file, en orden de prioridad.
-     * Útil para implementar fallback chain (ej. smalot → OCR).
+     * Return ALL extractors that support the file, in priority order.
+     * Useful for implementing a fallback chain (e.g. smalot then OCR).
      *
      * @return TextExtractor[]
      */
@@ -59,6 +60,8 @@ class TextExtractorRegistry
     }
 
     /**
+     * Return all registered extractors in registration order.
+     *
      * @return TextExtractor[]
      */
     public function all(): array

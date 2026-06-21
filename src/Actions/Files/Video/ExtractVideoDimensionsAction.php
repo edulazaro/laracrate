@@ -8,11 +8,14 @@ use EduLazaro\Laractions\Action;
 use Throwable;
 
 /**
- * Extrae width, height y duration con ffprobe. Requiere ffprobe en el path
- * del servidor.
+ * Extracts width, height and duration with ffprobe. Requires ffprobe on the
+ * server path.
  */
 class ExtractVideoDimensionsAction extends Action
 {
+    /**
+     * Probes the video with ffprobe and stores its dimensions and duration.
+     */
     public function handle(File $file): File
     {
         if (!$file->isVideo()) {
@@ -45,7 +48,7 @@ class ExtractVideoDimensionsAction extends Action
                 $file->forceFill(array_filter($data))->save();
             }
         } catch (Throwable $e) {
-            logger()->warning('Laracrate: fallo al extraer dimensiones de vídeo', [
+            logger()->warning('Laracrate: failed to extract video dimensions', [
                 'file_id' => $file->id,
                 'error'   => $e->getMessage(),
             ]);

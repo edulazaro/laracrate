@@ -15,21 +15,24 @@ use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 
 /**
- * Genera UN variant de imagen del File padre. Persiste un File hijo con
+ * Generates ONE image variant of the parent File. Persists a child File with
  * parent_id = $file->id, variant = $name, type = image.
  *
- * Idempotente: si el variant ya existe, lo borra y lo regenera.
- * El asset físico viejo se va vía cascade FK + FileObserver.
+ * Idempotent: if the variant already exists, it is deleted and regenerated.
+ * The old physical asset is removed via cascade FK + FileObserver.
  *
  * Options:
  *   - width:   int|null
  *   - height:  int|null
- *   - fit:     bool        (cover si true, scale si false)
+ *   - fit:     bool        (cover if true, scale if false)
  *   - quality: int         (0-100, default 80)
  *   - format:  'webp'|'jpg' (default 'webp')
  */
 class GenerateImageVariantAction extends Action
 {
+    /**
+     * Generate a single image variant of the given parent File.
+     */
     public function handle(File $file, string $name, array $options = []): ?File
     {
         if (!$file->isImage()) {
@@ -38,7 +41,7 @@ class GenerateImageVariantAction extends Action
 
         $manager = app(StorageManager::class);
 
-        // Limpia el variant existente con ese nombre (regeneración).
+        // Clean up the existing variant with that name (regeneration).
         $existing = $file->children()->where('variant', $name)->first();
         if ($existing) {
             $existing->forceDelete();
@@ -47,12 +50,12 @@ class GenerateImageVariantAction extends Action
         $binary = $manager->readBinary($file);
         $image  = $this->intervention()->read($binary);
 
-        // Cadena de resolución para cualquier opción del variant:
+        // Resolution chain for any variant option:
         //   1. $options[$key]                                            (per-variant)
         //   2. config.collections.{X}.types.image.{key}                  (type-level override)
         //   3. config.defaults.image.{key}                               (global default)
-        //   4. fallback hardcoded
-        // Para 'quality', además prueba 'variant_quality' antes de 'quality' en niveles 2 y 3.
+        //   4. hardcoded fallback
+        // For 'quality', it also tries 'variant_quality' before 'quality' at levels 2 and 3.
         $collection   = $file->collection;
         $imageCfg     = CollectionConfig::resolve($collection, $file->fileable_type)['types']['image'] ?? [];
         $resolve = fn (string $key, mixed $default) => $options[$key]
@@ -72,15 +75,15 @@ class GenerateImageVariantAction extends Action
 
         $format = $resolve('format', 'webp');
 
-        // quality: variant.quality → type.variant_quality → defaults.variant_quality → cascade normal de 'quality'
+        // quality: variant.quality -> type.variant_quality -> defaults.variant_quality -> normal 'quality' cascade
         $quality = $options['quality']
             ?? ($imageCfg['variant_quality'] ?? null)
             ?? config("laracrate.defaults.image.variant_quality")
             ?? $resolve('quality', 80);
 
-        // Watermark per-variant: si la config lo declara, lo incrustamos en
-        // la imagen viva ANTES de encodear. El original (master) nunca lo
-        // lleva — solo las variants que lo piden explícitamente.
+        // Per-variant watermark: if the config declares it, we embed it into
+        // the live image BEFORE encoding. The original (master) never carries
+        // it, only the variants that explicitly request it.
         if (!empty($options['watermark'])) {
             ApplyWatermarkAction::create()->run([
                 'image' => $image,
@@ -114,6 +117,9 @@ class GenerateImageVariantAction extends Action
         ]);
     }
 
+    /**
+     * Build the Intervention ImageManager for the configured driver.
+     */
     protected function intervention(): ImageManager
     {
         $driver = config('laracrate.image.driver', 'imagick');

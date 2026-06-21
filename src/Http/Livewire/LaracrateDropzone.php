@@ -11,20 +11,20 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
- * Dropzone multi-archivo con upload directo a R2/S3 vía presigned PUT.
+ * Multi-file dropzone with direct upload to R2/S3 via presigned PUT.
  *
  *   <livewire:laracrate-dropzone :model="$organization" collection="gallery" />
  *   <livewire:laracrate-dropzone :model="$user" collection="documents" theme="studio" />
  *
- * Flujo (todo en navegador, JS en el blade del tema):
- *   1. usuario suelta o selecciona archivos
- *   2. por cada archivo: POST /laracrate/uploads/presign
- *   3. PUT directo a R2 con la URL firmada
- *   4. al terminar, $wire.registerUploaded(key, name, mime, size) crea la fila
- *      File vía $model->addFile() — el Observer dispara variants en cola
- *   5. dispatch laracrate-file-uploaded por cada archivo + laracrate-batch-completed
+ * Flow (all in the browser, JS in the theme blade):
+ *   1. the user drops or selects files
+ *   2. for each file: POST /laracrate/uploads/presign
+ *   3. PUT directly to R2 with the signed URL
+ *   4. on finish, $wire.registerUploaded(key, name, mime, size) creates the
+ *      File row via $model->addFile(): the Observer queues the variants
+ *   5. dispatch laracrate-file-uploaded per file + laracrate-batch-completed
  *
- * El binario NO pasa por PHP. El servidor solo firma la URL y registra metadata.
+ * The binary does NOT pass through PHP. The server only signs the URL and records metadata.
  */
 class LaracrateDropzone extends Component
 {
@@ -40,32 +40,33 @@ class LaracrateDropzone extends Component
     public ?string $theme = null;
 
     /**
-     * Permite múltiples archivos. Default true (es el caso típico de dropzone).
+     * Allows multiple files. Default true (the typical dropzone case).
      */
     #[Locked]
     public bool $multiple = true;
 
     /**
-     * Si true, los items "done" se quedan visibles en la cola al terminar.
-     * Si false (default), desaparecen tras 1.5s. Errores siempre persisten.
+     * If true, "done" items stay visible in the queue when finished.
+     * If false (default), they disappear after 1.5s. Errors always persist.
      */
     #[Locked]
     public bool $persistQueue = false;
 
     /**
-     * Cap visual de archivos aceptados en la cola. 0/null = ilimitado.
+     * Visual cap of accepted files in the queue. 0/null = unlimited.
      */
     #[Locked]
     public ?int $maxFiles = null;
 
     /**
-     * Identificador opaco que el caller asocia al widget. Se incluye en el
-     * evento `laracrate-file-uploaded` para que el caller pueda routear
-     * el File al destino correcto cuando hay varios widgets en la misma página.
+     * Opaque identifier the caller associates with the widget. It is included
+     * in the `laracrate-file-uploaded` event so the caller can route the File
+     * to the right target when there are several widgets on the same page.
      */
     #[Locked]
     public ?string $contextKey = null;
 
+    /** Livewire mount: initialize the component props. */
     public function mount(
         Model $model,
         string $collection,
@@ -87,8 +88,8 @@ class LaracrateDropzone extends Component
     }
 
     /**
-     * Registra un archivo ya subido a R2 (key) como File del modelo.
-     * Llamado por el JS del blade después de que el PUT a R2 haya terminado.
+     * Registers a file already uploaded to R2 (key) as a File of the model.
+     * Called by the blade JS after the PUT to R2 has finished.
      */
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
     {
@@ -117,8 +118,8 @@ class LaracrateDropzone extends Component
     }
 
     /**
-     * Notifica que el lote terminó (todos los archivos procesados).
-     * El JS la llama una vez tras el último archivo del lote.
+     * Notifies that the batch finished (all files processed).
+     * The JS calls it once after the last file of the batch.
      */
     public function batchCompleted(int $ok, int $error): void
     {
@@ -130,6 +131,7 @@ class LaracrateDropzone extends Component
         );
     }
 
+    /** Extensions accepted across all types declared in the collection. */
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);
@@ -147,6 +149,7 @@ class LaracrateDropzone extends Component
         return array_values(array_unique($exts));
     }
 
+    /** Mime types accepted across all types declared in the collection. */
     public function acceptedMimeTypes(): array
     {
         $manager = app(StorageManager::class);
@@ -164,6 +167,7 @@ class LaracrateDropzone extends Component
         return array_values(array_unique($mimes));
     }
 
+    /** Largest max file size (in KB) across the collection's types. */
     public function maxSizeKb(): int
     {
         $manager = app(StorageManager::class);
@@ -179,11 +183,13 @@ class LaracrateDropzone extends Component
         return $max ?: 10240;
     }
 
+    /** Disk configured for this collection. */
     public function disk(): string
     {
         return $this->model->getDiskFor($this->collection);
     }
 
+    /** Normalize the collection types config to an associative map. */
     protected function normalizeTypes(array $types): array
     {
         $out = [];
@@ -197,6 +203,7 @@ class LaracrateDropzone extends Component
         return $out;
     }
 
+    /** Render the dropzone theme view. */
     public function render()
     {
         $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');

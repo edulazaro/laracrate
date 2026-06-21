@@ -6,14 +6,14 @@ use EduLazaro\Laracrate\Models\File;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Registro central de policies del paquete. Las apps registran callbacks
- * por morph alias del fileable (case, property, horse, ...) en su boot()
- * del AppServiceProvider:
+ * Central policy registry for the package. Apps register callbacks by the
+ * fileable's morph alias (case, property, horse, ...) in their
+ * AppServiceProvider boot():
  *
  *   app(PolicyRegistry::class)->viewable('case', fn ($file, $user) => ...);
  *
- * Si no hay policy registrada para un type, aplican defaults: el creador
- * humano siempre puede ver/editar/borrar; el resto depende de access.
+ * If no policy is registered for a type, defaults apply: the human creator
+ * can always view/edit/delete; everything else depends on access.
  */
 class PolicyRegistry
 {
@@ -26,24 +26,28 @@ class PolicyRegistry
     /** @var array<string, callable(File, ?Model): bool> */
     protected array $deletePolicies = [];
 
+    /** Register the view policy for a fileable type. */
     public function viewable(string $fileableType, callable $callback): self
     {
         $this->viewPolicies[$fileableType] = $callback;
         return $this;
     }
 
+    /** Register the edit policy for a fileable type. */
     public function editable(string $fileableType, callable $callback): self
     {
         $this->editPolicies[$fileableType] = $callback;
         return $this;
     }
 
+    /** Register the delete policy for a fileable type. */
     public function deletable(string $fileableType, callable $callback): self
     {
         $this->deletePolicies[$fileableType] = $callback;
         return $this;
     }
 
+    /** Whether the user can view the file. */
     public function canView(File $file, ?Model $user): bool
     {
         if ($this->isCreator($file, $user)) {
@@ -62,6 +66,7 @@ class PolicyRegistry
         return false;
     }
 
+    /** Whether the user can edit the file. */
     public function canEdit(File $file, ?Model $user): bool
     {
         if ($this->isCreator($file, $user)) {
@@ -76,6 +81,7 @@ class PolicyRegistry
         return false;
     }
 
+    /** Whether the user can delete the file. */
     public function canDelete(File $file, ?Model $user): bool
     {
         if ($this->isCreator($file, $user)) {
@@ -90,6 +96,7 @@ class PolicyRegistry
         return false;
     }
 
+    /** Whether the user is the human creator of the file. */
     protected function isCreator(File $file, ?Model $user): bool
     {
         if (!$user || $file->creator_type !== 'user' || !$file->creator_id) {

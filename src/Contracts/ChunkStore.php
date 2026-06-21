@@ -6,48 +6,48 @@ use EduLazaro\Laracrate\Models\File;
 use Illuminate\Support\Collection;
 
 /**
- * Backend de persistencia + búsqueda para chunks (trozos de texto extraído
- * con embeddings) de un File.
+ * Persistence + search backend for chunks (pieces of extracted text
+ * with embeddings) of a File.
  *
- * El driver es la ÚNICA fuente de verdad para los chunks. La pipeline
- * (ChunkTextAction → GenerateEmbeddingAction → PersistChunksAction) deja
- * la lista completa en `.chunks.jsonl` (artefacto portable en R2) y al
- * final `store()` la persiste al backend del driver activo:
+ * The driver is the ONLY source of truth for the chunks. The pipeline
+ * (ChunkTextAction → GenerateEmbeddingAction → PersistChunksAction) leaves
+ * the full list in `.chunks.jsonl` (a portable artifact in R2) and finally
+ * `store()` persists it to the active driver's backend:
  *
- *   - `mysql`        → MysqlChunkStore. Inserta filas en
- *                      `laracrate_file_chunks`. Búsqueda LIKE + cosine PHP.
+ *   - `mysql`        → MysqlChunkStore. Inserts rows into
+ *                      `laracrate_file_chunks`. LIKE search + PHP cosine.
  *
- *   - `meilisearch`  → MeilisearchChunkStore. Pushea docs al índice Meili.
- *                      Búsqueda híbrida server-side (BM25 + vector).
- *                      `laracrate_file_chunks` NO se escribe en este modo.
+ *   - `meilisearch`  → MeilisearchChunkStore. Pushes docs to the Meili index.
+ *                      Server-side hybrid search (BM25 + vector).
+ *                      `laracrate_file_chunks` is NOT written in this mode.
  *
- * Apps custom (Qdrant, pgvector...) implementan este contract y bindean
- * ChunkStore::class al container.
+ * Custom apps (Qdrant, pgvector...) implement this contract and bind
+ * ChunkStore::class to the container.
  */
 interface ChunkStore
 {
     /**
-     * Persiste los chunks de un File en el backend.
+     * Persists a File's chunks to the backend.
      *
      * @param  File  $file
      * @param  array<int,array{chunk_index:int,context:?string,text:string,tokens:int,metadata:array,embedding?:?array}>  $chunks
-     * @return int  número de chunks persistidos
+     * @return int  number of chunks persisted
      */
     public function store(File $file, array $chunks): int;
 
     /**
-     * Devuelve todos los chunks de un File ordenados por chunk_index.
-     * Lo usa `extract_file_content` y cualquier consumer que necesite leer
-     * el contenido completo de un archivo.
+     * Returns all chunks of a File ordered by chunk_index.
+     * Used by `extract_file_content` and any consumer that needs to read
+     * the full content of a file.
      *
      * @return Collection<int,array{chunk_index:int,text:string,tokens:int,metadata:array}>
      */
     public function getByFile(File $file): Collection;
 
     /**
-     * Busca chunks por query (keyword + semántico) con filtros opcionales.
+     * Searches chunks by query (keyword + semantic) with optional filters.
      *
-     * @param  string  $query   Texto de la consulta.
+     * @param  string  $query   Query text.
      * @param  array   $filters
      *                          - 'file_ids'      => int[]
      *                          - 'fileable_type' => string
@@ -69,13 +69,13 @@ interface ChunkStore
     public function search(string $query, array $filters = [], array $options = []): Collection;
 
     /**
-     * Borra todos los chunks asociados a un File del backend. Idempotente.
-     * Llamado por FileObserver::forceDeleted.
+     * Deletes all chunks associated with a File from the backend. Idempotent.
+     * Called by FileObserver::forceDeleted.
      */
     public function deleteByFile(File $file): void;
 
     /**
-     * Nombre identificador del driver. Útil para logs y healthchecks.
+     * Driver identifier name. Useful for logs and healthchecks.
      */
     public function driverName(): string;
 }

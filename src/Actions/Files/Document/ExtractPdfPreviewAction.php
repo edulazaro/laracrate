@@ -13,16 +13,19 @@ use Symfony\Component\Process\Process;
 use Throwable;
 
 /**
- * Renderiza una página de un PDF como imagen y la sube como variant='preview'
- * del File. Después dispatcha GenerateImageVariantsAction sobre el preview.
+ * Renders a PDF page as an image and uploads it as variant='preview' of the
+ * File. Afterwards it dispatches GenerateImageVariantsAction on the preview.
  *
- * Motor de rasterizado seleccionable vía `engine` (o config laracrate.pdf_preview_engine):
- *   - 'pdftoppm' : binario poppler-utils. NO requiere Ghostscript ni policy.xml.
- *   - 'imagick'  : extensión PHP Imagick + Ghostscript + coder PDF habilitado en policy.xml.
- *   - 'auto'     : intenta pdftoppm y cae a Imagick si no está disponible.
+ * The rasterizing engine is selectable via `engine` (or config laracrate.pdf_preview_engine):
+ *   - 'pdftoppm' : poppler-utils binary. Does NOT require Ghostscript or policy.xml.
+ *   - 'imagick'  : PHP Imagick extension + Ghostscript + PDF coder enabled in policy.xml.
+ *   - 'auto'     : tries pdftoppm and falls back to Imagick if not available.
  */
 class ExtractPdfPreviewAction extends Action
 {
+    /**
+     * Render a PDF page and persist it as the File's 'preview' variant.
+     */
     public function handle(
         File $file,
         int $page = 0,
@@ -85,7 +88,7 @@ class ExtractPdfPreviewAction extends Action
     }
 
     /**
-     * Devuelve el PNG binario de la página, según el engine elegido.
+     * Returns the page's binary PNG, according to the chosen engine.
      */
     protected function render(string $pdfPath, int $page, int $width, string $engine, int $resolution, File $file): ?string
     {
@@ -96,9 +99,9 @@ class ExtractPdfPreviewAction extends Action
                 return $binary;
             }
 
-            // engine forzado: no caemos a Imagick, dejamos constancia.
+            // engine forced: do not fall back to Imagick, just record it.
             if ($engine === 'pdftoppm') {
-                logger()->warning('Laracrate: pdftoppm falló o no está instalado (engine forzado)', [
+                logger()->warning('Laracrate: pdftoppm failed or is not installed (engine forced)', [
                     'file_id' => $file->id,
                 ]);
 
@@ -110,15 +113,15 @@ class ExtractPdfPreviewAction extends Action
     }
 
     /**
-     * Rasteriza con pdftoppm (poppler-utils). Lee el PDF directamente con
-     * Poppler: sin Ghostscript, sin Imagick, sin policy.xml. Devuelve null si
-     * el binario no está disponible o el render falla (para permitir fallback).
+     * Rasterizes with pdftoppm (poppler-utils). Reads the PDF directly with
+     * Poppler: no Ghostscript, no Imagick, no policy.xml. Returns null if the
+     * binary is not available or the render fails (to allow fallback).
      */
     protected function renderWithPdftoppm(string $pdfPath, int $page, int $width, int $resolution, File $file): ?string
     {
         $prefix = sys_get_temp_dir() . '/laracrate_pdftoppm_' . Str::random(16);
         $outPng = $prefix . '.png';
-        $pageNum = $page + 1; // pdftoppm es 1-indexed; $page llega 0-indexed.
+        $pageNum = $page + 1; // pdftoppm is 1-indexed; $page arrives 0-indexed.
 
         try {
             $process = new Process([
@@ -153,13 +156,13 @@ class ExtractPdfPreviewAction extends Action
     }
 
     /**
-     * Rasteriza con Imagick (delega en Ghostscript para leer el PDF).
-     * Requiere la extensión imagick, el binario gs y policy.xml con PDF.
+     * Rasterizes with Imagick (delegates to Ghostscript to read the PDF).
+     * Requires the imagick extension, the gs binary and policy.xml with PDF.
      */
     protected function renderWithImagick(string $pdfPath, int $page, int $width, int $resolution, File $file): ?string
     {
         if (!class_exists(Imagick::class)) {
-            logger()->warning('Laracrate: Imagick no disponible para preview de PDF', [
+            logger()->warning('Laracrate: Imagick not available for PDF preview', [
                 'file_id' => $file->id,
             ]);
 
@@ -185,7 +188,7 @@ class ExtractPdfPreviewAction extends Action
 
             return $bin;
         } catch (Throwable $e) {
-            logger()->warning('Laracrate: fallo al renderizar PDF', [
+            logger()->warning('Laracrate: failed to render PDF', [
                 'file_id' => $file->id,
                 'error'   => $e->getMessage(),
             ]);
@@ -195,9 +198,9 @@ class ExtractPdfPreviewAction extends Action
     }
 
     /**
-     * Reduce el ancho del PNG a $width (solo si lo supera) usando GD, para
-     * respetar la semántica "solo downscale" sin depender de Imagick. Si GD
-     * no está o falla, devuelve el binario original sin tocar.
+     * Reduces the PNG width to $width (only if it exceeds it) using GD, to
+     * respect the "downscale only" semantics without depending on Imagick. If
+     * GD is missing or fails, returns the original binary untouched.
      */
     protected function downscalePng(string $binary, int $width): string
     {

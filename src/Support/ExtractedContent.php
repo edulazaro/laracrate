@@ -5,22 +5,22 @@ namespace EduLazaro\Laracrate\Support;
 use JsonSerializable;
 
 /**
- * Resultado estructurado de un TextExtractor.
+ * Structured result of a TextExtractor.
  *
- * Toda extracción devuelve este DTO con:
- *   - `fullText`: texto completo del documento (concatenación de páginas).
- *   - `pages`: array de páginas/segmentos del documento. Cada entrada lleva
- *     `page_number` (1-based) y `text`. Para extractores que no tienen
- *     concepto de página (.txt, imagen única, audio sin timestamps), una
- *     única entrada con page_number=1.
- *   - `metadata`: info adicional opcional (lang, extractor, total_pages, ...).
+ * Every extraction returns this DTO with:
+ *   - `fullText`: full text of the document (concatenation of pages).
+ *   - `pages`: array of pages/segments of the document. Each entry carries
+ *     `page_number` (1-based) and `text`. For extractors that have no
+ *     concept of pages (.txt, single image, audio without timestamps), a
+ *     single entry with page_number=1.
+ *   - `metadata`: optional additional info (lang, extractor, total_pages, ...).
  *
- * Se serializa a `{path}.json` en el storage del file.
+ * Serialized to `{path}.json` in the file's storage.
  */
 class ExtractedContent implements JsonSerializable
 {
     /**
-     * @param string $fullText                                  texto completo concatenado
+     * @param string $fullText                                  full concatenated text
      * @param array<int,array{page_number:int,text:string}> $pages
      * @param array<string,mixed> $metadata
      */
@@ -31,7 +31,7 @@ class ExtractedContent implements JsonSerializable
     ) {}
 
     /**
-     * Constructor de conveniencia para extractores sin concepto de página.
+     * Convenience constructor for extractors with no concept of pages.
      */
     public static function singlePage(string $text, array $metadata = []): self
     {
@@ -43,7 +43,7 @@ class ExtractedContent implements JsonSerializable
     }
 
     /**
-     * Constructor desde array de páginas. Calcula `fullText` concatenando.
+     * Constructor from an array of pages. Computes `fullText` by concatenating.
      *
      * @param array<int,array{page_number:int,text:string}> $pages
      */
@@ -61,17 +61,23 @@ class ExtractedContent implements JsonSerializable
         );
     }
 
+    /** Whether the extracted full text is blank. */
     public function isEmpty(): bool
     {
         return trim($this->fullText) === '';
     }
 
+    /** Number of pages/segments in this result. */
     public function totalPages(): int
     {
         return count($this->pages);
     }
 
-    /** @return array{full_text:string,pages:array,metadata:array} */
+    /**
+     * Serialize to the storage JSON shape.
+     *
+     * @return array{full_text:string,pages:array,metadata:array}
+     */
     public function jsonSerialize(): array
     {
         return [
@@ -81,6 +87,7 @@ class ExtractedContent implements JsonSerializable
         ];
     }
 
+    /** Rebuild the DTO from its serialized array form. */
     public static function fromArray(array $data): self
     {
         return new self(

@@ -8,19 +8,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * Trait paralelo a HasFiles para modelos que tienen árbol de carpetas
- * (User Drive personal, Organization Drive, etc.).
+ * Trait parallel to HasFiles for models that have a folder tree
+ * (personal User Drive, Organization Drive, etc.).
  *
- * Patrón típico:
- *   $user->folders();                 // todas las carpetas del user
- *   $user->rootFolders();             // solo raíces (parent_id null)
- *   $user->addFolder('Contratos');    // crea carpeta raíz
- *   $folder->children()->addFolder('2025'); // (usa el trait via $folder->...)
+ * Typical pattern:
+ *   $user->folders();                 // all the user's folders
+ *   $user->rootFolders();             // only roots (parent_id null)
+ *   $user->addFolder('Contracts');    // creates a root folder
+ *   $folder->children()->addFolder('2025'); // (uses the trait via $folder->...)
  */
 trait HasFolders
 {
     /**
-     * Todas las folders de este modelo, en cualquier nivel del árbol.
+     * All folders of this model, at any level of the tree.
      */
     public function folders(): MorphMany
     {
@@ -28,7 +28,7 @@ trait HasFolders
     }
 
     /**
-     * Solo carpetas raíz (top-level).
+     * Only root folders (top-level).
      */
     public function rootFolders()
     {
@@ -36,11 +36,11 @@ trait HasFolders
     }
 
     /**
-     * Crea una carpeta. Si $parent es null, queda en raíz. El observer
-     * recalcula y guarda el path denormalizado.
+     * Creates a folder. If $parent is null, it stays at the root. The observer
+     * recomputes and stores the denormalized path.
      *
-     * @param  Model|null  $creator  Quien la creó (audit). Si null y la auth
-     *                               está disponible, cae al user autenticado.
+     * @param  Model|null  $creator  Who created it (audit). If null and auth is
+     *                               available, falls back to the authenticated user.
      */
     public function addFolder(
         string $name,
@@ -55,7 +55,7 @@ trait HasFolders
             || (string) $parent->folderable_id !== (string) $this->getKey()
         )) {
             throw new \InvalidArgumentException(
-                'El parent pertenece a otro folderable.'
+                'The parent belongs to another folderable.'
             );
         }
 
@@ -78,9 +78,9 @@ trait HasFolders
     }
 
     /**
-     * Devuelve la fila Folderable de este modelo para la collection dada.
-     * Null si la collection no tiene `track_usage` o aún no hay archivos
-     * trackeados (la fila se crea lazy en el primer `created`).
+     * Returns the Folderable row of this model for the given collection.
+     * Null if the collection does not have `track_usage` or there are no
+     * tracked files yet (the row is created lazily on the first `created`).
      */
     public function usage(string $collection): ?Folderable
     {
@@ -92,8 +92,8 @@ trait HasFolders
     }
 
     /**
-     * Shortcut: bytes ocupados por este modelo en la collection dada.
-     * 0 si aún no hay nada o si la collection no se trackea.
+     * Shortcut: bytes occupied by this model in the given collection.
+     * 0 if there is nothing yet or if the collection is not tracked.
      */
     public function usageBytes(string $collection): int
     {

@@ -10,19 +10,21 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
- * OCR de imágenes usando Vision (Anthropic Claude o OpenAI). Para escaneados
- * de documentos guardados como JPG/PNG, fotos de contratos firmados,
- * capturas de pantalla, etc.
+ * OCR for images using Vision (Anthropic Claude or OpenAI). For scanned
+ * documents saved as JPG/PNG, photos of signed contracts, screenshots, etc.
  *
- * Mismo provider switching que OcrPdfTextExtractor: la app elige via
+ * Same provider switching as OcrPdfTextExtractor: the app chooses via
  * `LARACRATE_OCR_PROVIDER`.
  *
- * Coste estimado por imagen:
+ * Estimated cost per image:
  *   - Anthropic Claude Haiku 4.5: ~$0.0005
  *   - OpenAI gpt-4o-mini:          ~$0.001
  */
 class OcrImageTextExtractor implements TextExtractor
 {
+    /**
+     * Create a new image OCR extractor.
+     */
     public function __construct(
         protected ?string $provider = null,
         protected ?string $model = null,
@@ -32,6 +34,9 @@ class OcrImageTextExtractor implements TextExtractor
         $this->provider ??= config('laracrate.ocr.provider', 'anthropic');
     }
 
+    /**
+     * Determine whether this extractor can handle the given file.
+     */
     public function supports(File $file): bool
     {
         $mime = (string) $file->mime_type;
@@ -45,11 +50,14 @@ class OcrImageTextExtractor implements TextExtractor
             return false;
         }
 
-        // Sin API key para el provider configurado → no aplicamos (la chain
-        // intenta el siguiente extractor en lugar de fallar el proceso entero).
+        // Without an API key for the configured provider, skip (the chain
+        // tries the next extractor instead of failing the whole process).
         return $this->hasApiKey();
     }
 
+    /**
+     * Determine whether an API key is available for the configured provider.
+     */
     protected function hasApiKey(): bool
     {
         if ($this->provider === 'openai') {
@@ -70,11 +78,14 @@ class OcrImageTextExtractor implements TextExtractor
         );
     }
 
+    /**
+     * Run OCR on the image and return the extracted content.
+     */
     public function extract(File $file): ExtractedContent
     {
         $bytes = Storage::disk($file->disk)->get($file->path);
         if ($bytes === null || $bytes === false) {
-            throw new RuntimeException("OCR-Image: no se pudo leer {$file->path}");
+            throw new RuntimeException("OCR-Image: could not read {$file->path}");
         }
 
         $base64 = base64_encode($bytes);
@@ -83,12 +94,12 @@ class OcrImageTextExtractor implements TextExtractor
         $raw = match ($this->provider) {
             'openai'    => $this->extractWithOpenAi($base64, $mime),
             'anthropic' => $this->extractWithAnthropic($base64, $mime),
-            default     => throw new RuntimeException("OCR provider desconocido: {$this->provider}"),
+            default     => throw new RuntimeException("Unknown OCR provider: {$this->provider}"),
         };
 
-        // Parsea respuesta en dos secciones: [TEXT] y [DESCRIPTION]. Cada una
-        // se devuelve como página separada con `context` propio para que el
-        // chunker produzca filas distintas (un embedding por sección).
+        // Parse the response into two sections: [TEXT] and [DESCRIPTION]. Each
+        // is returned as a separate page with its own `context` so the chunker
+        // produces distinct rows (one embedding per section).
         [$ocrText, $description] = $this->parseSections($raw);
 
         $pages = [];
@@ -99,8 +110,8 @@ class OcrImageTextExtractor implements TextExtractor
             $pages[] = ['page_number' => count($pages) + 1, 'text' => $description, 'context' => 'description'];
         }
 
-        // Fallback defensivo: si el modelo no respetó los headers, vuelca todo
-        // como una sola página sin context (comportamiento legacy).
+        // Defensive fallback: if the model did not respect the headers, dump
+        // everything as a single page with no context (legacy behavior).
         if (empty($pages)) {
             $pages[] = ['page_number' => 1, 'text' => trim($raw)];
         }
@@ -112,9 +123,8 @@ class OcrImageTextExtractor implements TextExtractor
     }
 
     /**
-     * Parsea la respuesta del modelo en `[TEXT]\n...\n[DESCRIPTION]\n...`.
-     * Tolerante con variaciones del modelo (mayúsculas, espacios, ausencia de
-     * alguna sección).
+     * Parse the model response into `[TEXT]\n...\n[DESCRIPTION]\n...`.
+     * Tolerant of model variations (casing, whitespace, a missing section).
      *
      * @return array{0:string,1:string} [text, description]
      */
@@ -134,7 +144,7 @@ class OcrImageTextExtractor implements TextExtractor
             $description = '';
         }
 
-        // Si no aparecen headers pero hay contenido, asumimos que todo es TEXT.
+        // If no headers appear but there is content, assume it is all TEXT.
         if ($text === '' && $description === '' && $raw !== '') {
             $text = $raw;
         }
@@ -142,6 +152,9 @@ class OcrImageTextExtractor implements TextExtractor
         return [$text, $description];
     }
 
+    /**
+     * Run OCR through the Anthropic Vision API and return the raw response text.
+     */
     protected function extractWithAnthropic(string $base64, string $mime): string
     {
         $apiKey = $this->apiKey
@@ -150,7 +163,7 @@ class OcrImageTextExtractor implements TextExtractor
             ?: env('ANTHROPIC_API_KEY');
 
         if (! $apiKey) {
-            throw new RuntimeException('Anthropic API key no configurada.');
+            throw new RuntimeException('Anthropic API key not configured.');
         }
 
         $model = $this->model
@@ -211,6 +224,9 @@ class OcrImageTextExtractor implements TextExtractor
         return $text;
     }
 
+    /**
+     * Run OCR through the OpenAI Vision API and return the raw response text.
+     */
     protected function extractWithOpenAi(string $base64, string $mime): string
     {
         $apiKey = $this->apiKey
@@ -219,7 +235,7 @@ class OcrImageTextExtractor implements TextExtractor
             ?: env('OPENAI_API_KEY');
 
         if (! $apiKey) {
-            throw new RuntimeException('OpenAI API key no configurada.');
+            throw new RuntimeException('OpenAI API key not configured.');
         }
 
         $model = $this->model

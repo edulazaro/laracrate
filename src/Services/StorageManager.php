@@ -13,22 +13,22 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Fachada del paquete. Usa Storage::disk() de Laravel directamente — los
- * disks viven en config/filesystems.php donde el dev Laravel los espera.
+ * Package facade. Uses Laravel's Storage::disk() directly: the disks live in
+ * config/filesystems.php where the Laravel dev expects them.
  *
- * Este servicio solo añade lo que Storage::disk() no da bien:
- *   - decisión de URL pública/firmada/sensitive según el File
- *   - acceso al S3Client para presigned uploads y batch delete
- *   - helpers para Actions de procesamiento (readBinary, withLocalCopy)
+ * This service only adds what Storage::disk() does not do well:
+ *   - decide a public/signed/sensitive URL based on the File
+ *   - access to the S3Client for presigned uploads and batch delete
+ *   - helpers for processing Actions (readBinary, withLocalCopy)
  */
 class StorageManager
 {
     /**
-     * URL adecuada para leer un File según su access.
+     * Suitable URL to read a File based on its access.
      *
-     *   public → URL directa CDN (Storage::url()).
-     *   signed → URL firmada temporal con cache server-side.
-     *   stream → ruta del paquete firmada con Laravel; si sensitive, bind viewer.
+     *   public → direct CDN URL (Storage::url()).
+     *   signed → temporary signed URL with server-side cache.
+     *   stream → package route signed with Laravel; if sensitive, bind viewer.
      */
     public function urlFor(File $file): ?string
     {
@@ -42,12 +42,12 @@ class StorageManager
     }
 
     /**
-     * Devuelve el filesystem del disk del File. Atajo para no andar
-     * repitiendo `Storage::disk($file->disk)` por todo el paquete.
+     * Returns the filesystem of the File's disk. Shortcut to avoid repeating
+     * `Storage::disk($file->disk)` throughout the package.
      *
-     * Soporta dos convenciones en `$file->disk`:
-     *   - 'documents'  → disk del config global (shared, default).
-     *   - 'tb:{id}'    → bucket dedicado, resuelto vía TenantBucket en BD.
+     * Supports two conventions in `$file->disk`:
+     *   - 'documents'  → disk from the global config (shared, default).
+     *   - 'tb:{id}'    → dedicated bucket, resolved via TenantBucket in the DB.
      */
     public function diskFor(File $file): \Illuminate\Contracts\Filesystem\Filesystem
     {
@@ -55,9 +55,9 @@ class StorageManager
     }
 
     /**
-     * Resuelve un nombre de disk a su instancia de Filesystem. Centraliza
-     * la convención `tb:{id}` para que todos los callers internos (writeBinary,
-     * moveServerSide, deleteFromBackend, etc.) la respeten sin duplicar lógica.
+     * Resolves a disk name to its Filesystem instance. Centralizes the
+     * `tb:{id}` convention so all internal callers (writeBinary, moveServerSide,
+     * deleteFromBackend, etc.) honor it without duplicating logic.
      */
     public function resolveDisk(string $disk): \Illuminate\Contracts\Filesystem\Filesystem
     {
@@ -69,9 +69,9 @@ class StorageManager
     }
 
     /**
-     * Devuelve el array de config del disk, sea del config global o de un
-     * TenantBucket. Útil para leer `driver`, `bucket`, `root`, etc. sin
-     * duplicar la lógica de discriminación `tb:{id}` vs nombre plano.
+     * Returns the disk config array, whether from the global config or from a
+     * TenantBucket. Useful for reading `driver`, `bucket`, `root`, etc. without
+     * duplicating the `tb:{id}` vs flat name discrimination logic.
      */
     public function configFor(string $disk): array
     {
@@ -80,7 +80,7 @@ class StorageManager
             $bucket = TenantBucket::find($bucketId);
 
             if (!$bucket || !$bucket->is_active) {
-                throw new \RuntimeException("TenantBucket {$bucketId} no disponible (no existe o is_active=false).");
+                throw new \RuntimeException("TenantBucket {$bucketId} not available (does not exist or is_active=false).");
             }
 
             return $bucket->toDiskConfig();
@@ -90,11 +90,11 @@ class StorageManager
     }
 
     /**
-     * Lee binario completo desde el disk. Usar con cuidado — para archivos
-     * grandes preferir withLocalCopy() o stream.
+     * Reads the full binary from the disk. Use with care: for large files
+     * prefer withLocalCopy() or stream.
      *
-     * Convención: `$file->key` es accessor del modelo que devuelve la key
-     * completa (`path` ya almacena directorios + filename + extensión).
+     * Convention: `$file->key` is a model accessor that returns the full key
+     * (`path` already stores directories + filename + extension).
      */
     public function readBinary(File $file): string
     {
@@ -102,7 +102,7 @@ class StorageManager
     }
 
     /**
-     * Sube un binario al disk.
+     * Uploads a binary to the disk.
      */
     public function writeBinary(string $disk, string $key, string $content, ?string $mime = null): bool
     {
@@ -111,7 +111,7 @@ class StorageManager
     }
 
     /**
-     * Borra del disk.
+     * Deletes from the disk.
      */
     public function deleteFromBackend(string $disk, string $key): bool
     {
@@ -119,9 +119,9 @@ class StorageManager
     }
 
     /**
-     * Mueve un objeto de una key a otra DENTRO del mismo disk.
-     * En S3-compatible usa copyObject server-side: el binario NO pasa por PHP.
-     * Crítico para vídeos grandes (cero descarga al server).
+     * Moves an object from one key to another WITHIN the same disk.
+     * On S3-compatible disks it uses copyObject server-side: the binary does
+     * NOT pass through PHP. Critical for large videos (zero download to the server).
      */
     public function moveServerSide(string $disk, string $fromKey, string $toKey): bool
     {
@@ -148,7 +148,7 @@ class StorageManager
             return true;
         }
 
-        // Fallback para disks no-S3 (local): copy + delete vía Storage.
+        // Fallback for non-S3 disks (local): copy + delete via Storage.
         $disk_ = $this->resolveDisk($disk);
         if (!$disk_->exists($fromKey)) {
             return false;
@@ -159,8 +159,8 @@ class StorageManager
     }
 
     /**
-     * Borrado en lote. Si el disk es S3-compatible usa deleteObjects nativo
-     * (1 llamada por hasta 1000 keys); si no, loop.
+     * Batch delete. If the disk is S3-compatible it uses native deleteObjects
+     * (1 call per up to 1000 keys); otherwise, it loops.
      */
     public function batchDelete(string $disk, array $keys): int
     {
@@ -195,18 +195,18 @@ class StorageManager
     }
 
     /**
-     * URL presignada para upload directo cliente → backend.
-     * S3 usa createPresignedRequest. Local usa una ruta firmada de Laravel.
+     * Presigned URL for direct client → backend upload.
+     * S3 uses createPresignedRequest. Local uses a Laravel signed route.
      */
     public function presignedUpload(string $disk, string $key, string $mime, ?int $maxSize = null, int $minutes = 15): array
     {
         $client = $this->s3ClientOf($disk);
 
         if ($client) {
-            // El disk puede tener `root` configurado (ej. 'dev/'). Laravel lo aplica
-            // automáticamente en read/write vía PathPrefixer, pero al firmar un
-            // PUT directo de cliente lo tenemos que aplicar a mano — si no, el
-            // archivo se sube SIN prefix y luego ningún read del disk lo encuentra.
+            // The disk may have `root` configured (e.g. 'dev/'). Laravel applies
+            // it automatically on read/write via PathPrefixer, but when signing a
+            // direct client PUT we have to apply it by hand: otherwise the file
+            // uploads WITHOUT the prefix and then no disk read finds it.
             $cfg     = $this->configFor($disk);
             $root    = trim((string) ($cfg['root'] ?? ''), '/');
             $fullKey = $root !== '' ? "{$root}/{$key}" : $key;
@@ -224,13 +224,13 @@ class StorageManager
                 'url'        => (string) $request->getUri(),
                 'method'     => 'PUT',
                 'headers'    => ['Content-Type' => $mime],
-                'key'        => $key,   // devolvemos la key RELATIVA (sin prefix) para que la DB la guarde así
+                'key'        => $key,   // we return the RELATIVE key (without prefix) so the DB stores it that way
                 'disk'       => $disk,
                 'expires_at' => now()->addMinutes($minutes)->toIso8601String(),
             ];
         }
 
-        // Local: ruta firmada de Laravel hacia el LocalUploadController
+        // Local: Laravel signed route to the LocalUploadController
         $url = \Illuminate\Support\Facades\URL::temporarySignedRoute(
             'laracrate.local.upload',
             now()->addMinutes($minutes),
@@ -248,8 +248,8 @@ class StorageManager
     }
 
     /**
-     * Descarga el binario a una ruta temporal, ejecuta el callable con esa
-     * ruta, borra el temporal al terminar. Para ffmpeg/ffprobe/Imagick.
+     * Downloads the binary to a temporary path, runs the callable with that
+     * path, and deletes the temp file when done. For ffmpeg/ffprobe/Imagick.
      */
     public function withLocalCopy(File $file, callable $fn): mixed
     {
@@ -267,11 +267,11 @@ class StorageManager
     }
 
     /**
-     * Resolución de configuración de una colección.
+     * Resolution of a collection's configuration.
      *
-     * $morphAlias permite aplicar el bloque per-model (`models.{alias}`) si
-     * la colección lo declara. Si la colección está restringida y el alias
-     * no encaja, lanza CollectionNotAllowedForModel.
+     * $morphAlias allows applying the per-model block (`models.{alias}`) if the
+     * collection declares it. If the collection is restricted and the alias does
+     * not match, it throws CollectionNotAllowedForModel.
      */
     public function getCollectionConfig(string $collection, array $modelOverride = [], ?string $morphAlias = null): array
     {
@@ -280,29 +280,29 @@ class StorageManager
     }
 
     /**
-     * Config efectiva de un type dentro de una colección.
+     * Effective config of a type within a collection.
      *
-     * Estrategia de merge entre `laracrate.defaults.{type}` y el override
-     * declarado en la colección:
+     * Merge strategy between `laracrate.defaults.{type}` and the override
+     * declared in the collection:
      *
-     *   - Scalars y mapas de config (`max_file_size`, `quality`, `format`,
-     *     `max_width`, ...): merge por key — la collection sobrescribe el
-     *     valor del default solo para las keys que declara.
+     *   - Scalars and config maps (`max_file_size`, `quality`, `format`,
+     *     `max_width`, ...): merge by key. The collection overrides the default
+     *     value only for the keys it declares.
      *
-     *   - Listas/sets de items con nombre (`variants`, `accepted_mime_types`,
-     *     `accepted_extensions`): si la collection las declara, REEMPLAZAN
-     *     completamente las de defaults. No tiene sentido mergear "variants"
-     *     o "accepted_extensions" key por key — el usuario quiere su lista,
-     *     no una unión silenciosa con los defaults.
+     *   - Lists/sets of named items (`variants`, `accepted_mime_types`,
+     *     `accepted_extensions`): if the collection declares them, they
+     *     completely REPLACE the ones from defaults. It makes no sense to merge
+     *     "variants" or "accepted_extensions" key by key: the user wants their
+     *     list, not a silent union with the defaults.
      *
-     *     Es la convención estándar en el ecosistema (Spatie Media Library,
-     *     Filament, Glide, LiipImagineBundle): los presets/conversions
-     *     declarados son los únicos que se usan, sin merge implícito.
+     *     This is the standard convention in the ecosystem (Spatie Media Library,
+     *     Filament, Glide, LiipImagineBundle): the declared presets/conversions
+     *     are the only ones used, without implicit merge.
      *
-     * Si la colección está restringida por modelo y se pasa $morphAlias,
-     * aplica primero el bloque per-model.
+     * If the collection is restricted by model and $morphAlias is passed, it
+     * applies the per-model block first.
      *
-     * Devuelve [] si la colección no acepta ese type.
+     * Returns [] if the collection does not accept that type.
      */
     public function getTypeConfig(string $collection, string $type, ?string $morphAlias = null): array
     {
@@ -316,7 +316,7 @@ class StorageManager
         $defaults = config("laracrate.defaults.{$type}", []);
         $merged   = array_replace_recursive($defaults, $types[$type]);
 
-        // Listas/sets: si la collection las declara, reemplazan enteras.
+        // Lists/sets: if the collection declares them, they replace entirely.
         foreach (['variants', 'accepted_mime_types', 'accepted_extensions'] as $listKey) {
             if (array_key_exists($listKey, $types[$type])) {
                 $merged[$listKey] = $types[$type][$listKey];
@@ -327,8 +327,8 @@ class StorageManager
     }
 
     /**
-     * ¿La colección acepta este type? Honra el bloque per-model si la
-     * colección está restringida y se pasa $morphAlias.
+     * Does the collection accept this type? Honors the per-model block if the
+     * collection is restricted and $morphAlias is passed.
      */
     public function acceptsType(string $collection, string $type, ?string $morphAlias = null): bool
     {
@@ -338,10 +338,10 @@ class StorageManager
     }
 
     /**
-     * Normaliza el array `types` de una colección. Acepta:
-     *   - 'image'                          (string suelto, sin override)
-     *   - 'image' => [...]                 (con override)
-     *   - 'image' => 'image'               (no usual pero válido)
+     * Normalizes a collection's `types` array. Accepts:
+     *   - 'image'                          (bare string, no override)
+     *   - 'image' => [...]                 (with override)
+     *   - 'image' => 'image'               (unusual but valid)
      */
     protected function normalizeTypes(array $types): array
     {
@@ -357,7 +357,7 @@ class StorageManager
     }
 
     /**
-     * Devuelve el S3Client subyacente si el disk es s3-compatible. null si no.
+     * Returns the underlying S3Client if the disk is s3-compatible. null otherwise.
      */
     public function s3ClientOf(string $disk): ?S3Client
     {
@@ -375,15 +375,15 @@ class StorageManager
     }
 
     /**
-     * Devuelve el driver del disk. Soporta nombres planos (lookup en
-     * filesystems.php) y `tb:{id}` (lookup en TenantBucket).
+     * Returns the disk driver. Supports flat names (lookup in filesystems.php)
+     * and `tb:{id}` (lookup in TenantBucket).
      */
     public function driverOf(string $disk): string
     {
         $driver = $this->configFor($disk)['driver'] ?? null;
 
         if (!$driver) {
-            throw new \RuntimeException("Disk '{$disk}' no resolvible (ni en config/filesystems.php ni TenantBucket).");
+            throw new \RuntimeException("Disk '{$disk}' not resolvable (neither in config/filesystems.php nor TenantBucket).");
         }
 
         return $driver;

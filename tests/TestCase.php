@@ -9,9 +9,12 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\TestCase as BaseTestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 
 abstract class TestCase extends BaseTestCase
 {
+    use RefreshDatabase;
+
     protected function getPackageProviders($app): array
     {
         return [
@@ -22,12 +25,31 @@ abstract class TestCase extends BaseTestCase
 
     protected function getEnvironmentSetUp($app): void
     {
-        // SQLite in-memory.
+        // vendor/ is owned by another UID in this environment, so the testbench
+        // storage dir is not writable. Point the app at a writable storage path
+        // so Storage::fake() and the framework caches can create directories.
+        $storage = sys_get_temp_dir() . '/laracrate-test-storage';
+        foreach (['app', 'framework/cache', 'framework/views', 'framework/sessions', 'framework/testing/disks', 'logs'] as $sub) {
+            if (! is_dir($dir = $storage . '/' . $sub)) {
+                @mkdir($dir, 0777, true);
+            }
+        }
+        $app->useStoragePath($storage);
+
+        // MySQL test database (the package migrations use MySQL-specific DDL:
+        // FULLTEXT indexes, information_schema lookups, ALTER ... MODIFY). Point
+        // it at a throwaway server with env, defaulting to the local Docker one.
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', [
-            'driver'   => 'sqlite',
-            'database' => ':memory:',
-            'prefix'   => '',
+            'driver'    => 'mysql',
+            'host'      => env('LARACRATE_TEST_DB_HOST', '127.0.0.1'),
+            'port'      => env('LARACRATE_TEST_DB_PORT', '3307'),
+            'database'  => env('LARACRATE_TEST_DB_DATABASE', 'laracrate_test'),
+            'username'  => env('LARACRATE_TEST_DB_USERNAME', 'root'),
+            'password'  => env('LARACRATE_TEST_DB_PASSWORD', 'root'),
+            'charset'   => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix'    => '',
         ]);
 
         // Disks fake (Storage::fake los reemplaza igualmente, pero dejamos default).
@@ -112,18 +134,32 @@ abstract class TestCase extends BaseTestCase
             'log_access'          => false,
         ]);
 
+        // Discard logs during tests. The testbench storage/logs directory is
+        // not guaranteed writable, and the processing pipeline logs warnings
+        // when it runs (synchronously) over the fake binaries tests create.
+        $app['config']->set('logging.default', 'null');
+        $app['config']->set('logging.channels.null', [
+            'driver'  => 'monolog',
+            'handler' => \Monolog\Handler\NullHandler::class,
+        ]);
+
+        // The pipeline is exercised directly via ProcessFileAction in the
+        // pipeline tests, so the observer's queued job must not run inline: on
+        // the default sync queue it shells out to ffmpeg/imagick/pdftoppm per
+        // created file and makes the suite crawl. The null driver discards it.
+        $app['config']->set('queue.default', 'null');
+
         $app['config']->set('app.key', 'base64:' . base64_encode(random_bytes(32)));
     }
 
     protected function defineDatabaseMigrations(): void
     {
+        // Package migrations plus a test-only migration for the `test_owners`
+        // table that backs HasFilesTestModel. Both run under RefreshDatabase's
+        // migrate:fresh, so the persistent MySQL test DB is rebuilt cleanly on
+        // every run (no "table already exists" across runs).
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
-
-        Schema::create('test_owners', function (Blueprint $table) {
-            $table->id();
-            $table->string('name')->nullable();
-            $table->timestamps();
-        });
+        $this->loadMigrationsFrom(__DIR__ . '/database/migrations');
     }
 
     protected function setUp(): void

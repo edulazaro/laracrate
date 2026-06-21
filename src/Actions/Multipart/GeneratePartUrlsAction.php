@@ -8,24 +8,27 @@ use EduLazaro\Laractions\Action;
 use RuntimeException;
 
 /**
- * Genera URLs presignadas para subir las partes (PutPart) de una sesión
- * multipart activa. Cada URL es un PUT al endpoint S3/R2 con el binario
- * de esa parte; el cliente debe leer el header `ETag` de la respuesta y
- * mandárnoslo al `complete`.
+ * Generates presigned URLs to upload the parts (PutPart) of an active
+ * multipart session. Each URL is a PUT to the S3/R2 endpoint with that part's
+ * binary; the client must read the `ETag` header from the response and send it
+ * back to us on `complete`.
  *
  *   GeneratePartUrlsAction::create()->run([
  *       'upload'      => $multipartUpload,
- *       'partNumbers' => [1, 2, 3, ..., N],   // opcional; default todas
- *       'ttlMinutes'  => 60,                  // opcional, default config
+ *       'partNumbers' => [1, 2, 3, ..., N],   // optional; default all
+ *       'ttlMinutes'  => 60,                  // optional, default config
  *   ]);
  *
- * Devuelve [['part_number' => 1, 'url' => '...'], ...].
+ * Returns [['part_number' => 1, 'url' => '...'], ...].
  *
- * Si una URL caduca antes de que el cliente la use, vuelve a llamarte para
- * pedir solo las partes pendientes (idempotente, no genera estado nuevo).
+ * If a URL expires before the client uses it, call again to request only the
+ * pending parts (idempotent, does not generate new state).
  */
 class GeneratePartUrlsAction extends Action
 {
+    /**
+     * Generate presigned PUT URLs for the requested parts of the session.
+     */
     public function handle(
         MultipartUpload $upload,
         ?array $partNumbers = null,
@@ -33,7 +36,7 @@ class GeneratePartUrlsAction extends Action
     ): array {
         if (!$upload->isActive()) {
             throw new RuntimeException(
-                "Upload {$upload->upload_id} no está activo (status={$upload->status->value})."
+                "Upload {$upload->upload_id} is not active (status={$upload->status->value})."
             );
         }
 
@@ -41,7 +44,7 @@ class GeneratePartUrlsAction extends Action
         $client  = $manager->s3ClientOf($upload->disk);
 
         if ($client === null) {
-            throw new RuntimeException("Disk '{$upload->disk}' no es S3-compatible.");
+            throw new RuntimeException("Disk '{$upload->disk}' is not S3-compatible.");
         }
 
         $ttlMinutes = $ttlMinutes ?? (int) config('laracrate.multipart.url_ttl_minutes', 60);
@@ -49,11 +52,11 @@ class GeneratePartUrlsAction extends Action
 
         $partNumbers = $partNumbers ?? range(1, $upload->total_parts);
 
-        // Sanity check: partes válidas según total_parts.
+        // Sanity check: valid parts according to total_parts.
         foreach ($partNumbers as $n) {
             if (!is_int($n) || $n < 1 || $n > $upload->total_parts) {
                 throw new RuntimeException(
-                    "Part number {$n} fuera de rango [1, {$upload->total_parts}]."
+                    "Part number {$n} out of range [1, {$upload->total_parts}]."
                 );
             }
         }

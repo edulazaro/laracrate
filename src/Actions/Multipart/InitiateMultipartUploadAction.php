@@ -10,24 +10,27 @@ use Illuminate\Database\Eloquent\Model;
 use RuntimeException;
 
 /**
- * Crea una sesión multipart en S3/R2 y persiste su estado en BD.
+ * Creates a multipart session in S3/R2 and persists its state in the DB.
  *
  *   $upload = InitiateMultipartUploadAction::create()->run([
  *       'disk'          => 'r2',
  *       'key'           => 'cases/42/videos/foo.mp4',
  *       'mime'          => 'video/mp4',
  *       'expectedSize'  => 800 * 1024 * 1024,
- *       'creator'       => $user,             // opcional
- *       'tenant'        => $organization,     // opcional
- *       'partSize'      => 10 * 1024 * 1024,  // opcional, default config
- *       'expireMinutes' => 60,                // opcional, default config
+ *       'creator'       => $user,             // optional
+ *       'tenant'        => $organization,     // optional
+ *       'partSize'      => 10 * 1024 * 1024,  // optional, default config
+ *       'expireMinutes' => 60,                // optional, default config
  *   ]);
  *
- *   // $upload contiene upload_id, total_parts, expires_at...
- *   // Las URLs presignadas se piden con GeneratePartUrlsAction.
+ *   // $upload contains upload_id, total_parts, expires_at...
+ *   // The presigned URLs are requested with GeneratePartUrlsAction.
  */
 class InitiateMultipartUploadAction extends Action
 {
+    /**
+     * Create the multipart session in S3/R2 and persist its DB row.
+     */
     public function handle(
         string $disk,
         string $key,
@@ -48,7 +51,7 @@ class InitiateMultipartUploadAction extends Action
 
         if ($client === null) {
             throw new RuntimeException(
-                "Disk '{$disk}' no es S3-compatible. Multipart solo funciona contra S3/R2/MinIO."
+                "Disk '{$disk}' is not S3-compatible. Multipart only works against S3/R2/MinIO."
             );
         }
 
@@ -56,18 +59,18 @@ class InitiateMultipartUploadAction extends Action
         $expireMinutes = $expireMinutes ?? (int) config('laracrate.multipart.expire_minutes', 60);
 
         if ($partSize < 5 * 1024 * 1024) {
-            throw new RuntimeException("part_size mínimo en S3 es 5 MB.");
+            throw new RuntimeException("The minimum part_size in S3 is 5 MB.");
         }
 
         if ($expectedSize <= 0) {
-            throw new RuntimeException("expectedSize debe ser > 0 para calcular total_parts.");
+            throw new RuntimeException("expectedSize must be > 0 to compute total_parts.");
         }
 
         $totalParts = (int) ceil($expectedSize / $partSize);
 
         if ($totalParts > 10000) {
             throw new RuntimeException(
-                "S3 no permite más de 10.000 partes. Aumenta part_size (recibido {$totalParts} partes)."
+                "S3 does not allow more than 10,000 parts. Increase part_size (got {$totalParts} parts)."
             );
         }
 

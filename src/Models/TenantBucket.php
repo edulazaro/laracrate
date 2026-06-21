@@ -6,15 +6,15 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * Bucket dedicado de un tenant que sobrescribe UN disk del config global.
+ * A tenant's dedicated bucket that overrides ONE disk of the global config.
  *
- * Modelo SaaS típico (R2/S3 cuenta única del SaaS, buckets por tenant):
- *   sólo `bucket` y opcionalmente `public_url` se sobrescriben. El resto
- *   (key, secret, endpoint, region, driver) lo hereda del `base_disk`.
+ * Typical SaaS model (R2/S3 single SaaS account, per-tenant buckets):
+ *   only `bucket` and optionally `public_url` are overridden. The rest
+ *   (key, secret, endpoint, region, driver) is inherited from `base_disk`.
  *
- * Modelo BYOA (cliente enterprise con su propia cuenta):
- *   `credentials` cifrado con APP_KEY contiene los overrides para
- *   key/secret/endpoint/region/driver (lo que el cliente aporte).
+ * BYOA model (enterprise client with their own account):
+ *   `credentials` encrypted with APP_KEY contains the overrides for
+ *   key/secret/endpoint/region/driver (whatever the client provides).
  */
 class TenantBucket extends Model
 {
@@ -36,14 +36,15 @@ class TenantBucket extends Model
         'is_active'   => 'boolean',
     ];
 
+    /** The tenant that owns this bucket. */
     public function tenant(): MorphTo
     {
         return $this->morphTo();
     }
 
     /**
-     * Construye el array de config para `Storage::build(...)`. Merge en
-     * cascada: base del config + override del bucket + opcional BYOA.
+     * Builds the config array for `Storage::build(...)`. Cascading merge:
+     * config base + bucket override + optional BYOA.
      */
     public function toDiskConfig(): array
     {
@@ -55,7 +56,7 @@ class TenantBucket extends Model
             $merged['url'] = $this->public_url;
         }
 
-        // BYOA: anula key/secret/endpoint/region/driver del base.
+        // BYOA: overrides key/secret/endpoint/region/driver from the base.
         if (!empty($this->credentials)) {
             $merged = array_merge($merged, $this->credentials);
         }

@@ -5,19 +5,19 @@ namespace EduLazaro\Laracrate\Support;
 use EduLazaro\Laracrate\Models\File;
 
 /**
- * Resolver del config de extracción/embedding para un File.
+ * Resolver for the extraction/embedding config of a File.
  *
- * El config soporta dos formas:
+ * The config supports two forms:
  *
- *   'extract' => true | false               → boolean global
- *   'extract' => ['document', 'image']      → array de FileType (document|image|audio|video)
- *   'extract' => ['video.visual']           → sufijos para extras opt-in
+ *   'extract' => true | false               -> global boolean
+ *   'extract' => ['document', 'image']      -> array of FileType (document|image|audio|video)
+ *   'extract' => ['video.visual']           -> suffixes for opt-in extras
  *
- * Igual para `embed`.
+ * Same for `embed`.
  *
- * Las apps pueden registrar resolvers personalizados (org overrides,
- * case overrides) via `ExtractionResolver::setOverrideResolver(callable)`
- * — recibe el File y devuelve un array que se merge sobre el config base.
+ * Apps can register custom resolvers (org overrides, case overrides) via
+ * `ExtractionResolver::setOverrideResolver(callable)`: it receives the File
+ * and returns an array that is merged over the base config.
  */
 class ExtractionResolver
 {
@@ -25,9 +25,9 @@ class ExtractionResolver
     protected static $overrideResolver = null;
 
     /**
-     * Registra un resolver de overrides. La callable recibe el File y debe
-     * devolver un array como `['extract' => true|false|array, 'embed' => ...]`
-     * o null. Si devuelve null, no hay override.
+     * Register an override resolver. The callable receives the File and must
+     * return an array like `['extract' => true|false|array, 'embed' => ...]`
+     * or null. If it returns null, there is no override.
      */
     public static function setOverrideResolver(?callable $resolver): void
     {
@@ -35,7 +35,7 @@ class ExtractionResolver
     }
 
     /**
-     * ¿Se debe extraer texto de este file?
+     * Should text be extracted from this file?
      */
     public static function shouldExtract(File $file): bool
     {
@@ -43,7 +43,7 @@ class ExtractionResolver
     }
 
     /**
-     * ¿Se deben generar embeddings de este file?
+     * Should embeddings be generated for this file?
      */
     public static function shouldEmbed(File $file): bool
     {
@@ -51,7 +51,7 @@ class ExtractionResolver
     }
 
     /**
-     * ¿Está activado un extra concreto (ej. `video.visual`) para este file?
+     * Is a specific extra (e.g. `video.visual`) enabled for this file?
      */
     public static function hasExtra(File $file, string $extra): bool
     {
@@ -62,7 +62,7 @@ class ExtractionResolver
     }
 
     /**
-     * Devuelve el config efectivo del file: collection config + overrides.
+     * Return the file's effective config: collection config + overrides.
      */
     public static function effectiveConfig(File $file): array
     {
@@ -78,6 +78,7 @@ class ExtractionResolver
         return $base;
     }
 
+    /** Resolve whether the given config key is enabled for the file's type. */
     protected static function isEnabledFor(File $file, string $key): bool
     {
         $effective = self::effectiveConfig($file);
@@ -90,14 +91,14 @@ class ExtractionResolver
         if (is_array($value)) {
             $type = $file->type?->value ?? (string) $file->type;
             foreach ($value as $allowed) {
-                // Match exacto o prefix (`video` matches `video.visual` y viceversa).
+                // Exact match or prefix (`video` matches `video.visual` and vice versa).
                 if ($allowed === $type) return true;
                 if (str_starts_with($allowed, $type . '.')) return true;
             }
             return false;
         }
 
-        // Backward compat: si está la clave vieja `extract_text` o `embed` bool.
+        // Backward compat: if the old key `extract_text` or `embed` bool is present.
         if ($key === 'extract' && isset($effective['extract_text'])) {
             return (bool) $effective['extract_text'];
         }

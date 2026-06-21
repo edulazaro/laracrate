@@ -10,23 +10,26 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
- * Transcribe vídeo: extrae audio con ffmpeg → Whisper. Opcionalmente
- * añade descripción visual de frames si la collection declara
- * `extract` incluyendo `video.visual` (pseudo-type).
+ * Transcribes video: extracts audio with ffmpeg, then Whisper. Optionally adds
+ * a visual description of frames if the collection declares `extract` including
+ * `video.visual` (pseudo-type).
  *
- * Requiere ffmpeg instalado en el sistema. Si no está, `supports()` devuelve
- * false y el step lo omite limpiamente.
+ * Requires ffmpeg installed on the system. If absent, `supports()` returns
+ * false and the step skips it cleanly.
  *
- * Coste:
- *   Audio (Whisper): ~$0.006/minuto
- *   Visual (opcional): ~$0.001/frame × ~2 frames/minuto = ~$0.002/min extra
+ * Cost:
+ *   Audio (Whisper): ~$0.006/minute
+ *   Visual (optional): ~$0.001/frame × ~2 frames/minute = ~$0.002/min extra
  *
  * Config:
  *   LARACRATE_OPENAI_API_KEY = (fallback: OPENAI_API_KEY)
- *   LARACRATE_VIDEO_FRAME_INTERVAL = (default: 30) segundos entre frames visuales
+ *   LARACRATE_VIDEO_FRAME_INTERVAL = (default: 30) seconds between visual frames
  */
 class VideoTranscribeExtractor implements TextExtractor
 {
+    /**
+     * Create a new video transcribe extractor.
+     */
     public function __construct(
         protected ?AudioTranscribeExtractor $audioExtractor = null,
         protected ?OcrImageTextExtractor $imageExtractor = null,
@@ -35,12 +38,15 @@ class VideoTranscribeExtractor implements TextExtractor
         $this->imageExtractor ??= new OcrImageTextExtractor();
     }
 
+    /**
+     * Determine whether this extractor can handle the given file.
+     */
     public function supports(File $file): bool
     {
         if (! str_starts_with((string) $file->mime_type, 'video/')) {
             return false;
         }
-        // Necesita ffmpeg + OpenAI API key (Whisper).
+        // Needs ffmpeg + OpenAI API key (Whisper).
         $hasKey = ! empty(
             config('laracrate.openai.api_key')
             ?? env('LARACRATE_OPENAI_API_KEY')
@@ -49,11 +55,14 @@ class VideoTranscribeExtractor implements TextExtractor
         return $this->ffmpegAvailable() && $hasKey;
     }
 
+    /**
+     * Transcribe the video (audio plus optional visual frames) into content.
+     */
     public function extract(File $file): ExtractedContent
     {
         $bytes = Storage::disk($file->disk)->get($file->path);
         if ($bytes === null || $bytes === false) {
-            throw new RuntimeException("VideoTranscribe: no se pudo leer {$file->path}");
+            throw new RuntimeException("VideoTranscribe: could not read {$file->path}");
         }
 
         $ext = strtolower($file->extension ?? 'mp4');
@@ -65,15 +74,15 @@ class VideoTranscribeExtractor implements TextExtractor
         $audioText  = '';
 
         try {
-            // 1. Extraer audio.
+            // 1. Extract audio.
             $this->ffmpegExtractAudio($tmpVideo, $tmpAudio);
 
-            // 2. Transcribir audio via Whisper (reusamos AudioTranscribeExtractor
-            //    creando un File "virtual" en local con el path tmp).
-            //    Como Whisper acepta multipart directo, hacemos la llamada inline.
+            // 2. Transcribe audio via Whisper (we reuse AudioTranscribeExtractor
+            //    by creating a "virtual" local File with the tmp path).
+            //    Since Whisper accepts multipart directly, we make the call inline.
             $audioText = $this->transcribeLocalFile($tmpAudio);
 
-            // 3. Visual frames opcional — si la collection lo activó.
+            // 3. Optional visual frames, if the collection enabled it.
             if ($this->wantsVisualFrames($file)) {
                 $framesText = $this->describeFrames($file, $tmpVideo);
             }
@@ -82,10 +91,10 @@ class VideoTranscribeExtractor implements TextExtractor
             if (file_exists($tmpAudio)) @unlink($tmpAudio);
         }
 
-        // Cada modalidad se emite como página separada con su `context` para
-        // que el chunker produzca filas independientes en `laracrate_file_chunks`
-        // (un embedding por modalidad: la búsqueda semántica matchea contra
-        // transcripción literal Y descripción visual por separado).
+        // Each modality is emitted as a separate page with its `context` so the
+        // chunker produces independent rows in `laracrate_file_chunks` (one
+        // embedding per modality: semantic search matches against the literal
+        // transcription AND the visual description separately).
         $audioText  = trim($audioText);
         $framesText = trim($framesText);
 
@@ -97,8 +106,8 @@ class VideoTranscribeExtractor implements TextExtractor
             $pages[] = ['page_number' => count($pages) + 1, 'text' => $framesText, 'context' => 'description'];
         }
 
-        // Defensa: si no hay nada, devolvemos página vacía para que el pipeline
-        // marque el File como procesado sin texto.
+        // Defensive: if there is nothing, return an empty page so the pipeline
+        // marks the File as processed with no text.
         if (empty($pages)) {
             $pages[] = ['page_number' => 1, 'text' => ''];
         }
@@ -111,13 +120,16 @@ class VideoTranscribeExtractor implements TextExtractor
         ]);
     }
 
+    /**
+     * Determine whether the collection opted into visual frame description.
+     */
     protected function wantsVisualFrames(File $file): bool
     {
         $config = CollectionConfig::resolve($file->collection, $file->fileable_type);
         $extract = $config['extract'] ?? null;
 
-        // Solo soportamos visual frames si la collection declara `video.visual`
-        // (pseudo-type opt-in explícito).
+        // We only support visual frames if the collection declares `video.visual`
+        // (explicit opt-in pseudo-type).
         if (! is_array($extract)) {
             return false;
         }
@@ -125,6 +137,9 @@ class VideoTranscribeExtractor implements TextExtractor
         return in_array('video.visual', $extract, true);
     }
 
+    /**
+     * Determine whether ffmpeg is available on the system PATH.
+     */
     protected function ffmpegAvailable(): bool
     {
         $cmd = PHP_OS_FAMILY === 'Windows' ? 'where ffmpeg' : 'which ffmpeg';
@@ -132,6 +147,9 @@ class VideoTranscribeExtractor implements TextExtractor
         return $code === 0;
     }
 
+    /**
+     * Extract the audio track from a video file into the given output path.
+     */
     protected function ffmpegExtractAudio(string $videoPath, string $outAudioPath): void
     {
         $cmd = sprintf(
@@ -141,10 +159,13 @@ class VideoTranscribeExtractor implements TextExtractor
         );
         exec($cmd, $out, $code);
         if ($code !== 0 || ! file_exists($outAudioPath)) {
-            throw new RuntimeException('ffmpeg fallo extrayendo audio: ' . implode("\n", $out));
+            throw new RuntimeException('ffmpeg failed extracting audio: ' . implode("\n", $out));
         }
     }
 
+    /**
+     * Transcribe a local audio file via Whisper and return the text.
+     */
     protected function transcribeLocalFile(string $audioPath): string
     {
         $apiKey = config('laracrate.openai.api_key')
@@ -176,8 +197,8 @@ class VideoTranscribeExtractor implements TextExtractor
     }
 
     /**
-     * Extrae frames cada N segundos con ffmpeg y los pasa por Vision.
-     * Devuelve descripciones concatenadas con timestamps.
+     * Extract frames every N seconds with ffmpeg and run them through Vision.
+     * Returns descriptions concatenated with timestamps.
      */
     protected function describeFrames(File $file, string $videoPath): string
     {
@@ -200,7 +221,7 @@ class VideoTranscribeExtractor implements TextExtractor
                 $virtualFile->mime_type = 'image/jpeg';
                 $virtualFile->extension = 'jpg';
 
-                // Reusamos el OCR de imagen para describir el frame.
+                // We reuse the image OCR to describe the frame.
                 $description = $this->describeFrameInline($framePath);
                 if ($description !== '') {
                     $descriptions[] = "[{$this->formatTimestamp($t)}] {$description}";
@@ -213,6 +234,9 @@ class VideoTranscribeExtractor implements TextExtractor
         return implode("\n", $descriptions);
     }
 
+    /**
+     * Return the duration of a media file in seconds via ffprobe.
+     */
     protected function ffprobeDuration(string $path): float
     {
         $cmd = sprintf(
@@ -223,6 +247,9 @@ class VideoTranscribeExtractor implements TextExtractor
         return (float) $out;
     }
 
+    /**
+     * Extract a single frame at the given second into the output path.
+     */
     protected function ffmpegExtractFrame(string $videoPath, int $second, string $outPath): void
     {
         $cmd = sprintf(
@@ -234,6 +261,9 @@ class VideoTranscribeExtractor implements TextExtractor
         exec($cmd, $out, $code);
     }
 
+    /**
+     * Describe a single extracted frame via Vision and return the text.
+     */
     protected function describeFrameInline(string $framePath): string
     {
         $bytes = file_get_contents($framePath);
@@ -253,7 +283,7 @@ class VideoTranscribeExtractor implements TextExtractor
                 'messages' => [[
                     'role'    => 'user',
                     'content' => [
-                        ['type' => 'text', 'text' => 'Describe brevemente esta escena (1 frase). Sé objetivo. Si hay texto visible, transcríbelo entre comillas.'],
+                        ['type' => 'text', 'text' => 'Briefly describe this scene (1 sentence). Be objective. If there is visible text, transcribe it in quotes.'],
                         ['type' => 'image_url', 'image_url' => ['url' => "data:image/jpeg;base64,{$base64}"]],
                     ],
                 ]],
@@ -264,6 +294,9 @@ class VideoTranscribeExtractor implements TextExtractor
         return trim((string) $response->json('choices.0.message.content', ''));
     }
 
+    /**
+     * Format a second count as a HH:MM:SS or MM:SS timestamp.
+     */
     protected function formatTimestamp(int $seconds): string
     {
         $h = intdiv($seconds, 3600);

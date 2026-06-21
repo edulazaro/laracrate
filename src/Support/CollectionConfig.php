@@ -71,7 +71,7 @@ class CollectionConfig
             throw new CollectionNotAllowedForModel(
                 "Laracrate collection [{$collection}] is restricted to: [" .
                 implode(', ', array_keys($models)) .
-                "] — received [{$modelOrAlias}]."
+                "], received [{$modelOrAlias}]."
             );
         }
 

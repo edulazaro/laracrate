@@ -8,14 +8,17 @@ use EduLazaro\Laractions\Action;
 use Throwable;
 
 /**
- * Orquestador: itera config.variants de la colección del File padre y
- * dispatcha GenerateImageVariantAction por cada definición.
+ * Orchestrator: iterates config.variants of the parent File's collection and
+ * dispatches GenerateImageVariantAction for each definition.
  *
- * Si una definición falla, sigue con las demás y loggea. No aborta toda
- * la operación.
+ * If a definition fails, it continues with the rest and logs it. It does not
+ * abort the whole operation.
  */
 class GenerateImageVariantsAction extends Action
 {
+    /**
+     * Generate all configured image variants for the given parent File.
+     */
     public function handle(File $file, ?array $variants = null): array
     {
         if (!$file->isImage()) {
@@ -45,7 +48,7 @@ class GenerateImageVariantsAction extends Action
                     $generated[$name] = $variant;
                 }
             } catch (Throwable $e) {
-                logger()->warning('Laracrate: fallo al generar variant', [
+                logger()->warning('Laracrate: failed to generate variant', [
                     'file_id' => $file->id,
                     'variant' => $name,
                     'error'   => $e->getMessage(),

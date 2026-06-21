@@ -43,8 +43,12 @@ use EduLazaro\Laracrate\Support\TextExtractorRegistry;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
+/**
+ * Service provider that wires up Laracrate bindings, pipeline steps, routes and views.
+ */
 class LaracrateServiceProvider extends ServiceProvider
 {
+    /** Registers package singletons, aliases and providers in the container. */
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/laracrate.php', 'laracrate');
@@ -65,13 +69,13 @@ class LaracrateServiceProvider extends ServiceProvider
     }
 
     /**
-     * Binding del backend de chunks (storage + búsqueda). Default `mysql`
-     * (sin dependencias externas). Apps pueden cambiar a `meilisearch`
-     * vía LARACRATE_CHUNKS_DRIVER y debe registrar Meilisearch\Client en
-     * el container.
+     * Binding of the chunks backend (storage + search). Default `mysql`
+     * (no external dependencies). Apps can switch to `meilisearch` via
+     * LARACRATE_CHUNKS_DRIVER and must register Meilisearch\Client in the
+     * container.
      *
-     * Drivers custom (Qdrant, pgvector...): la app puede bindear ChunkStore
-     * directamente a su implementación; este binding se ignora.
+     * Custom drivers (Qdrant, pgvector...): the app can bind ChunkStore
+     * directly to its implementation; this binding is ignored.
      */
     protected function registerChunkStore(): void
     {
@@ -86,16 +90,16 @@ class LaracrateServiceProvider extends ServiceProvider
     }
 
     /**
-     * Construye el driver Meilisearch resolviendo Meilisearch\Client del
-     * container. La app es responsable de bindear el client; si no está,
-     * fallback a MysqlChunkStore con warning.
+     * Builds the Meilisearch driver, resolving Meilisearch\Client from the
+     * container. The app is responsible for binding the client; if it is not
+     * there, falls back to MysqlChunkStore with a warning.
      */
     protected function makeMeilisearchChunkStore($app): ChunkStore
     {
         if (! class_exists(\Meilisearch\Client::class) || ! $app->bound(\Meilisearch\Client::class)) {
             \Illuminate\Support\Facades\Log::warning(
-                'Laracrate: chunks.driver=meilisearch pero Meilisearch\\Client no está bindeado. ' .
-                'Fallback a MysqlChunkStore.'
+                'Laracrate: chunks.driver=meilisearch but Meilisearch\\Client is not bound. ' .
+                'Falling back to MysqlChunkStore.'
             );
             return new MysqlChunkStore();
         }
@@ -118,6 +122,7 @@ class LaracrateServiceProvider extends ServiceProvider
         );
     }
 
+    /** Boots the package: migrations, routes, views, observers, commands. */
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
@@ -159,6 +164,7 @@ class LaracrateServiceProvider extends ServiceProvider
         }
     }
 
+    /** Registers the package's Livewire uploader and dropzone components. */
     protected function registerLivewireComponents(): void
     {
         if (! class_exists(Livewire::class)) {
@@ -173,6 +179,7 @@ class LaracrateServiceProvider extends ServiceProvider
         Livewire::component('laracrate-dropzone-single-deferred', LaracrateDropzoneSingleDeferred::class);
     }
 
+    /** Binds the configured embedding provider (OpenAI or null) in the container. */
     protected function registerEmbeddingProvider(): void
     {
         $this->app->singleton(EmbeddingProvider::class, function () {
@@ -190,14 +197,15 @@ class LaracrateServiceProvider extends ServiceProvider
         });
     }
 
+    /** Binds the text extractor registry from config or built-in defaults. */
     protected function registerTextExtractorRegistry(): void
     {
         $this->app->singleton(TextExtractorRegistry::class, function ($app) {
             $registry = new TextExtractorRegistry();
 
-            // Si la app configura `embeddings.extractors` como array de FQCN,
-            // se usa esa lista (control total sobre orden + qué incluir).
-            // Si no, se cargan los defaults built-in del package.
+            // If the app configures `embeddings.extractors` as an array of FQCN,
+            // that list is used (full control over order + what to include).
+            // Otherwise, the package's built-in defaults are loaded.
             $configured = (array) config('laracrate.embeddings.extractors', []);
 
             if (! empty($configured)) {
@@ -211,7 +219,7 @@ class LaracrateServiceProvider extends ServiceProvider
                     $registry->add($instance);
                 }
             } else {
-                // Orden importa: primer extractor que diga supports() gana.
+                // Order matters: the first extractor whose supports() returns true wins.
                 $registry->add(new PdfTextExtractor());
                 $registry->add(new PlainTextExtractor());
             }
@@ -221,29 +229,28 @@ class LaracrateServiceProvider extends ServiceProvider
     }
 
     /**
-     * Registra los pasos default del pipeline de procesamiento. Las apps
-     * pueden añadir / quitar pasos resolviendo el registry desde su propio
-     * ServiceProvider.
+     * Registers the default steps of the processing pipeline. Apps can add /
+     * remove steps by resolving the registry from their own ServiceProvider.
      */
     protected function registerFileActionRegistry(): void
     {
         $this->app->singleton(FileActionRegistry::class, function () {
             $registry = new FileActionRegistry();
 
-            // Imagen
+            // Image
             $registry->add(new ExtractImageDimensionsStep());
             $registry->add(new OptimizeImageStep());
             $registry->add(new GenerateImageVariantsStep());
 
-            // Vídeo
+            // Video
             $registry->add(new ExtractVideoDimensionsStep());
             $registry->add(new TranscodeVideoStep());
             $registry->add(new ExtractVideoPreviewStep());
 
-            // Documento (PDF preview)
+            // Document (PDF preview)
             $registry->add(new ExtractPdfPreviewStep());
 
-            // Texto + IA
+            // Text + AI
             $registry->add(new ExtractTextStep());
             $registry->add(new ChunkTextStep());
             $registry->add(new GenerateEmbeddingStep());

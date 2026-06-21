@@ -6,13 +6,14 @@ use EduLazaro\Laracrate\Models\File;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * Pipeline terminó OK. El File ya está marcado como COMPLETED.
- * Las apps suelen escuchar esto para refrescar UI, invalidar caches,
- * notificar al usuario, etc.
+ * Pipeline finished OK. The File is already marked as COMPLETED.
+ * Apps usually listen to this to refresh the UI, invalidate caches,
+ * notify the user, etc.
  */
 class FileProcessed
 {
     use Dispatchable;
 
+    /** Create the event for the successfully processed file. */
     public function __construct(public File $file) {}
 }

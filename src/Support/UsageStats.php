@@ -3,15 +3,16 @@
 namespace EduLazaro\Laracrate\Support;
 
 /**
- * Snapshot inmutable del uso de storage de un scope (tenant, colección,
- * creator o global). Devuelto por `UsageReporter`.
+ * Immutable snapshot of the storage usage of a scope (tenant, collection,
+ * creator or global). Returned by `UsageReporter`.
  *
- * Los bytes incluyen variants (thumbnails, previews, transcoded). Si la
- * app quiere distinguir originales vs derivados, usa los desgloses
- * `byType` o consulta `topLevel()` directamente.
+ * The bytes include variants (thumbnails, previews, transcoded). If the app
+ * wants to distinguish originals vs derivatives, use the `byType` breakdowns
+ * or query `topLevel()` directly.
  */
 class UsageStats
 {
+    /** Create an immutable usage snapshot. */
     public function __construct(
         public readonly int $totalBytes = 0,
         public readonly int $totalFiles = 0,
@@ -21,23 +22,26 @@ class UsageStats
         public readonly array $byType = [],
     ) {}
 
+    /** Total bytes expressed in kilobytes. */
     public function kilobytes(): float
     {
         return $this->totalBytes / 1024;
     }
 
+    /** Total bytes expressed in megabytes. */
     public function megabytes(): float
     {
         return $this->totalBytes / 1024 / 1024;
     }
 
+    /** Total bytes expressed in gigabytes. */
     public function gigabytes(): float
     {
         return $this->totalBytes / 1024 / 1024 / 1024;
     }
 
     /**
-     * "1.42 GB", "234 MB", "12 KB".
+     * Human-readable size, e.g. "1.42 GB", "234 MB", "12 KB".
      */
     public function human(int $precision = 2): string
     {
@@ -51,7 +55,7 @@ class UsageStats
     }
 
     /**
-     * ¿Excede la cuota dada (en bytes)?
+     * Does usage exceed the given quota (in bytes)?
      */
     public function exceeds(int $quotaBytes): bool
     {
@@ -59,7 +63,7 @@ class UsageStats
     }
 
     /**
-     * Bytes restantes hasta la cuota. Negativo si ya excedida.
+     * Bytes remaining until the quota. Negative if already exceeded.
      */
     public function remaining(int $quotaBytes): int
     {
@@ -67,7 +71,7 @@ class UsageStats
     }
 
     /**
-     * Porcentaje usado de la cuota (0-100+, puede pasar de 100 si excede).
+     * Percentage of the quota used (0-100+, can go over 100 if exceeded).
      */
     public function percentageOf(int $quotaBytes): float
     {
@@ -75,6 +79,7 @@ class UsageStats
         return ($this->totalBytes / $quotaBytes) * 100;
     }
 
+    /** Serialize the snapshot to an array. */
     public function toArray(): array
     {
         return [

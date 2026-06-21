@@ -7,16 +7,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-// File está en el mismo namespace, no necesita use explícito (autoresolución).
+// File is in the same namespace, no explicit use needed (auto-resolution).
 
 /**
- * Carpeta para organizar files. Árbol parent/child con path denormalizado.
+ * Folder to organize files. A parent/child tree with a denormalized path.
  *
- * Source of truth = parent_id. El campo path se recalcula vía observer al
- * save desde parent.path + name; un mutator a mano sobre path se sobrescribe.
+ * Source of truth = parent_id. The path field is recalculated via an observer
+ * on save from parent.path + name; a manual mutator on path is overwritten.
  *
- * Polimórfico: folderable apunta a quien posee el árbol (User para Drive
- * personal, Organization para Drive de despacho, etc.). Igual patrón que
+ * Polymorphic: folderable points to who owns the tree (User for a personal
+ * Drive, Organization for an office Drive, etc.). Same pattern as
  * files.fileable.
  */
 class Folder extends Model
@@ -40,24 +40,27 @@ class Folder extends Model
         'metadata' => 'array',
     ];
 
+    /** The model that owns this folder tree. */
     public function folderable(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** The model that created this folder. */
     public function creator(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** Parent folder. */
     public function parent(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_id');
     }
 
     /**
-     * Hijos directos (un nivel). Para descendientes profundos usa
-     * descendants() o queries por path LIKE.
+     * Direct children (one level). For deep descendants use
+     * descendants() or path LIKE queries.
      */
     public function children(): HasMany
     {
@@ -65,7 +68,7 @@ class Folder extends Model
     }
 
     /**
-     * Files directamente dentro de esta carpeta (no recursivo).
+     * Files directly inside this folder (non-recursive).
      */
     public function files(): HasMany
     {
@@ -76,8 +79,8 @@ class Folder extends Model
     }
 
     /**
-     * Cadena de ancestros desde raíz hasta esta carpeta (inclusive).
-     * Útil para breadcrumbs.
+     * Chain of ancestors from the root to this folder (inclusive).
+     * Useful for breadcrumbs.
      */
     public function breadcrumb(): array
     {
@@ -91,8 +94,8 @@ class Folder extends Model
     }
 
     /**
-     * True si $candidate es esta carpeta o uno de sus descendientes.
-     * Lo usa moveTo() para evitar ciclos en el árbol.
+     * True if $candidate is this folder or one of its descendants.
+     * Used by moveTo() to avoid cycles in the tree.
      */
     public function isDescendantOf(self $candidate): bool
     {
@@ -107,9 +110,9 @@ class Folder extends Model
     }
 
     /**
-     * Cambia el parent. El observer recalcula el path en cascada para
-     * todos los descendientes. Lanza si crearía ciclo o si cambia de
-     * folderable (mover entre árboles distintos no se permite).
+     * Changes the parent. The observer recalculates the path in cascade for
+     * all descendants. Throws if it would create a cycle or if it changes the
+     * folderable (moving between different trees is not allowed).
      */
     public function moveTo(?self $newParent): void
     {
@@ -117,12 +120,12 @@ class Folder extends Model
             if ($newParent->folderable_type !== $this->folderable_type
                 || (string) $newParent->folderable_id !== (string) $this->folderable_id) {
                 throw new \InvalidArgumentException(
-                    'No se puede mover una carpeta entre folderables distintos.'
+                    'A folder cannot be moved between different folderables.'
                 );
             }
             if ($newParent->isDescendantOf($this)) {
                 throw new \InvalidArgumentException(
-                    'El movimiento crearía un ciclo en el árbol.'
+                    'The move would create a cycle in the tree.'
                 );
             }
         }
@@ -132,9 +135,9 @@ class Folder extends Model
     }
 
     /**
-     * Path completo desde la raíz hasta esta carpeta. Coincide con la
-     * columna denormalizada `path` salvo que estés en un estado intermedio
-     * antes del save (el observer la regenerará).
+     * Full path from the root to this folder. Matches the denormalized
+     * `path` column unless you are in an intermediate state before the save
+     * (the observer will regenerate it).
      */
     public function computePath(): string
     {
@@ -143,8 +146,8 @@ class Folder extends Model
     }
 
     /**
-     * Todos los descendientes (recursivo). Usa el path denormalizado para
-     * evitar recursión SQL: una sola query indexada.
+     * All descendants (recursive). Uses the denormalized path to avoid SQL
+     * recursion: a single indexed query.
      */
     public function descendants()
     {
@@ -155,8 +158,8 @@ class Folder extends Model
     }
 
     /**
-     * Todos los files del subárbol (recursivo): los de esta carpeta + los
-     * de sus descendientes. Una sola query con whereIn sobre folder_id.
+     * All files of the subtree (recursive): those of this folder + those of
+     * its descendants. A single query with whereIn over folder_id.
      */
     public function allFiles()
     {
@@ -164,12 +167,12 @@ class Folder extends Model
 
         return File::query()
             ->whereIn('folder_id', $folderIds)
-            ->whereNull('parent_id'); // top-level (excluye variants)
+            ->whereNull('parent_id'); // top-level (excludes variants)
     }
 
     /**
-     * Suma de tamaños en bytes de todos los files del subárbol. Lo usa la
-     * UI para mostrar el peso de una carpeta.
+     * Sum of sizes in bytes of all files of the subtree. The UI uses it to
+     * show the weight of a folder.
      */
     public function sizeBytes(): int
     {
@@ -177,26 +180,26 @@ class Folder extends Model
     }
 
     /**
-     * Hard delete del árbol completo: descendientes + files de cada uno
-     * pasan por forceDelete, lo que dispara el FileObserver y purga R2 +
-     * chunks. Usar desde el "vaciar papelera" o "borrar definitivamente".
+     * Hard delete of the whole tree: descendants + files of each one go
+     * through forceDelete, which triggers the FileObserver and purges R2 +
+     * chunks. Use from "empty trash" or "delete permanently".
      */
     public function forceDeleteRecursive(): void
     {
-        // 1) Files primero (todos los del subárbol).
+        // 1) Files first (all of them in the subtree).
         File::query()
             ->whereIn('folder_id', $this->descendants()->pluck('id')->push($this->id)->all())
             ->whereNull('parent_id')
             ->get()
             ->each(fn (File $f) => $f->forceDelete());
 
-        // 2) Descendientes (deepest-first para no romper FK durante el delete).
+        // 2) Descendants (deepest-first so as not to break FK during the delete).
         $this->descendants()
             ->orderByDesc('path')
             ->get()
             ->each(fn (self $f) => $f->forceDelete());
 
-        // 3) Esta carpeta.
+        // 3) This folder.
         $this->forceDelete();
     }
 }

@@ -16,6 +16,10 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
+/**
+ * A stored file: top-level asset or variant, with polymorphic ownership,
+ * tenant scope, folders, chunks, and processing state.
+ */
 class File extends Model
 {
     use SoftDeletes;
@@ -68,60 +72,66 @@ class File extends Model
         'storage_indexed_at'    => 'datetime',
     ];
 
+    /** Route the file by its slug. */
     public function getRouteKeyName(): string
     {
         return 'slug';
     }
 
     /* ------------------------------------------------------------------
-     | Relaciones
+     | Relations
      * ------------------------------------------------------------------ */
 
+    /** The model this file belongs to (Property, User, Service...). */
     public function fileable(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** The model that created this file. */
     public function creator(): MorphTo
     {
         return $this->morphTo();
     }
 
     /**
-     * Destinatario / dueño semántico del archivo. Distinto del creator cuando
-     * un usuario sube/genera en nombre de otro. NULL cuando coincide con creator.
+     * Recipient / semantic owner of the file. Differs from the creator when a
+     * user uploads/generates on behalf of another. NULL when it matches the creator.
      */
     public function owner(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** The tenant that scopes this file (multi-tenancy). */
     public function tenant(): MorphTo
     {
         return $this->morphTo();
     }
 
     /**
-     * Devuelve el owner real: explícito si está, en caso contrario el creator.
+     * Returns the real owner: explicit if present, otherwise the creator.
      */
     public function effectiveOwner(): ?\Illuminate\Database\Eloquent\Model
     {
         return $this->owner_id ? $this->owner : $this->creator;
     }
 
+    /** Parent file (set for variants). */
     public function parent(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_id');
     }
 
+    /** Child files (variants). */
     public function children(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
     }
 
     /**
-     * Carpeta a la que pertenece (opcional). Null = está en la raíz del
-     * fileable. Ver Folder + HasFolders.
+     * Folder this file belongs to (optional). Null = it is at the root of the
+     * fileable. See Folder + HasFolders.
      */
     public function folder(): BelongsTo
     {
@@ -129,10 +139,10 @@ class File extends Model
     }
 
     /**
-     * Mueve el file a una carpeta (o a la raíz si null). Valida que la
-     * carpeta pertenezca al mismo fileable — no se permite mezclar dueños.
-     * El binario en R2 NO se mueve (su key no cambia); el "movimiento" es
-     * lógico, vive en folder_id.
+     * Moves the file to a folder (or to the root if null). Validates that the
+     * folder belongs to the same fileable: mixing owners is not allowed.
+     * The binary in R2 is NOT moved (its key does not change); the "move" is
+     * logical, it lives in folder_id.
      */
     public function moveToFolder(?\EduLazaro\Laracrate\Models\Folder $folder): void
     {
@@ -140,7 +150,7 @@ class File extends Model
             if ($folder->folderable_type !== $this->fileable_type
                 || (string) $folder->folderable_id !== (string) $this->fileable_id) {
                 throw new \InvalidArgumentException(
-                    'La carpeta destino pertenece a otro fileable.'
+                    'The destination folder belongs to a different fileable.'
                 );
             }
         }
@@ -150,8 +160,8 @@ class File extends Model
     }
 
     /**
-     * Chunks del file (registry). 1 fila por chunk con chunk_index, status,
-     * metadata. El payload pesado (text + embedding) vive en `FileChunkData`
+     * File chunks (registry). 1 row per chunk with chunk_index, status,
+     * metadata. The heavy payload (text + embedding) lives in `FileChunkData`
      * via `$chunk->data` (HasOne).
      */
     public function chunks(): HasMany
@@ -160,8 +170,8 @@ class File extends Model
     }
 
     /**
-     * Acceso 1:1 al primer chunk (chunk_index=0). Útil para apps que NO usan
-     * chunking y guardan todo el texto en una sola fila por archivo.
+     * 1:1 access to the first chunk (chunk_index=0). Useful for apps that do
+     * NOT use chunking and store all the text in a single row per file.
      */
     public function chunk(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
@@ -169,8 +179,8 @@ class File extends Model
     }
 
     /**
-     * @deprecated Usa `chunks()` en lugar de `contents()`. Alias temporal
-     *             para apps que migran del nombre viejo.
+     * @deprecated Use `chunks()` instead of `contents()`. Temporary alias
+     *             for apps migrating from the old name.
      */
     public function contents(): HasMany
     {
@@ -178,13 +188,14 @@ class File extends Model
     }
 
     /**
-     * @deprecated Usa `chunk()` en lugar de `content()`.
+     * @deprecated Use `chunk()` instead of `content()`.
      */
     public function content(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->chunk();
     }
 
+    /** Slots this file is attached to (many-to-many). */
     public function slots(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
         return $this->belongsToMany(
@@ -196,11 +207,11 @@ class File extends Model
     }
 
     /**
-     * Key del archivo en su disk. `path` ya almacena la key entera; este
-     * accessor solo defensiviza contra `null` y un `/` inicial accidental.
+     * Key of the file in its disk. `path` already stores the whole key; this
+     * accessor only guards against `null` and an accidental leading `/`.
      *
-     * Usar SIEMPRE `$file->key` en vez de leer `$file->path` directo —
-     * encapsula el contrato y evita que un caller olvide el ltrim.
+     * ALWAYS use `$file->key` instead of reading `$file->path` directly: it
+     * encapsulates the contract and avoids a caller forgetting the ltrim.
      */
     public function getKeyAttribute(): string
     {
@@ -208,9 +219,9 @@ class File extends Model
     }
 
     /**
-     * Construye la key de un sibling (mismo directorio, nombre distinto).
-     * Útil para versiones transcodificadas/optimizadas que reemplazan al
-     * original (`foo.mov` → `foo.mp4`, `foo.jpg` → `foo.webp`).
+     * Builds the key of a sibling (same directory, different name).
+     * Useful for transcoded/optimized versions that replace the
+     * original (`foo.mov` -> `foo.mp4`, `foo.jpg` -> `foo.webp`).
      */
     public function siblingKey(string $newName): string
     {
@@ -219,9 +230,9 @@ class File extends Model
     }
 
     /**
-     * Construye la key de un variant (subcarpeta `variants/` hermana,
-     * nombre distinto). Útil para previews y derivados que conviven con
-     * el original sin reemplazarlo.
+     * Builds the key of a variant (sibling `variants/` subfolder, different
+     * name). Useful for previews and derivatives that coexist with the
+     * original without replacing it.
      */
     public function variantKey(string $newName): string
     {
@@ -230,16 +241,16 @@ class File extends Model
     }
 
     /**
-     * Factory para crear un variant heredando los campos de scope del padre
+     * Factory to create a variant inheriting the scope fields from the parent
      * (fileable, creator, tenant, disk, context, collection, access,
-     * visibility, sensitive, is_encrypted) y con `parent_id` ya enlazado.
+     * visibility, sensitive, is_encrypted) and with `parent_id` already linked.
      *
-     * El caller pasa los campos específicos del variant en `$overrides`:
+     * The caller passes the variant-specific fields in `$overrides`:
      *   path / name / original_name / extension / mime_type / size /
      *   type / width / height / duration ...
      *
-     * Si el variant tiene su propio pipeline de procesado, override
-     * `processing_status` en `$overrides` (default: COMPLETED).
+     * If the variant has its own processing pipeline, override
+     * `processing_status` in `$overrides` (default: COMPLETED).
      */
     public function createVariant(string $variantName, array $overrides): self
     {
@@ -265,7 +276,7 @@ class File extends Model
     }
 
     /**
-     * True si todos los chunks tienen embedding generado.
+     * True if all chunks have an embedding generated.
      */
     public function hasEmbeddings(): bool
     {
@@ -280,11 +291,13 @@ class File extends Model
      | Scopes
      * ------------------------------------------------------------------ */
 
+    /** Limit the query to top-level files (no parent). */
     public function scopeTopLevel(Builder $query): Builder
     {
         return $query->whereNull('parent_id');
     }
 
+    /** Eager-load nested children down to the given depth. */
     public function scopeWithDescendants(Builder $query, int $depth = 2): Builder
     {
         $relation = rtrim(str_repeat('children.', $depth), '.');
@@ -292,15 +305,15 @@ class File extends Model
     }
 
     /**
-     * Carga el árbol completo de variants del file: preview, sus thumbnails,
-     * cualquier variant derivado más abajo. Por defecto baja 3 niveles, que
-     * cubre la cadena típica `file → preview → thumbnail|small|medium|large`
-     * con margen para una capa extra (watermarked, etc).
+     * Loads the full variant tree of the file: preview, its thumbnails, any
+     * variant derived further down. By default it goes 3 levels deep, which
+     * covers the typical chain `file -> preview -> thumbnail|small|medium|large`
+     * with room for an extra layer (watermarked, etc).
      *
      *   File::withVariants()->get()
-     *   File::withVariants(2)->get()  ← solo file → preview → variants
+     *   File::withVariants(2)->get()  // only file -> preview -> variants
      *
-     * Luego se navega con `$file->variant('preview.thumbnail')` etc.
+     * Then navigate it with `$file->variant('preview.thumbnail')` etc.
      */
     public function scopeWithVariants(Builder $query, int $depth = 3): Builder
     {
@@ -308,6 +321,7 @@ class File extends Model
         return $query->with($relation);
     }
 
+    /** Limit the query to files scoped to the given tenant. */
     public function scopeForTenant(Builder $query, Model $tenant): Builder
     {
         return $query
@@ -315,36 +329,42 @@ class File extends Model
             ->where('tenant_id', $tenant->getKey());
     }
 
+    /** Order by position then id. */
     public function scopeOrdered(Builder $query): Builder
     {
         return $query->orderBy('position')->orderBy('id');
     }
 
+    /** Limit the query to published files. */
     public function scopePublished(Builder $query): Builder
     {
         return $query->where('published', true);
     }
 
+    /** Limit the query to unpublished files. */
     public function scopeUnpublished(Builder $query): Builder
     {
         return $query->where('published', false);
     }
 
+    /** Limit the query to default files. */
     public function scopeDefault(Builder $query): Builder
     {
         return $query->where('default', true);
     }
 
     /* ------------------------------------------------------------------
-     | Helpers de estado
+     | State helpers
      * ------------------------------------------------------------------ */
 
+    /** Mark this file as published. */
     public function publish(): self
     {
         $this->update(['published' => true]);
         return $this;
     }
 
+    /** Mark this file as unpublished. */
     public function unpublish(): self
     {
         $this->update(['published' => false]);
@@ -352,8 +372,8 @@ class File extends Model
     }
 
     /**
-     * Marca este file como el default de su (fileable + collection),
-     * desmarcando cualquier otro default previo del mismo grupo.
+     * Marks this file as the default of its (fileable + collection),
+     * unmarking any other previous default of the same group.
      */
     public function makeDefault(): self
     {
@@ -371,17 +391,17 @@ class File extends Model
     }
 
     /* ------------------------------------------------------------------
-     | Variant navigation (dot notation con fallback al ancestro)
+     | Variant navigation (dot notation with fallback to the ancestor)
      * ------------------------------------------------------------------ */
 
     /**
-     * Navega a un variant descendiente usando notación con punto.
-     * Cae al ancestro real más cercano si la cadena se rompe — nunca devuelve null.
+     * Navigates to a descendant variant using dot notation.
+     * Falls back to the nearest real ancestor if the chain breaks: never returns null.
      *
      *   $video->variant('preview.small')
-     *     1. Busca 'preview' → si no existe, devuelve $video.
-     *     2. Busca 'small' en preview → si no existe, devuelve $preview.
-     *     3. Encontrado → devuelve $small.
+     *     1. Looks for 'preview' -> if it does not exist, returns $video.
+     *     2. Looks for 'small' in preview -> if it does not exist, returns $preview.
+     *     3. Found -> returns $small.
      */
     public function variant(string $path): self
     {
@@ -402,14 +422,14 @@ class File extends Model
     }
 
     /**
-     * Igual que `variant()` pero lanza si la cadena se rompe. Para código
-     * donde ese fallback silencioso al ancestro es un bug, no una feature.
+     * Same as `variant()` but throws if the chain breaks. For code where that
+     * silent fallback to the ancestor is a bug, not a feature.
      *
      *   $file->variantOrFail('preview.thumbnail')
-     *     → File del thumbnail si existe
-     *     → \RuntimeException si falta cualquier eslabón
+     *     -> thumbnail File if it exists
+     *     -> \RuntimeException if any link is missing
      *
-     * @throws \RuntimeException si algún variant del path no existe.
+     * @throws \RuntimeException if any variant of the path does not exist.
      */
     public function variantOrFail(string $path): self
     {
@@ -423,8 +443,8 @@ class File extends Model
             if ($next === null) {
                 $partial = $traversed === [] ? '<root>' : implode('.', $traversed);
                 throw new \RuntimeException(
-                    "Variant '{$name}' no encontrado en file #{$this->id} ".
-                    "(path solicitado: '{$path}', resuelto hasta: '{$partial}')."
+                    "Variant '{$name}' not found in file #{$this->id} ".
+                    "(requested path: '{$path}', resolved up to: '{$partial}')."
                 );
             }
 
@@ -436,16 +456,16 @@ class File extends Model
     }
 
     /* ------------------------------------------------------------------
-     | URL de render
+     | Render URL
      * ------------------------------------------------------------------ */
 
     /**
-     * URL del File. Devuelve la URL real (pública/signed/stream según access)
-     * a menos que se fuerce un tipo y el File no coincida — en ese caso
-     * devuelve el placeholder configurado para ese tipo.
+     * URL of the File. Returns the real URL (public/signed/stream depending on
+     * access) unless a type is forced and the File does not match: in that case
+     * it returns the placeholder configured for that type.
      *
-     *   $file->url()              → URL real (o null si no hay backend válido)
-     *   $file->url('image')       → URL real si type=image, si no placeholder image
+     *   $file->url()              -> real URL (or null if there is no valid backend)
+     *   $file->url('image')       -> real URL if type=image, otherwise image placeholder
      */
     public function url(?string $forceType = null): ?string
     {
@@ -463,7 +483,7 @@ class File extends Model
     }
 
     /**
-     * Resuelve el placeholder en cadena: per-collection → per-type → default.
+     * Resolves the placeholder in a chain: per-collection -> per-type -> default.
      */
     public function placeholderFor(string $type): string
     {
@@ -476,11 +496,11 @@ class File extends Model
     }
 
     /* ------------------------------------------------------------------
-     | Accessors convenientes para blade
+     | Convenient accessors for blade
      * ------------------------------------------------------------------ */
 
     /**
-     * Alias de url() — accesible como $file->link en blade.
+     * Alias of url(): accessible as $file->link in blade.
      */
     public function getLinkAttribute(): ?string
     {
@@ -488,13 +508,13 @@ class File extends Model
     }
 
     /**
-     * URL del preview en tamaño thumbnail. Para vídeos/PDF/audio con variant
-     * 'preview' fuerza tipo 'image' (devuelve placeholder image si la cadena
-     * cae a un ancestro de tipo distinto).
+     * URL of the preview at thumbnail size. For videos/PDF/audio with a
+     * 'preview' variant it forces type 'image' (returns the image placeholder
+     * if the chain falls back to an ancestor of a different type).
      *
-     * Cualquier excepción en la generación de URL (disk roto, S3 inalcanzable,
-     * credenciales mal) cae a placeholder en vez de propagar — un archivo
-     * que falla no debe romper la página entera.
+     * Any exception during URL generation (broken disk, unreachable S3, bad
+     * credentials) falls back to a placeholder instead of propagating: a file
+     * that fails should not break the entire page.
      */
     public function getPreviewLinkAttribute(): string
     {
@@ -506,13 +526,14 @@ class File extends Model
     }
 
     /* ------------------------------------------------------------------
-     | Stream / download (rutas firmadas del paquete)
+     | Stream / download (the package's signed routes)
      |
-     | El controlador (StreamFileController) exige hasValidSignature(), así
-     | que estas URLs se emiten siempre firmadas con TTL. TTL configurable
-     | en `laracrate.urls.signed_ttl_minutes` (defecto 15).
+     | The controller (StreamFileController) requires hasValidSignature(), so
+     | these URLs are always emitted signed with a TTL. The TTL is configurable
+     | in `laracrate.urls.signed_ttl_minutes` (default 15).
      * ------------------------------------------------------------------ */
 
+    /** Signed URL to stream the file. */
     public function streamUrl(): string
     {
         return URL::temporarySignedRoute(
@@ -522,6 +543,7 @@ class File extends Model
         );
     }
 
+    /** Signed URL to download the file. */
     public function downloadUrl(): string
     {
         return URL::temporarySignedRoute(
@@ -531,6 +553,7 @@ class File extends Model
         );
     }
 
+    /** Signed URL to preview the file. */
     public function previewUrl(): string
     {
         return URL::temporarySignedRoute(
@@ -541,19 +564,22 @@ class File extends Model
     }
 
     /* ------------------------------------------------------------------
-     | Permisos — delega al PolicyRegistry
+     | Permissions: delegate to the PolicyRegistry
      * ------------------------------------------------------------------ */
 
+    /** Whether the given user can view this file. */
     public function canView(?Model $user): bool
     {
         return app(\EduLazaro\Laracrate\Support\PolicyRegistry::class)->canView($this, $user);
     }
 
+    /** Whether the given user can edit this file. */
     public function canEdit(?Model $user): bool
     {
         return app(\EduLazaro\Laracrate\Support\PolicyRegistry::class)->canEdit($this, $user);
     }
 
+    /** Whether the given user can delete this file. */
     public function canDelete(?Model $user): bool
     {
         return app(\EduLazaro\Laracrate\Support\PolicyRegistry::class)->canDelete($this, $user);
@@ -563,65 +589,76 @@ class File extends Model
      | Helpers
      * ------------------------------------------------------------------ */
 
+    /** True if this file is a variant (has a parent). */
     public function isVariant(): bool
     {
         return $this->parent_id !== null;
     }
 
+    /** True if this file is top-level (has no parent). */
     public function isTopLevel(): bool
     {
         return $this->parent_id === null;
     }
 
+    /** True if this file is marked sensitive. */
     public function isSensitive(): bool
     {
         return (bool) $this->sensitive;
     }
 
+    /** True if the creator is a user. */
     public function createdByUser(): bool
     {
         return $this->creator_type === 'user';
     }
 
+    /** True if the creator is an agent. */
     public function createdByAgent(): bool
     {
         return $this->creator_type === 'agent';
     }
 
+    /** True if the file was created automatically (no creator). */
     public function createdAutomatically(): bool
     {
         return $this->creator_type === null && $this->creator_id === null;
     }
 
+    /** True if the file is scoped to a tenant. */
     public function isMultiTenant(): bool
     {
         return $this->tenant_type !== null;
     }
 
+    /** True if the file is an image. */
     public function isImage(): bool
     {
         return $this->type === FileType::IMAGE;
     }
 
+    /** True if the file is a video. */
     public function isVideo(): bool
     {
         return $this->type === FileType::VIDEO;
     }
 
+    /** True if the file is audio. */
     public function isAudio(): bool
     {
         return $this->type === FileType::AUDIO;
     }
 
+    /** True if the file is a document. */
     public function isDocument(): bool
     {
         return $this->type === FileType::DOCUMENT;
     }
 
     /**
-     * PDF check específico. Útil porque las apps suelen tener un extractor
-     * de PDF distinto al resto de documentos (escaneados vs nativos, OCR,
-     * extracción de texto con smalot/pdfparser, etc.).
+     * Specific PDF check. Useful because apps usually have a PDF extractor
+     * different from the rest of documents (scanned vs native, OCR, text
+     * extraction with smalot/pdfparser, etc.).
      */
     public function isPdf(): bool
     {
@@ -630,10 +667,10 @@ class File extends Model
     }
 
     /**
-     * Contenido extraído estructurado. Vive en storage como `{path}.json`:
+     * Structured extracted content. Lives in storage as `{path}.json`:
      * `{full_text, pages: [{page_number, text}], metadata}`.
      *
-     * Devuelve null si la extracción no se ha ejecutado.
+     * Returns null if extraction has not run.
      */
     public function extractedContent(): ?\EduLazaro\Laracrate\Support\ExtractedContent
     {
@@ -657,7 +694,7 @@ class File extends Model
     }
 
     /**
-     * Texto completo extraído (atajo a `extractedContent()->fullText`).
+     * Full extracted text (shortcut to `extractedContent()->fullText`).
      */
     public function extractedText(): ?string
     {
@@ -665,9 +702,9 @@ class File extends Model
     }
 
     /**
-     * Texto de un chunk específico. Lee del JSONL sidecar.
+     * Text of a specific chunk. Reads from the JSONL sidecar.
      *
-     * Para múltiples chunks, mejor `$this->chunksJsonl()` y reutilizar.
+     * For multiple chunks, prefer `$this->chunksJsonl()` and reuse it.
      */
     public function chunkText(int $chunkIndex): ?string
     {
@@ -676,11 +713,11 @@ class File extends Model
     }
 
     /**
-     * Todos los chunks del JSONL como array indexado por chunk_index.
-     * Cada elemento: ['chunk_index', 'text', 'tokens', 'page_number',
+     * All chunks from the JSONL as an array indexed by chunk_index.
+     * Each element: ['chunk_index', 'text', 'tokens', 'page_number',
      * 'page_numbers', 'embedding'?].
      *
-     * Devuelve [] si el JSONL no existe.
+     * Returns [] if the JSONL does not exist.
      */
     public function chunksJsonl(): array
     {

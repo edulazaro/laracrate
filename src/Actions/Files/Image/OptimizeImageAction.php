@@ -12,22 +12,25 @@ use Intervention\Image\Drivers\Imagick\Driver as ImagickDriver;
 use Intervention\Image\Drivers\Gd\Driver as GdDriver;
 
 /**
- * Optimiza el original: reduce a max dimensions configuradas y convierte
- * a webp. Reemplaza el binario en el backend (borra el viejo si la key
- * cambia) y actualiza el File row.
+ * Optimizes the original: reduces it to the configured max dimensions and
+ * converts it to webp. Replaces the binary in the backend (deletes the old
+ * one if the key changes) and updates the File row.
  *
- * Solo aplica a top-level files de tipo image. No-op para variants
- * (los variants se generan ya optimizados).
+ * Only applies to top-level files of type image. No-op for variants
+ * (variants are generated already optimized).
  */
 class OptimizeImageAction extends Action
 {
+    /**
+     * Optimize the original image to max dimensions and webp.
+     */
     public function handle(File $file, ?int $maxWidth = null, ?int $maxHeight = null, ?int $quality = null): File
     {
         if (!$file->isImage() || $file->isVariant()) {
             return $file;
         }
 
-        // Cadena de resolución: arg → collection.types.image → defaults.image → image (engine)
+        // Resolution chain: arg -> collection.types.image -> defaults.image -> image (engine)
         $imageCfg  = CollectionConfig::resolve($file->collection, $file->fileable_type)['types']['image'] ?? [];
         $maxWidth  = $maxWidth ?? $this->configFor($imageCfg, 'max_width', 1920);
         $maxHeight = $maxHeight ?? $this->configFor($imageCfg, 'max_height', 1920);
@@ -67,6 +70,9 @@ class OptimizeImageAction extends Action
         return $file;
     }
 
+    /**
+     * Build the Intervention ImageManager for the configured driver.
+     */
     protected function intervention(): ImageManager
     {
         $driver = config('laracrate.image.driver', 'imagick');
@@ -77,8 +83,8 @@ class OptimizeImageAction extends Action
     }
 
     /**
-     * Resuelve un parámetro image leyendo en cadena:
-     *   1. $imageCfg[$key]            (collection.types.image, ya con override per-model aplicado)
+     * Resolves an image parameter reading it in a chain:
+     *   1. $imageCfg[$key]            (collection.types.image, already with per-model override applied)
      *   2. config.defaults.image.{key}
      *   3. config.image.{key}         (engine fallback)
      *   4. $default

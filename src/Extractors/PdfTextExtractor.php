@@ -8,17 +8,19 @@ use EduLazaro\Laracrate\Support\ExtractedContent;
 use RuntimeException;
 
 /**
- * Extractor de texto para PDFs usando smalot/pdfparser si está disponible.
+ * Text extractor for PDFs using smalot/pdfparser when available.
  *
- * El package no fuerza la dependencia. Si la app necesita esta extracción,
- * tiene que añadir `composer require smalot/pdfparser`. Si no está
- * instalado, `supports()` devuelve false y el pipeline lo omite limpiamente.
+ * The package does not force the dependency. If the app needs this extraction,
+ * it must add `composer require smalot/pdfparser`. If it is not installed,
+ * `supports()` returns false and the pipeline skips it cleanly.
  *
- * Extrae per-page (preservando page_number) para que apps puedan citar/mostrar
- * por página.
+ * Extracts per-page (preserving page_number) so apps can cite/display by page.
  */
 class PdfTextExtractor implements TextExtractor
 {
+    /**
+     * Determine whether this extractor can handle the given file.
+     */
     public function supports(File $file): bool
     {
         if ($file->mime_type !== 'application/pdf') {
@@ -28,11 +30,14 @@ class PdfTextExtractor implements TextExtractor
         return class_exists(\Smalot\PdfParser\Parser::class);
     }
 
+    /**
+     * Extract per-page text from the PDF and return the extracted content.
+     */
     public function extract(File $file): ExtractedContent
     {
         if (!class_exists(\Smalot\PdfParser\Parser::class)) {
             throw new RuntimeException(
-                'PdfTextExtractor requiere smalot/pdfparser. Instálalo con: composer require smalot/pdfparser'
+                'PdfTextExtractor requires smalot/pdfparser. Install it with: composer require smalot/pdfparser'
             );
         }
 
@@ -44,7 +49,7 @@ class PdfTextExtractor implements TextExtractor
                 ->diskFor($file)
                 ->readStream($key);
             if (!$stream) {
-                throw new RuntimeException("No se pudo leer {$key} del disk {$file->disk}");
+                throw new RuntimeException("Could not read {$key} from disk {$file->disk}");
             }
             file_put_contents($tmpPath, stream_get_contents($stream));
             if (is_resource($stream)) {

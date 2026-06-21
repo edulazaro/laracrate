@@ -15,11 +15,14 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\HtmlString;
 
+/**
+ * Plugs file management (add, set, link, render, reorder) into an app model.
+ */
 trait HasFiles
 {
     /**
-     * Files de este modelo. Por defecto solo top-level, ordenados por position.
-     * Las variants se acceden vía $file->variant('thumbnail') sobre cada File.
+     * Files of this model. By default only top-level, ordered by position.
+     * Variants are accessed via $file->variant('thumbnail') on each File.
      */
     public function files(?string $collection = null): MorphMany
     {
@@ -31,6 +34,7 @@ trait HasFiles
         return $collection ? $query->where('collection', $collection) : $query;
     }
 
+    /** Returns the primary File of a collection (default first, then latest). */
     public function file(string $collection): ?File
     {
         return $this->files($collection)
@@ -39,27 +43,29 @@ trait HasFiles
             ->first();
     }
 
+    /** Returns the File flagged as default in the collection, if any. */
     public function defaultFile(string $collection): ?File
     {
         return $this->files($collection)->where('default', true)->first();
     }
 
+    /** Returns the image Files of this model, optionally scoped to a collection. */
     public function images(?string $collection = null): MorphMany
     {
         return $this->files($collection)->where('type', 'image');
     }
 
     /**
-     * Añade un archivo a la collection.
+     * Adds a file to the collection.
      *
-     * `$data` acepta keys que se reparten así:
-     *   - Columnas dedicadas: `title`, `description`, `category`, `visibility`,
-     *     `label`, `default`, `position`. Cada una va a su columna del modelo.
-     *   - `metadata`: array que se serializa tal cual a la columna JSON `metadata`.
+     * `$data` accepts keys that are distributed as follows:
+     *   - Dedicated columns: `title`, `description`, `category`, `visibility`,
+     *     `label`, `default`, `position`. Each one goes to its model column.
+     *   - `metadata`: array serialized as-is to the JSON `metadata` column.
      *
-     * Cualquier otra key en `$data` lanza InvalidArgumentException — para evitar
-     * descartes silenciosos por typo. Si necesitas guardar datos arbitrarios,
-     * ponlos bajo `data['metadata']`.
+     * Any other key in `$data` throws InvalidArgumentException, to avoid silent
+     * drops from a typo. If you need to store arbitrary data, put it under
+     * `data['metadata']`.
      */
     public function addFile(
         UploadedFile|\EduLazaro\Laracrate\Support\Binary|FileUpload|string $file,
@@ -73,19 +79,19 @@ trait HasFiles
         $config = $this->getCollectionConfig($collection);
         $tenant = $this->resolveFileTenant();
 
-        // Override del disk si el tenant tiene un bucket dedicado para el
-        // base_disk que usa esta collection. Granularidad por disk del
-        // config (document/media/attachment), no por collection individual.
+        // Override the disk if the tenant has a dedicated bucket for the
+        // base_disk used by this collection. Granularity is per config disk
+        // (document/media/attachment), not per individual collection.
         $config['disk'] = $this->resolveTenantBucketDisk($tenant, $config['disk']) ?? $config['disk'];
 
-        // Defensa: la carpeta destino debe pertenecer al mismo fileable.
-        // No se permite engancha files a carpetas de otro dueño.
+        // Defense: the target folder must belong to the same fileable.
+        // Attaching files to another owner's folders is not allowed.
         if ($folder && (
             $folder->folderable_type !== $this->getMorphClass()
             || (string) $folder->folderable_id !== (string) $this->getKey()
         )) {
             throw new \InvalidArgumentException(
-                'La carpeta destino pertenece a otro fileable.'
+                'The target folder belongs to another fileable.'
             );
         }
 
@@ -104,8 +110,8 @@ trait HasFiles
     }
 
     /**
-     * Devuelve 'tb:{id}' si el tenant tiene un bucket dedicado activo para
-     * el base_disk dado. Null = usar el disk del config plano (shared).
+     * Returns 'tb:{id}' if the tenant has an active dedicated bucket for the
+     * given base_disk. Null = use the flat config disk (shared).
      */
     protected function resolveTenantBucketDisk(?Model $tenant, string $baseDisk): ?string
     {
@@ -124,9 +130,9 @@ trait HasFiles
     }
 
     /**
-     * Reemplaza el contenido de una collection. Force-deletea los existentes
-     * (incluidos sus variants vía cascade del FileObserver) — semánticamente
-     * "set" significa sustituir, no archivar.
+     * Replaces the content of a collection. Force-deletes the existing ones
+     * (including their variants via the FileObserver cascade): semantically
+     * "set" means replace, not archive.
      */
     public function setFile(
         string $collection,
@@ -148,6 +154,7 @@ trait HasFiles
         return $this->addFile($file, $collection, $data, creator: $creator, owner: $owner);
     }
 
+    /** Marks the given File as the collection default and unsets the others. */
     public function setDefaultFile(File $file): File
     {
         $this->files($file->collection)
@@ -159,6 +166,7 @@ trait HasFiles
         return $file->fresh();
     }
 
+    /** Deletes a File (soft by default, force-delete when requested). */
     public function deleteFile(File $file, bool $forceDelete = false): bool
     {
         return (bool) DeleteFileAction::create()->run([
@@ -168,16 +176,16 @@ trait HasFiles
     }
 
     /**
-     * URL para render: variant del File real, placeholder configurado, o null.
+     * URL for rendering: variant of the real File, configured placeholder, or null.
      *
-     *   $user->fileLink('avatar')                          → URL del File o placeholder
-     *   $user->fileLink('avatar', 'medium')                → variant medium o placeholder
-     *   $user->fileLink('cover', 'preview.thumbnail')      → navegación + fallback
-     *   $user->fileLink('cover', 'preview.small', 'image') → forzar tipo
+     *   $user->fileLink('avatar')                          → File URL or placeholder
+     *   $user->fileLink('avatar', 'medium')                → medium variant or placeholder
+     *   $user->fileLink('cover', 'preview.thumbnail')      → navigation + fallback
+     *   $user->fileLink('cover', 'preview.small', 'image') → force type
      *
-     * Si la colección sólo declara UN tipo en config('types'), $forceType se
-     * infiere automáticamente — sólo hace falta pasarlo en colecciones
-     * multi-tipo (gallery con image+video, identity con image+document, ...).
+     * If the collection declares only ONE type in config('types'), $forceType is
+     * inferred automatically: it only needs to be passed in multi-type
+     * collections (gallery with image+video, identity with image+document, ...).
      */
     public function fileLink(string $collection, ?string $variant = null, ?string $forceType = null): ?string
     {
@@ -195,8 +203,8 @@ trait HasFiles
     }
 
     /**
-     * Infiere el tipo único declarado en config('laracrate.collections.X.types').
-     * Devuelve el nombre del tipo si la colección sólo acepta uno, null si acepta varios.
+     * Infers the single type declared in config('laracrate.collections.X.types').
+     * Returns the type name if the collection accepts only one, null if it accepts several.
      */
     protected function inferCollectionType(string $collection): ?string
     {
@@ -208,7 +216,7 @@ trait HasFiles
 
         $names = [];
         foreach ($types as $key => $value) {
-            // Soporta tanto ['image' => [...]] como ['image', 'video']
+            // Supports both ['image' => [...]] and ['image', 'video']
             $names[] = is_int($key) ? $value : $key;
         }
 
@@ -216,13 +224,13 @@ trait HasFiles
     }
 
     /**
-     * HTML del componente blade configurado en la colección. El componente
-     * recibe `$model` (este modelo) y `$url` (puede ser null si no hay file).
-     * Cualquier attr extra se pasa al componente vía $attributes.
+     * HTML of the blade component configured in the collection. The component
+     * receives `$model` (this model) and `$url` (can be null if there is no file).
+     * Any extra attr is passed to the component via $attributes.
      *
      *   $user->fileRender('avatar', 'medium', ['class' => 'w-12 h-12'])
      *
-     * Si la colección no declara 'component', devuelve un <img> simple.
+     * If the collection does not declare 'component', it returns a plain <img>.
      */
     public function fileRender(string $collection, ?string $variant = null, array $attrs = []): HtmlString
     {
@@ -238,7 +246,7 @@ trait HasFiles
             return new HtmlString("<img {$attrString}>");
         }
 
-        // Renderiza <x-{component} :model :url ...attrs />
+        // Renders <x-{component} :model :url ...attrs />
         $attrBindings = '';
         foreach ($attrs as $k => $v) {
             $attrBindings .= ' ' . $k . '="' . e($v) . '"';
@@ -252,6 +260,7 @@ trait HasFiles
         return new HtmlString($html);
     }
 
+    /** Resolves the placeholder URL for a collection/type, supporting callables. */
     protected function collectionPlaceholder(string $collection, string $type): ?string
     {
         $resolve = fn ($v) => is_callable($v) ? $v($collection, $type, $this) : $v;
@@ -262,6 +271,7 @@ trait HasFiles
             ?? $resolve(config('laracrate.placeholders.default'));
     }
 
+    /** Builds an escaped HTML attribute string from a key/value array. */
     protected function renderAttrs(array $attrs): string
     {
         $parts = [];
@@ -272,9 +282,9 @@ trait HasFiles
     }
 
     /**
-     * Reordena files de una colección en lote (drag-and-drop).
-     * Recibe el array de IDs en el orden deseado; las posiciones se asignan
-     * por su índice (0, 1, 2, ...).
+     * Reorders files of a collection in bulk (drag-and-drop).
+     * Receives the array of IDs in the desired order; positions are assigned
+     * by their index (0, 1, 2, ...).
      */
     public function reorderFiles(string $collection, array $orderedIds): void
     {
@@ -290,15 +300,15 @@ trait HasFiles
     }
 
     /**
-     * Resolución de la configuración efectiva de una colección.
+     * Resolution of the effective configuration of a collection.
      *
-     * Tres capas, en orden de precedencia (la última gana):
+     * Three layers, in order of precedence (the last one wins):
      *   1. base (`config('laracrate.collections.X')`)
-     *   2. bloque per-model (`config('laracrate.collections.X.models.{alias}')`)
-     *   3. override del modelo (`$this->fileCollections[X]`)
+     *   2. per-model block (`config('laracrate.collections.X.models.{alias}')`)
+     *   3. model override (`$this->fileCollections[X]`)
      *
-     * Si la colección declara `models` y este modelo no está listado, lanza
-     * CollectionNotAllowedForModel.
+     * If the collection declares `models` and this model is not listed, it
+     * throws CollectionNotAllowedForModel.
      */
     public function getCollectionConfig(string $collection): array
     {
@@ -308,6 +318,7 @@ trait HasFiles
         return array_replace_recursive($base, $override);
     }
 
+    /** Returns the disk declared for a collection, or throws if none is set. */
     public function getDiskFor(string $collection): string
     {
         $config = $this->getCollectionConfig($collection);
@@ -323,20 +334,21 @@ trait HasFiles
         return $config['disk'];
     }
 
+    /** Alias of file(): returns the primary File of a collection. */
     public function getFile(string $collection): ?File
     {
         return $this->file($collection);
     }
 
     /**
-     * Resolución del tenant del archivo cuando se crea desde este modelo.
-     * Cada app puede sobrescribir este método para apuntar a su propio modelo de tenant.
+     * Resolution of the file tenant when created from this model.
+     * Each app can override this method to point to its own tenant model.
      *
-     * Por defecto, intenta en orden:
-     *   1. relación $this->tenant() si existe
-     *   2. relación $this->organization() si existe
-     *   3. atributo organization_id (con clase resuelta vía morphMap o FQCN)
-     *   4. null (single-tenant o sin scope)
+     * By default, it tries in order:
+     *   1. relation $this->tenant() if it exists
+     *   2. relation $this->organization() if it exists
+     *   3. attribute organization_id (with class resolved via morphMap or FQCN)
+     *   4. null (single-tenant or without scope)
      */
     public function resolveFileTenant(): ?Model
     {

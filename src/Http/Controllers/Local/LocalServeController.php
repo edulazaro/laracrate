@@ -8,10 +8,11 @@ use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Sirve un File de un disk local tras verificar la firma de URL.
+ * Serves a File from a local disk after verifying the URL signature.
  */
 class LocalServeController extends Controller
 {
+    /** Stream a file stored on a local disk. */
     public function serve(File $file): StreamedResponse
     {
         $key  = $file->key;

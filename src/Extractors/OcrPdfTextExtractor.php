@@ -10,25 +10,28 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
- * OCR de PDFs usando una API (Anthropic Claude o OpenAI) seleccionable via
- * config. Útil como fallback de PdfTextExtractor (smalot/pdfparser) cuando
- * el PDF es escaneado y no tiene texto extraíble.
+ * OCR for PDFs using an API (Anthropic Claude or OpenAI) selectable via config.
+ * Useful as a fallback for PdfTextExtractor (smalot/pdfparser) when the PDF is
+ * scanned and has no extractable text.
  *
- * Ambos providers aceptan el PDF base64 directamente → sin Imagick, sin
- * shell_exec, sin pdftoppm. Cero dependencias del sistema, solo PHP + HTTP.
+ * Both providers accept the base64 PDF directly: no Imagick, no shell_exec, no
+ * pdftoppm. Zero system dependencies, just PHP + HTTP.
  *
  * Config:
  *   LARACRATE_OCR_PROVIDER       = 'anthropic' | 'openai' (default: anthropic)
- *   LARACRATE_OCR_MODEL          = (opcional, default según provider)
+ *   LARACRATE_OCR_MODEL          = (optional, default depends on provider)
  *   LARACRATE_ANTHROPIC_API_KEY  = (fallback: ANTHROPIC_API_KEY)
  *   LARACRATE_OPENAI_API_KEY     = (fallback: OPENAI_API_KEY)
  *
- * Coste estimado por PDF de 10 páginas:
+ * Estimated cost per 10-page PDF:
  *   - Anthropic Claude Haiku 4.5:  ~$0.004
  *   - OpenAI gpt-4o-mini:          ~$0.005
  */
 class OcrPdfTextExtractor implements TextExtractor
 {
+    /**
+     * Create a new PDF OCR extractor.
+     */
     public function __construct(
         protected ?string $provider = null,
         protected ?string $model = null,
@@ -38,17 +41,23 @@ class OcrPdfTextExtractor implements TextExtractor
         $this->provider ??= config('laracrate.ocr.provider', 'anthropic');
     }
 
+    /**
+     * Determine whether this extractor can handle the given file.
+     */
     public function supports(File $file): bool
     {
         return $file->mime_type === 'application/pdf'
             || strtolower($file->extension ?? '') === 'pdf';
     }
 
+    /**
+     * Run OCR on the PDF and return the extracted content.
+     */
     public function extract(File $file): ExtractedContent
     {
         $bytes = Storage::disk($file->disk)->get($file->path);
         if ($bytes === null || $bytes === false) {
-            throw new RuntimeException("OCR: no se pudo leer el archivo {$file->path}");
+            throw new RuntimeException("OCR: could not read file {$file->path}");
         }
 
         $base64 = base64_encode($bytes);
@@ -56,11 +65,11 @@ class OcrPdfTextExtractor implements TextExtractor
         $raw = match ($this->provider) {
             'openai'    => $this->extractWithOpenAi($base64, $file),
             'anthropic' => $this->extractWithAnthropic($base64),
-            default     => throw new RuntimeException("OCR provider desconocido: {$this->provider}"),
+            default     => throw new RuntimeException("Unknown OCR provider: {$this->provider}"),
         };
 
-        // Intentamos parsear el output como JSON con páginas. Si la API
-        // devolvió texto plano (no estructurado), caemos a single-page.
+        // Try to parse the output as JSON with pages. If the API returned plain
+        // (unstructured) text, fall back to single-page.
         $pages = $this->parsePagesFromResponse($raw);
 
         if (! empty($pages)) {
@@ -77,15 +86,15 @@ class OcrPdfTextExtractor implements TextExtractor
     }
 
     /**
-     * Si el modelo siguió las instrucciones, la respuesta es JSON con
-     * `{pages: [{page_number, text}]}`. Si devolvió texto plano, parsea
-     * `### Page N` markers como fallback. Si nada match, devuelve [].
+     * If the model followed the instructions, the response is JSON with
+     * `{pages: [{page_number, text}]}`. If it returned plain text, parse
+     * `### Page N` markers as a fallback. If nothing matches, returns [].
      */
     protected function parsePagesFromResponse(string $raw): array
     {
         $trimmed = trim($raw);
 
-        // 1) JSON puro o dentro de code-fence.
+        // 1) Pure JSON or inside a code fence.
         $jsonCandidate = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $trimmed);
         $decoded = json_decode($jsonCandidate, true);
         if (is_array($decoded) && isset($decoded['pages']) && is_array($decoded['pages'])) {
@@ -98,7 +107,7 @@ class OcrPdfTextExtractor implements TextExtractor
             }, $decoded['pages'])));
         }
 
-        // 2) Markdown markers `### Page N` (heurística simple).
+        // 2) Markdown markers `### Page N` (simple heuristic).
         if (preg_match_all('/^(?:#{1,3}\s*)?Page\s+(\d+)\s*$/mi', $trimmed, $matches, PREG_OFFSET_CAPTURE)) {
             $pages = [];
             for ($i = 0; $i < count($matches[0]); $i++) {
@@ -116,6 +125,9 @@ class OcrPdfTextExtractor implements TextExtractor
         return [];
     }
 
+    /**
+     * Run OCR through the Anthropic API and return the raw response text.
+     */
     protected function extractWithAnthropic(string $base64): string
     {
         $apiKey = $this->apiKey
@@ -125,7 +137,7 @@ class OcrPdfTextExtractor implements TextExtractor
 
         if (! $apiKey) {
             throw new RuntimeException(
-                'Anthropic API key no configurada (LARACRATE_ANTHROPIC_API_KEY o ANTHROPIC_API_KEY).'
+                'Anthropic API key not configured (LARACRATE_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY).'
             );
         }
 
@@ -183,6 +195,9 @@ class OcrPdfTextExtractor implements TextExtractor
         return trim($text);
     }
 
+    /**
+     * Run OCR through the OpenAI API and return the raw response text.
+     */
     protected function extractWithOpenAi(string $base64, File $file): string
     {
         $apiKey = $this->apiKey
@@ -192,7 +207,7 @@ class OcrPdfTextExtractor implements TextExtractor
 
         if (! $apiKey) {
             throw new RuntimeException(
-                'OpenAI API key no configurada (LARACRATE_OPENAI_API_KEY o OPENAI_API_KEY).'
+                'OpenAI API key not configured (LARACRATE_OPENAI_API_KEY or OPENAI_API_KEY).'
             );
         }
 
@@ -243,7 +258,7 @@ class OcrPdfTextExtractor implements TextExtractor
             }
         }
 
-        // Fallback: algunos modelos exponen `output_text` directamente.
+        // Fallback: some models expose `output_text` directly.
         if ($text === '' && is_string($response->json('output_text'))) {
             $text = $response->json('output_text');
         }

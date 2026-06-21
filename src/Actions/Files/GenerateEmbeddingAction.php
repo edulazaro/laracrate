@@ -9,16 +9,18 @@ use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
- * Genera embeddings para los chunks de un File que aún no los tengan.
+ * Generates embeddings for a File's chunks that do not have them yet.
  *
- * Lee chunks de `{path}.chunks.jsonl` (escrito por ChunkTextAction), embedea
- * en batches y reescribe el JSONL con el campo `embedding` añadido a cada
- * chunk. NO toca BD ni Meili — eso lo hace después PersistChunksAction.
+ * Reads chunks from `{path}.chunks.jsonl` (written by ChunkTextAction),
+ * embeds in batches and rewrites the JSONL with the `embedding` field added
+ * to each chunk. Does NOT touch the DB or Meili, that is done later by
+ * PersistChunksAction.
  *
- * Devuelve el número de chunks embebidos.
+ * Returns the number of embedded chunks.
  */
 class GenerateEmbeddingAction extends Action
 {
+    /** Embed the pending chunks and rewrite the JSONL with the vectors. */
     public function handle(File $file): int
     {
         $provider  = app(EmbeddingProvider::class);
@@ -35,7 +37,7 @@ class GenerateEmbeddingAction extends Action
             return 0;
         }
 
-        // Indices pendientes de embedear (sin `embedding` o vacío).
+        // Indices pending embedding (without `embedding` or empty).
         $pendingIndices = [];
         foreach ($chunks as $idx => $chunk) {
             $text = trim((string) ($chunk['text'] ?? ''));
@@ -81,7 +83,7 @@ class GenerateEmbeddingAction extends Action
             }
         }
 
-        // Reescribe JSONL con embeddings.
+        // Rewrite the JSONL with embeddings.
         $newJsonl = collect($chunks)
             ->map(fn ($c) => json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
             ->implode("\n");
@@ -99,8 +101,8 @@ class GenerateEmbeddingAction extends Action
     }
 
     /**
-     * Parsea un JSONL en array de chunks. Líneas vacías o malformadas se
-     * descartan silenciosamente.
+     * Parses a JSONL into an array of chunks. Empty or malformed lines are
+     * silently discarded.
      *
      * @return array<int,array>
      */
@@ -117,7 +119,7 @@ class GenerateEmbeddingAction extends Action
             }
         }
 
-        // Orden estable por chunk_index.
+        // Stable order by chunk_index.
         usort($chunks, fn ($a, $b) => $a['chunk_index'] <=> $b['chunk_index']);
 
         return $chunks;

@@ -6,28 +6,29 @@ use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Models\File;
 
 /**
- * Registry global de acciones del pipeline de procesamiento de Files.
+ * Global registry of actions for the File processing pipeline.
  *
- * El paquete registra acciones default en `LaracrateServiceProvider`; las
- * apps pueden añadir más globalmente desde su propio ServiceProvider:
+ * The package registers default actions in `LaracrateServiceProvider`; apps
+ * can add more globally from their own ServiceProvider:
  *
  *   $registry = app(FileActionRegistry::class);
  *   $registry->add(new MyVirusScanAction());
  *   $registry->remove(OptimizeImageAction::class);
  *
- * Para acciones específicas de una collection (sin tocar el ServiceProvider),
- * se declaran en `config/laracrate.php` bajo `collections.*.actions`. Las
- * fusiona `ProcessFileAction` en runtime.
+ * For collection-specific actions (without touching the ServiceProvider),
+ * declare them in `config/laracrate.php` under `collections.*.actions`.
+ * `ProcessFileAction` merges them at runtime.
  *
- * El orden de ejecución se calcula por `priority()` ascendente. La inserción
- * en el array no fija el orden, así que las apps pueden registrar en cualquier
- * momento y la prioridad declarada gana.
+ * Execution order is computed by ascending `priority()`. Insertion order in
+ * the array does not fix the order, so apps can register at any time and the
+ * declared priority wins.
  */
 class FileActionRegistry
 {
     /** @var FileActionInterface[] */
     protected array $actions = [];
 
+    /** Register an action in the pipeline. */
     public function add(FileActionInterface $action): static
     {
         $this->actions[] = $action;
@@ -35,7 +36,7 @@ class FileActionRegistry
     }
 
     /**
-     * Quita una acción por su FQCN. Útil para que la app desactive defaults.
+     * Remove an action by its FQCN. Useful for apps to disable defaults.
      */
     public function remove(string $actionClass): static
     {
@@ -47,7 +48,7 @@ class FileActionRegistry
     }
 
     /**
-     * Devuelve todas las acciones registradas, ordenadas por prioridad ascendente.
+     * Return all registered actions, ordered by ascending priority.
      *
      * @return FileActionInterface[]
      */
@@ -61,8 +62,8 @@ class FileActionRegistry
     }
 
     /**
-     * Devuelve solo las acciones que aplican al File en el momento actual,
-     * en orden de prioridad. Útil para introspección/debug.
+     * Return only the actions that apply to the File at the current moment,
+     * in priority order. Useful for introspection/debugging.
      *
      * @return FileActionInterface[]
      */

@@ -10,16 +10,18 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * URL firmada con TTL corto, cacheada server-side.
- * S3 usa Storage::disk()->temporaryUrl() (presigned GET nativo, no network).
- * Local cae a una ruta firmada de Laravel que sirve el binario.
+ * Signed URL with a short TTL, cached server-side.
+ * S3 uses Storage::disk()->temporaryUrl() (native presigned GET, no network).
+ * Local falls back to a Laravel signed route that serves the binary.
  *
- * Errores (credenciales mal, SDK roto, etc.) se tragan y devuelven null:
- * el caller (StorageManager + File::url) lo traduce a placeholder. Así una
- * página con N archivos no peta entera porque un disk concreto esté roto.
+ * Errors (bad credentials, broken SDK, etc.) are swallowed and return null:
+ * the caller (StorageManager + File::url) translates it to a placeholder.
+ * This way a page with N files does not break entirely because one specific
+ * disk is broken.
  */
 class GenerateSignedUrlAction extends Action
 {
+    /** Return a cached, short-lived signed URL for the file. */
     public function handle(File $file): ?string
     {
         $minutes  = (int) config('laracrate.urls.signed_ttl', 5);

@@ -11,18 +11,19 @@ use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
- * Extrae contenido estructurado del File iterando la chain de extractors
- * con fallback (si uno devuelve poco texto, prueba el siguiente).
+ * Extracts structured content from the File by iterating the extractor chain
+ * with fallback (if one returns little text, it tries the next one).
  *
- * Persiste:
- *  - Sidecar `{path}.json` en storage con full_text + pages + metadata.
- *  - State a nivel file: processing_status, processing_started_at,
+ * Persists:
+ *  - Sidecar `{path}.json` in storage with full_text + pages + metadata.
+ *  - File-level state: processing_status, processing_started_at,
  *    processing_error, storage_indexed_at.
  *
- * El chunking + embeddings se ejecutan en actions posteriores.
+ * Chunking + embeddings run in later actions.
  */
 class ExtractTextAction extends Action
 {
+    /** Run the extractor chain and persist the extracted content sidecar. */
     public function handle(File $file): bool
     {
         $registry = app(TextExtractorRegistry::class);
@@ -89,18 +90,18 @@ class ExtractTextAction extends Action
             return false;
         }
 
-        // Sidecar `{path}.json` con la estructura completa.
+        // Sidecar `{path}.json` with the full structure.
         $jsonPath = $file->path . '.json';
         Storage::disk($file->disk)->put(
             $jsonPath,
             json_encode($best, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         );
 
-        // OJO: NO marcamos processing_status = completed aquí. El status final
-        // lo gestiona ProcessFileAction (o el job caller) cuando TODOS los
-        // steps de la pipeline acaban — incluyendo chunking y embeddings.
-        // Marcar completed aquí prematuramente causa que la UI muestre
-        // "sin embeddings" porque GenerateEmbeddingStep aún no ha corrido.
+        // NOTE: we do NOT mark processing_status = completed here. The final
+        // status is managed by ProcessFileAction (or the calling job) when ALL
+        // pipeline steps finish, including chunking and embeddings. Marking it
+        // completed here prematurely causes the UI to show "no embeddings"
+        // because GenerateEmbeddingStep has not run yet.
         $file->forceFill([
             'storage_indexed_at' => now(),
             'metadata'           => array_merge(

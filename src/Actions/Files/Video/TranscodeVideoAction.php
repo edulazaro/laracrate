@@ -9,16 +9,19 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Transcodifica el vídeo a H.264 / AAC mp4 y opcionalmente lo redimensiona.
- * Reemplaza el binario en el backend.
+ * Transcodes the video to H.264 / AAC mp4 and optionally resizes it.
+ * Replaces the binary in the backend.
  *
- * Costoso (CPU + tiempo). Activar solo en colecciones que lo necesiten:
+ * Costly (CPU + time). Enable only on collections that need it:
  *   'collections.video_uploads.transcode' => true
  *
- * Requiere ffmpeg en el path.
+ * Requires ffmpeg on the path.
  */
 class TranscodeVideoAction extends Action
 {
+    /**
+     * Transcode the video to mp4 (H.264/AAC) and replace the original binary.
+     */
     public function handle(File $file, ?int $maxWidth = null, ?int $maxHeight = null, ?int $bitrate = null): File
     {
         if (!$file->isVideo() || $file->isVariant()) {
@@ -48,7 +51,7 @@ class TranscodeVideoAction extends Action
                 exec($cmd, $output, $code);
 
                 if ($code !== 0 || !is_file($outPath)) {
-                    logger()->warning('Laracrate: ffmpeg falló al transcodificar', [
+                    logger()->warning('Laracrate: ffmpeg failed to transcode', [
                         'cmd' => $cmd, 'output' => $output, 'code' => $code,
                     ]);
                     return null;
@@ -63,7 +66,7 @@ class TranscodeVideoAction extends Action
                 return $file;
             }
         } catch (Throwable $e) {
-            logger()->warning('Laracrate: fallo al transcodificar', [
+            logger()->warning('Laracrate: failed to transcode', [
                 'file_id' => $file->id,
                 'error'   => $e->getMessage(),
             ]);

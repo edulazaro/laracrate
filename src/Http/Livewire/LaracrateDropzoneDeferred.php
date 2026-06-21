@@ -11,17 +11,17 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
- * Dropzone multi-archivo con confirmación explícita: el usuario suelta o
- * selecciona archivos, los ve en la cola con previews, y arranca el lote
- * pulsando un botón "Subir todo".
+ * Multi-file dropzone with explicit confirmation: the user drops or selects
+ * files, sees them in the queue with previews, and starts the batch by
+ * pressing an "Upload all" button.
  *
  *   <livewire:laracrate-dropzone-deferred :model="$organization" collection="gallery" />
  *   <livewire:laracrate-dropzone-deferred :model="$user" collection="documents" theme="studio" />
  *
- * A diferencia de `laracrate-dropzone` (instant), seleccionar archivos NO los
- * sube automáticamente. Permite revisar la cola, eliminar items antes de subir
- * y confirmar el lote completo. El binario tampoco pasa por PHP — cuando se
- * pulsa Subir, el JS hace presigned PUT directo a R2 igual que el instant.
+ * Unlike `laracrate-dropzone` (instant), selecting files does NOT upload them
+ * automatically. It allows reviewing the queue, removing items before upload
+ * and confirming the whole batch. The binary does not pass through PHP either:
+ * when Upload is pressed, the JS does a presigned PUT directly to R2 like the instant one.
  */
 class LaracrateDropzoneDeferred extends Component
 {
@@ -40,46 +40,46 @@ class LaracrateDropzoneDeferred extends Component
     public bool $multiple = true;
 
     /**
-     * Si true, los items "done" se quedan visibles tras la subida.
-     * Si false (default), desaparecen tras 1.5s. Errores siempre persisten.
+     * If true, "done" items stay visible after the upload.
+     * If false (default), they disappear after 1.5s. Errors always persist.
      */
     #[Locked]
     public bool $persistQueue = false;
 
     /**
-     * Oculta los botones internos de "Subir/Cancelar" del tema. Útil cuando el
-     * trigger del batch vive fuera (footer de un modal). Para arrancar desde
-     * fuera dispatch `laracrate-start-batch` con detail `{ collection, fileableId }`.
+     * Hides the theme's internal "Upload/Cancel" buttons. Useful when the
+     * batch trigger lives outside (the footer of a modal). To start from
+     * outside, dispatch `laracrate-start-batch` with detail `{ collection, fileableId }`.
      */
     #[Locked]
     public bool $hideActions = false;
 
     /**
-     * Disposición de la cola. 'grid' (default) o 'list'. Cada tema puede
-     * implementarlo a su manera; los que no lo declaran usan grid.
+     * Queue layout. 'grid' (default) or 'list'. Each theme may implement it
+     * its own way; those that do not declare it use grid.
      */
     #[Locked]
     public string $layout = 'grid';
 
     /**
-     * Tope máximo de archivos aceptados en la cola. 0 o null = ilimitado.
-     * El Alpine factory rechaza extras y notifica vía evento `laracrate-max-files`.
+     * Maximum cap of accepted files in the queue. 0 or null = unlimited.
+     * The Alpine factory rejects extras and notifies via the `laracrate-max-files` event.
      */
     #[Locked]
     public ?int $maxFiles = null;
 
     /**
-     * IDs de FileSlot a los que se atará cada archivo subido. Si se pasa,
-     * CreateFileAction valida acceptsExtension + canAcceptMore antes de crear,
-     * y el front auto-deriva maxFiles y acceptedExtensions del slot.
+     * IDs of the FileSlot each uploaded file will be attached to. If passed,
+     * CreateFileAction validates acceptsExtension + canAcceptMore before creating,
+     * and the front auto-derives maxFiles and acceptedExtensions from the slot.
      */
     #[Locked]
     public array $slots = [];
 
     /**
-     * Creator polimórfico ("a quien se le atribuye el archivo"). Si no se
-     * pasa, default a auth()->user(). Útil cuando un admin sube en nombre
-     * de otro usuario: las quotas del slot se cuentan contra ese usuario.
+     * Polymorphic creator ("who the file is attributed to"). If not passed,
+     * defaults to auth()->user(). Useful when an admin uploads on behalf of
+     * another user: the slot quotas are counted against that user.
      */
     #[Locked]
     public ?string $creatorType = null;
@@ -87,62 +87,62 @@ class LaracrateDropzoneDeferred extends Component
     public ?int $creatorId = null;
 
     /**
-     * Identificador opaco que el caller asocia al widget. Se incluye en el
-     * evento `laracrate-file-uploaded` para que el caller pueda routear
-     * el File al destino correcto cuando hay varios widgets en la misma
-     * página (ej. un campo por instancia en un form-builder).
+     * Opaque identifier the caller associates with the widget. It is included
+     * in the `laracrate-file-uploaded` event so the caller can route the File
+     * to the right target when there are several widgets on the same page
+     * (e.g. one field per instance in a form-builder).
      */
     #[Locked]
     public ?string $contextKey = null;
 
     /**
-     * Opciones del selector de slot integrado en el componente.
-     * Si está vacío, no se renderiza el selector y el comportamiento es el
-     * clásico (cap derivado de `$slots` pasado como prop).
+     * Options for the slot selector integrated in the component.
+     * If empty, the selector is not rendered and the behavior is the classic
+     * one (cap derived from `$slots` passed as a prop).
      *
-     * Formato: array de arrays con keys `id`, `name`, opcionalmente `color`,
-     * `description`. Ejemplo:
+     * Format: array of arrays with keys `id`, `name`, optionally `color`,
+     * `description`. Example:
      *   [
      *       ['id' => 60, 'name' => 'DNI'],
-     *       ['id' => 61, 'name' => 'Contrato', 'color' => '#7C2D12'],
+     *       ['id' => 61, 'name' => 'Contract', 'color' => '#7C2D12'],
      *   ]
      *
-     * Cuando se selecciona una opción, `$slots = [id]` automáticamente y
-     * `computeEffective()` recalcula maxFiles + extensiones permitidas.
+     * When an option is selected, `$slots = [id]` automatically and
+     * `computeEffective()` recomputes maxFiles + allowed extensions.
      */
     #[Locked]
     public array $slotOptions = [];
 
     /**
-     * Etiqueta sobre el selector. Si null, no se renderiza un label visible.
-     * Ej: "Tipo de documento", "Categoría", "Etiqueta".
+     * Label above the selector. If null, no visible label is rendered.
+     * E.g.: "Document type", "Category", "Tag".
      */
     #[Locked]
     public ?string $slotLabel = null;
 
     /**
-     * Texto del placeholder del selector cuando no hay slot elegido. Si la
-     * UI lo permite, también funciona como opción "sin slot". Default:
-     * "Sin clasificar" (i18n).
+     * Placeholder text for the selector when no slot is chosen. If the UI
+     * allows it, it also works as a "no slot" option. Default: "Unclassified" (i18n).
      */
     #[Locked]
     public ?string $slotPlaceholder = null;
 
     /**
-     * Si true, el selector permite "sin slot" como opción explícita; si false,
-     * obliga a escoger uno antes de poder soltar archivos (el dropzone queda
-     * deshabilitado mientras no haya selección). Default: true.
+     * If true, the selector allows "no slot" as an explicit option; if false,
+     * it forces choosing one before files can be dropped (the dropzone stays
+     * disabled while there is no selection). Default: true.
      */
     #[Locked]
     public bool $slotOptional = true;
 
     /**
-     * ID del slot seleccionado actualmente. Reactivo: cambia desde el selector
-     * del theme via wire:model.live. Disparará `updatedSelectedSlotId` que
-     * sincroniza `$this->slots = [id]`.
+     * ID of the currently selected slot. Reactive: it changes from the theme's
+     * selector via wire:model.live. It triggers `updatedSelectedSlotId`, which
+     * syncs `$this->slots = [id]`.
      */
     public ?int $selectedSlotId = null;
 
+    /** Livewire mount: initialize props, resolve creator and slot picker. */
     public function mount(
         Model $model,
         string $collection,
@@ -176,8 +176,8 @@ class LaracrateDropzoneDeferred extends Component
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
         $this->slots        = array_values(array_filter(array_map('intval', $slots)));
 
-        // Resolver creator: prioriza creatorType/creatorId explícitos (más
-        // fiables que serializar un Model entre componentes Livewire).
+        // Resolve creator: prioritize explicit creatorType/creatorId (more
+        // reliable than serializing a Model between Livewire components).
         if ($creatorType && $creatorId) {
             $this->creatorType = $creatorType;
             $this->creatorId   = (int) $creatorId;
@@ -186,7 +186,7 @@ class LaracrateDropzoneDeferred extends Component
             $this->creatorId   = (int) $creator->getKey();
         }
 
-        // Slot picker integrado
+        // Integrated slot picker
         $this->slotOptions     = $this->normalizeSlotOptions($slotOptions);
         $this->slotLabel       = $slotLabel;
         $this->slotPlaceholder = $slotPlaceholder;
@@ -196,17 +196,17 @@ class LaracrateDropzoneDeferred extends Component
             $this->selectedSlotId = (int) $selectedSlotId;
             $this->slots = [$this->selectedSlotId];
         } elseif (count($this->slotOptions) === 1) {
-            // Una sola opción posible: auto-seleccionar y NO mostrar selector.
-            // El dropzone refleja directamente el cap/extensiones de ese slot.
+            // Only one possible option: auto-select and do NOT show the selector.
+            // The dropzone directly reflects that slot's cap/extensions.
             $this->selectedSlotId = $this->slotOptions[0]['id'];
             $this->slots = [$this->selectedSlotId];
         }
     }
 
     /**
-     * El theme usa esto para decidir si renderizar el selector visible.
-     * Regla: solo se muestra si hay 2+ opciones Y no hay un slot fijado externamente
-     * (ej. via slot único o slot preseleccionado en mount con slotOptions vacío).
+     * The theme uses this to decide whether to render the visible selector.
+     * Rule: it is only shown if there are 2+ options AND there is no slot fixed
+     * externally (e.g. via a single slot or a slot preselected in mount with empty slotOptions).
      */
     public function showsSlotPicker(): bool
     {
@@ -214,8 +214,8 @@ class LaracrateDropzoneDeferred extends Component
     }
 
     /**
-     * Lifecycle hook: cuando el usuario cambia el selector integrado, sincroniza
-     * `$this->slots` para que `computeEffective()` use el slot nuevo en render().
+     * Lifecycle hook: when the user changes the integrated selector, syncs
+     * `$this->slots` so `computeEffective()` uses the new slot in render().
      */
     public function updatedSelectedSlotId($value): void
     {
@@ -229,9 +229,9 @@ class LaracrateDropzoneDeferred extends Component
     }
 
     /**
-     * Permite cambiar dinámicamente los slots desde el front (legacy: el padre
-     * orquesta el slot picker fuera del componente). Para nuevos usos, preferir
-     * `slotOptions` + `selectedSlotId` integrados.
+     * Allows changing the slots dynamically from the front (legacy: the parent
+     * orchestrates the slot picker outside the component). For new uses, prefer
+     * the integrated `slotOptions` + `selectedSlotId`.
      */
     public function setSlots(array $slots): void
     {
@@ -239,11 +239,11 @@ class LaracrateDropzoneDeferred extends Component
     }
 
     /**
-     * Normaliza las opciones del slot picker a un shape consistente.
-     * Acepta:
-     *   - array de arrays con keys (id, name, color?, description?)
-     *   - array de modelos Eloquent (toma id + name)
-     *   - colección Eloquent
+     * Normalizes the slot picker options to a consistent shape.
+     * Accepts:
+     *   - array of arrays with keys (id, name, color?, description?)
+     *   - array of Eloquent models (takes id + name)
+     *   - Eloquent collection
      */
     protected function normalizeSlotOptions(array|\Illuminate\Support\Collection $options): array
     {
@@ -268,6 +268,7 @@ class LaracrateDropzoneDeferred extends Component
         return $out;
     }
 
+    /** Register an uploaded file (resolving creator/slots) as a File of the model. */
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
     {
         $upload = FileUpload::fromArray([
@@ -278,7 +279,7 @@ class LaracrateDropzoneDeferred extends Component
             'size'          => $size,
         ]);
 
-        // Resolver creator override si se pasó vía prop
+        // Resolve creator override if passed via prop
         $creator = null;
         if ($this->creatorType && $this->creatorId) {
             $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->creatorType)
@@ -288,12 +289,12 @@ class LaracrateDropzoneDeferred extends Component
             }
         }
 
-        // CreateFileAction puede lanzar InvalidArgumentException por:
-        //   - MIME/extensión no aceptada por la colección o el slot
-        //   - Slot quota agotada (per_creator o global)
-        //   - Tamaño excedido
-        // Lo capturamos y devolvemos null para que el front trate el item como
-        // error normal (sin 500). El mensaje se manda en el evento para UX.
+        // CreateFileAction may throw InvalidArgumentException for:
+        //   - MIME/extension not accepted by the collection or the slot
+        //   - Slot quota exhausted (per_creator or global)
+        //   - Size exceeded
+        // We catch it and return null so the front treats the item as a
+        // normal error (without a 500). The message is sent in the event for UX.
         try {
             $file = $this->model->addFile(
                 $upload,
@@ -326,6 +327,7 @@ class LaracrateDropzoneDeferred extends Component
         return $file->id;
     }
 
+    /** Notify that the batch finished (all files processed). */
     public function batchCompleted(int $ok, int $error): void
     {
         $this->dispatch(
@@ -336,6 +338,7 @@ class LaracrateDropzoneDeferred extends Component
         );
     }
 
+    /** Extensions accepted across all types declared in the collection. */
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);
@@ -353,6 +356,7 @@ class LaracrateDropzoneDeferred extends Component
         return array_values(array_unique($exts));
     }
 
+    /** Mime types accepted across all types declared in the collection. */
     public function acceptedMimeTypes(): array
     {
         $manager = app(StorageManager::class);
@@ -370,6 +374,7 @@ class LaracrateDropzoneDeferred extends Component
         return array_values(array_unique($mimes));
     }
 
+    /** Largest max file size (in KB) across the collection's types. */
     public function maxSizeKb(): int
     {
         $manager = app(StorageManager::class);
@@ -385,11 +390,13 @@ class LaracrateDropzoneDeferred extends Component
         return $max ?: 10240;
     }
 
+    /** Disk configured for this collection. */
     public function disk(): string
     {
         return $this->model->getDiskFor($this->collection);
     }
 
+    /** Normalize the collection types config to an associative map. */
     protected function normalizeTypes(array $types): array
     {
         $out = [];
@@ -404,9 +411,9 @@ class LaracrateDropzoneDeferred extends Component
     }
 
     /**
-     * Calcula el cap efectivo y las extensiones efectivas a partir de los slots.
-     * El cap más restrictivo gana. Cuenta los archivos ya subidos por este creator
-     * en cada slot para descontarlos del límite per_creator.
+     * Computes the effective cap and effective extensions from the slots.
+     * The most restrictive cap wins. Counts the files already uploaded by this
+     * creator in each slot to subtract them from the per_creator limit.
      *
      * @return array{maxFiles: ?int, extensions: array, slotInfo: array}
      */
@@ -451,9 +458,9 @@ class LaracrateDropzoneDeferred extends Component
     }
 
     /**
-     * Detecta la categoría visual del dropzone (imagen, vídeo, audio, documento,
-     * mixto) a partir de las extensiones aceptadas. Usado por el theme para
-     * elegir el icono adecuado.
+     * Detects the dropzone's visual category (image, video, audio, document,
+     * mixed) from the accepted extensions. Used by the theme to pick the
+     * appropriate icon.
      */
     protected function detectIconCategory(array $extensions): string
     {
@@ -477,6 +484,7 @@ class LaracrateDropzoneDeferred extends Component
         return 'mixed';
     }
 
+    /** Render the deferred dropzone theme view. */
     public function render()
     {
         $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');
@@ -487,11 +495,11 @@ class LaracrateDropzoneDeferred extends Component
 
         $effective = $this->computeEffective();
 
-        // Notifica al front el cap efectivo en cada render. El theme escucha
-        // `laracrate-deferred-config` con `{ fileableType, fileableId, collection,
-        // maxFiles }` y actualiza `cfg.maxFiles` reactivamente, sin depender del
-        // remount por key. Solución a casos donde Livewire morphdom mantiene el
-        // Alpine state estable entre cambios de slot.
+        // Notify the front of the effective cap on each render. The theme listens
+        // to `laracrate-deferred-config` with `{ fileableType, fileableId, collection,
+        // maxFiles }` and updates `cfg.maxFiles` reactively, without depending on the
+        // remount by key. A solution for cases where Livewire morphdom keeps the
+        // Alpine state stable across slot changes.
         $this->dispatch(
             'laracrate-deferred-config',
             fileableType: $this->model->getMorphClass(),
@@ -510,10 +518,10 @@ class LaracrateDropzoneDeferred extends Component
             'extensions'        => $effective['extensions'],
             'iconCategory'      => $this->detectIconCategory($effective['extensions']),
             'maxSizeKb'         => $this->maxSizeKb(),
-            // 'multiple' y 'maxFiles' son public props del componente y se exponen
-            // automáticamente al view por Livewire. Las renombramos aquí para que
-            // las variables de la view ganen sobre la prop pública (sino quedan
-            // shadowed cuando la prop es null y el efectivo se computa en render).
+            // 'multiple' and 'maxFiles' are public props of the component and are
+            // exposed automatically to the view by Livewire. We rename them here so
+            // the view variables win over the public prop (otherwise they get
+            // shadowed when the prop is null and the effective value is computed in render).
             'multipleAllowed'   => $this->multiple,
             'persistQueue'      => $this->persistQueue,
             'hideActions'       => $this->hideActions,

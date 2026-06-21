@@ -11,11 +11,11 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
 /**
- * Uploader single-file con confirmación explícita (preview + Subir).
+ * Single-file uploader with explicit confirmation (preview + Upload).
  *
- * A diferencia de `LaracrateUploader`, seleccionar un archivo NO lo persiste:
- * queda en `$pending` mostrando un preview hasta que el usuario pulsa
- * `submit()`. `cancel()` descarta el buffer sin tocar el File actual.
+ * Unlike `LaracrateUploader`, selecting a file does NOT persist it: it stays
+ * in `$pending` showing a preview until the user presses `submit()`. `cancel()`
+ * discards the buffer without touching the current File.
  *
  *   <livewire:laracrate-uploader-deferred :model="$user" collection="avatar" />
  *   <livewire:laracrate-uploader-deferred :model="$user" collection="avatar" theme="studio" layout="portrait" />
@@ -40,24 +40,25 @@ class LaracrateUploaderDeferred extends Component
     public string $layout = 'row';
 
     /**
-     * Override de redondeo del preview de la imagen. Valores estándar Tailwind:
+     * Override for the image preview rounding. Standard Tailwind values:
      * 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full'.
-     * Si null, cada tema usa su default propio.
+     * If null, each theme uses its own default.
      */
     #[Locked]
     public ?string $rounded = null;
 
     /**
-     * Buffer del upload temporal de Livewire. NO se persiste hasta `submit()`.
+     * Buffer for the Livewire temporary upload. NOT persisted until `submit()`.
      */
     public $pending = null;
 
     /**
-     * Cuando el File queda en `pending`/`processing`, el view activa
-     * `wire:poll.{ms}ms="$refresh"` para refrescar hasta `completed`/`failed`.
+     * When the File stays in `pending`/`processing`, the view activates
+     * `wire:poll.{ms}ms="$refresh"` to refresh until `completed`/`failed`.
      */
     public int $pollMs = 1500;
 
+    /** Livewire mount: initialize the component props. */
     public function mount(
         Model $model,
         string $collection,
@@ -74,6 +75,7 @@ class LaracrateUploaderDeferred extends Component
         $this->rounded    = $rounded;
     }
 
+    /** Tailwind rounding class for the `rounded` prop, or empty string if unset. */
     public function roundedClass(): string
     {
         return match ($this->rounded) {
@@ -90,8 +92,8 @@ class LaracrateUploaderDeferred extends Component
     }
 
     /**
-     * Validación temprana del buffer cuando Livewire termina de subir el tmp.
-     * Si falla, dispara la excepción de validación y resetea el buffer.
+     * Early validation of the buffer when Livewire finishes uploading the tmp.
+     * If it fails, it throws the validation exception and resets the buffer.
      */
     public function updatedPending(): void
     {
@@ -109,7 +111,7 @@ class LaracrateUploaderDeferred extends Component
     }
 
     /**
-     * Persiste el buffer en el modelo. Reemplaza el File actual de la collection.
+     * Persists the buffer to the model. Replaces the current File of the collection.
      */
     public function submit(): void
     {
@@ -133,7 +135,7 @@ class LaracrateUploaderDeferred extends Component
     }
 
     /**
-     * Descarta el buffer sin tocar el File actual.
+     * Discards the buffer without touching the current File.
      */
     public function cancel(): void
     {
@@ -141,6 +143,7 @@ class LaracrateUploaderDeferred extends Component
         $this->resetErrorBag('pending');
     }
 
+    /** Delete the current file of the collection. */
     public function delete(): void
     {
         $file = $this->currentFile();
@@ -153,13 +156,14 @@ class LaracrateUploaderDeferred extends Component
         $this->dispatch('laracrate-file-deleted', collection: $this->collection);
     }
 
+    /** Current top-level File of the (model + collection), or null. */
     public function currentFile(): ?File
     {
         return $this->model->file($this->collection);
     }
 
     /**
-     * 'idle' (sin file ni buffer) | 'staged' (buffer pendiente de submit)
+     * 'idle' (no file or buffer) | 'staged' (buffer pending submit)
      * | 'pending' | 'processing' | 'completed' | 'failed'.
      */
     public function processingState(): string
@@ -177,14 +181,15 @@ class LaracrateUploaderDeferred extends Component
     }
 
     /**
-     * URL del File actual (si lo hay) o null. El preview del buffer staged
-     * se construye en la vista vía `$pending->temporaryUrl()`.
+     * URL of the current File (if any) or null. The staged buffer preview is
+     * built in the view via `$pending->temporaryUrl()`.
      */
     public function previewUrl(): ?string
     {
         return $this->model->fileLink($this->collection, $this->variant);
     }
 
+    /** Temporary preview URL for the staged buffer, or null. */
     public function pendingPreviewUrl(): ?string
     {
         if (! $this->pending instanceof TemporaryUploadedFile) {
@@ -198,6 +203,7 @@ class LaracrateUploaderDeferred extends Component
         }
     }
 
+    /** Livewire validation rules for the pending buffer (mimes + max size). */
     protected function validationRules(): array
     {
         $rules = ['file', 'max:' . $this->maxSizeKb()];
@@ -209,6 +215,7 @@ class LaracrateUploaderDeferred extends Component
         return $rules;
     }
 
+    /** Extensions accepted across all types declared in the collection. */
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);
@@ -226,6 +233,7 @@ class LaracrateUploaderDeferred extends Component
         return array_values(array_unique($exts));
     }
 
+    /** Mime types accepted across all types declared in the collection. */
     public function acceptedMimeTypes(): array
     {
         $manager = app(StorageManager::class);
@@ -243,6 +251,7 @@ class LaracrateUploaderDeferred extends Component
         return array_values(array_unique($mimes));
     }
 
+    /** Largest max file size (in KB) across the collection's types. */
     public function maxSizeKb(): int
     {
         $manager = app(StorageManager::class);
@@ -258,6 +267,7 @@ class LaracrateUploaderDeferred extends Component
         return $max ?: 10240;
     }
 
+    /** Normalize the collection types config to an associative map. */
     protected function normalizeTypes(array $types): array
     {
         $out = [];
@@ -271,13 +281,14 @@ class LaracrateUploaderDeferred extends Component
         return $out;
     }
 
+    /** Render the deferred uploader theme view. */
     public function render()
     {
         $theme  = $this->theme ?? config('laracrate.ui.default_theme', 'default');
         $layout = $this->layout;
 
-        // Resolución: uploader-deferred/themes/{theme}/{layout}.blade.php
-        // → uploader-deferred/themes/{theme}.blade.php (back-compat single-file).
+        // Resolution: uploader-deferred/themes/{theme}/{layout}.blade.php
+        // -> uploader-deferred/themes/{theme}.blade.php (back-compat single-file).
         $view = view()->exists("laracrate::uploader-deferred.themes.{$theme}.{$layout}")
             ? "laracrate::uploader-deferred.themes.{$theme}.{$layout}"
             : "laracrate::uploader-deferred.themes.{$theme}";

@@ -3,34 +3,34 @@
 namespace EduLazaro\Laracrate\Contracts;
 
 /**
- * Generador de embeddings vectoriales para texto.
+ * Generator of vector embeddings for text.
  *
- * Las apps pueden registrar su propia implementación (OpenAI, Anthropic,
- * BGE-M3 self-hosted, etc.) ligando `EmbeddingProvider::class` en su
- * ServiceProvider. El package incluye `OpenAiEmbeddingProvider` como default.
+ * Apps can register their own implementation (OpenAI, Anthropic,
+ * self-hosted BGE-M3, etc.) by binding `EmbeddingProvider::class` in their
+ * ServiceProvider. The package includes `OpenAiEmbeddingProvider` as the default.
  */
 interface EmbeddingProvider
 {
     /**
-     * Genera embeddings para un batch de strings.
+     * Generates embeddings for a batch of strings.
      *
      * @param array<int, string> $texts
-     * @return array<int, array<int, float>> Vector por cada texto, mismo orden.
+     * @return array<int, array<int, float>> One vector per text, same order.
      */
     public function embed(array $texts): array;
 
     /**
-     * Dimensiones del vector que produce este provider/modelo.
+     * Dimensions of the vector this provider/model produces.
      */
     public function dimensions(): int;
 
     /**
-     * Identificador del modelo (ej. "text-embedding-3-small").
+     * Model identifier (e.g. "text-embedding-3-small").
      */
     public function model(): string;
 
     /**
-     * Identificador del provider (ej. "openai", "anthropic", "local").
+     * Provider identifier (e.g. "openai", "anthropic", "local").
      */
     public function name(): string;
 }

@@ -14,21 +14,22 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
- * Orquestador. Acepta el upload (UploadedFile, Binary, FileUpload, o key string),
- * decide la estrategia según el driver del disk de la colección, ejecuta
- * la subida al backend si hace falta, y persiste el File model.
+ * Orchestrator. Accepts the upload (UploadedFile, Binary, FileUpload, or
+ * key string), decides the strategy based on the collection disk driver,
+ * runs the upload to the backend if needed, and persists the File model.
  */
 class CreateFileAction extends Action
 {
     /**
-     * Keys aceptadas dentro de `$data`. Cualquier otra lanza error explícito
-     * para evitar descartes silenciosos por typo.
+     * Keys accepted inside `$data`. Any other one throws an explicit error
+     * to avoid silently dropping values due to a typo.
      */
     private const ALLOWED_DATA_KEYS = [
         'title', 'description', 'category', 'visibility',
         'label', 'default', 'position', 'metadata',
     ];
 
+    /** Validate, upload if needed, and persist a File model for the upload. */
     public function handle(
         ?Model $fileable,
         string $collection,
@@ -43,16 +44,16 @@ class CreateFileAction extends Action
         array $slots = [],
         ?\EduLazaro\Laracrate\Models\Folder $folder = null,
     ): ?File {
-        // Validación: keys inesperadas en $data son typos o conceptos perdidos.
+        // Validation: unexpected keys in $data are typos or lost concepts.
         $unknown = array_diff(array_keys($data), self::ALLOWED_DATA_KEYS);
         if (!empty($unknown)) {
             throw new \InvalidArgumentException(
                 "Unknown key(s) in \$data: " . implode(', ', $unknown) .
                 ". Allowed: " . implode(', ', self::ALLOWED_DATA_KEYS) .
-                ". Para datos arbitrarios usa \$data['metadata']."
+                ". For arbitrary data use \$data['metadata']."
             );
         }
-        // Si vienen slots como IDs, los resolvemos a modelos
+        // If slots come as IDs, resolve them to models.
         $slotModels = collect($slots)
             ->map(fn ($s) => $s instanceof \EduLazaro\Laracrate\Models\FileSlot
                 ? $s
@@ -64,22 +65,23 @@ class CreateFileAction extends Action
         $sensitive = (bool) ($config['sensitive'] ?? false);
         $encrypt   = (bool) ($config['encrypt'] ?? false);
 
-        // Validación crítica: encrypt requiere que PHP tenga el binario (modo
-        // server-side: UploadedFile o Binary). Modo presigned (FileUpload/key)
-        // llega ya raw al backend — sin posibilidad de cifrar a posteriori.
+        // Critical validation: encrypt requires PHP to hold the binary
+        // (server-side mode: UploadedFile or Binary). Presigned mode
+        // (FileUpload/key) arrives raw at the backend, with no way to encrypt
+        // after the fact.
         $hasServerSideBinary = $upload instanceof UploadedFile || $upload instanceof Binary;
         if ($encrypt && !$hasServerSideBinary && !$parent) {
             throw new \InvalidArgumentException(
-                "La colección '{$collection}' tiene encrypt=true. Sube el archivo " .
-                "directamente vía servidor (UploadedFile o Binary), no via presigned."
+                "Collection '{$collection}' has encrypt=true. Upload the file " .
+                "directly via the server (UploadedFile or Binary), not via presigned."
             );
         }
 
         $manager = app(StorageManager::class);
 
-        // 1. Validar PRIMERO con metadata declarada (sin tocar el binario aún).
-        //    Esto evita dejar binarios huérfanos en R2 si la collection rechaza
-        //    por type/mime/size/slot.
+        // 1. Validate FIRST with the declared metadata (without touching the
+        //    binary yet). This avoids leaving orphan binaries in R2 if the
+        //    collection rejects by type/mime/size/slot.
         $declared = $this->declaredMetadata($upload);
         $type = FileType::fromMime($declared['mime_type']);
         $this->validateAgainstCollection(
@@ -87,10 +89,10 @@ class CreateFileAction extends Action
             $fileable, $parent, $manager, $slotModels, $creator
         );
 
-        // 2. Validación pasada: ahora sí mover/subir el binario.
+        // 2. Validation passed: now move/upload the binary.
         $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt, $tenant);
 
-        // Auto-position al final si no viene declarada explícitamente.
+        // Auto-position at the end if not declared explicitly.
         if (!isset($data['position']) && !$parent) {
             $data['position'] = (int) (File::query()
                 ->where('fileable_type', $fileable?->getMorphClass())
@@ -100,8 +102,8 @@ class CreateFileAction extends Action
                 ->max('position') ?? -1) + 1;
         }
 
-        // 3. Persistir File model. Si algo falla aquí (BD lock, encrypt, etc.)
-        //    cleanup defensivo del binario que ya escribimos en el backend.
+        // 3. Persist the File model. If something fails here (DB lock, encrypt,
+        //    etc.), defensively clean up the binary we already wrote to the backend.
         try {
             $file = File::create([
                 'slug'            => (string) Str::ulid(),
@@ -152,29 +154,31 @@ class CreateFileAction extends Action
             $upload->bindTo($file);
         }
 
-        // Attach slots si vinieron en la llamada (ya validados arriba).
+        // Attach slots if they came in the call (already validated above).
         if ($slotModels->isNotEmpty()) {
             $file->slots()->syncWithoutDetaching($slotModels->pluck('id')->all());
         }
 
-        // TODO (siguiente fase): si la colección define variants y el tipo es image,
-        // encolar GenerateVariantsAction. Si encrypt=true, encolar EncryptFileAction.
+        // TODO (next phase): if the collection defines variants and the type is
+        // image, enqueue GenerateVariantsAction. If encrypt=true, enqueue
+        // EncryptFileAction.
 
         return $file;
     }
 
     /**
-     * Extrae metadata declarada del upload SIN tocar el binario en el backend.
-     * Devuelve mime_type, size y extension. Para validación pre-move.
+     * Extracts the declared metadata from the upload WITHOUT touching the
+     * binary in the backend. Returns mime_type, size and extension. For
+     * pre-move validation.
      */
     protected function declaredMetadata(UploadedFile|Binary|FileUpload|string $upload): array
     {
         if ($upload instanceof UploadedFile) {
-            // `getMimeType()` detecta el mime con finfo sobre el archivo real
-            // (siempre funciona). `getClientMimeType()` lee del header del
-            // browser, pero Livewire's TemporaryUploadedFile NO se lo pasa
-            // a su parent constructor → siempre devuelve octet-stream y
-            // rompe la detección de tipo en uploads vía WithFileUploads.
+            // `getMimeType()` detects the mime with finfo over the real file
+            // (always works). `getClientMimeType()` reads from the browser
+            // header, but Livewire's TemporaryUploadedFile does NOT pass it to
+            // its parent constructor, so it always returns octet-stream and
+            // breaks type detection on uploads via WithFileUploads.
             $mime = $upload->getMimeType() ?: ($upload->getClientMimeType() ?: 'application/octet-stream');
             return [
                 'mime_type' => $mime,
@@ -199,8 +203,8 @@ class CreateFileAction extends Action
             ];
         }
 
-        // string key: backend ya tiene el archivo, no podemos saber mime/size sin un HEAD.
-        // No validamos (asumimos confianza). Caller responsable.
+        // string key: the backend already has the file, we cannot know mime/size
+        // without a HEAD. We do not validate (we assume trust). Caller responsible.
         return [
             'mime_type' => 'application/octet-stream',
             'size'      => 0,
@@ -209,9 +213,9 @@ class CreateFileAction extends Action
     }
 
     /**
-     * Valida que la collection acepte el tipo declarado, su mime y tamaño,
-     * y que los slots seleccionados acepten la extensión y tengan quota.
-     * Sin tocar el binario en el backend.
+     * Validates that the collection accepts the declared type, its mime and
+     * size, and that the selected slots accept the extension and have quota.
+     * Without touching the binary in the backend.
      */
     protected function validateAgainstCollection(
         string $collection,
@@ -228,7 +232,7 @@ class CreateFileAction extends Action
 
             if (!$manager->acceptsType($collection, $type->value, $morphAlias)) {
                 throw new \InvalidArgumentException(
-                    "La colección '{$collection}' no acepta archivos de tipo '{$type->value}'."
+                    "Collection '{$collection}' does not accept files of type '{$type->value}'."
                 );
             }
 
@@ -237,14 +241,14 @@ class CreateFileAction extends Action
             $acceptedMimes = $typeConfig['accepted_mime_types'] ?? [];
             if (!empty($acceptedMimes) && !in_array($declared['mime_type'], $acceptedMimes, true)) {
                 throw new \InvalidArgumentException(
-                    "MIME '{$declared['mime_type']}' no aceptado por la colección '{$collection}'. Permitidos: " . implode(', ', $acceptedMimes)
+                    "MIME '{$declared['mime_type']}' not accepted by collection '{$collection}'. Allowed: " . implode(', ', $acceptedMimes)
                 );
             }
 
             $maxSizeKb = $typeConfig['max_file_size'] ?? null;
             if ($maxSizeKb && $declared['size'] > $maxSizeKb * 1024) {
                 throw new \InvalidArgumentException(
-                    "El archivo excede el tamaño máximo de {$maxSizeKb} KB para la colección '{$collection}'."
+                    "The file exceeds the maximum size of {$maxSizeKb} KB for collection '{$collection}'."
                 );
             }
         }
@@ -258,17 +262,17 @@ class CreateFileAction extends Action
                 if (!$slot->acceptsExtension($extension)) {
                     $allowed = implode(', ', array_map('strtoupper', $slot->allowed_extensions ?? []));
                     throw new \InvalidArgumentException(
-                        "El slot '{$slot->name}' no acepta archivos .{$extension}. Permitidos: {$allowed}"
+                        "Slot '{$slot->name}' does not accept .{$extension} files. Allowed: {$allowed}"
                     );
                 }
 
                 $check = $slot->canAcceptMore($creatorType, $creatorId);
                 if (!$check['can']) {
                     $reason = $check['reason'] === 'global'
-                        ? "límite global de {$check['limit']} archivos"
-                        : "tu límite de {$check['limit']} archivos";
+                        ? "the global limit of {$check['limit']} files"
+                        : "your limit of {$check['limit']} files";
                     throw new \InvalidArgumentException(
-                        "El slot '{$slot->name}' ha alcanzado {$reason}."
+                        "Slot '{$slot->name}' has reached {$reason}."
                     );
                 }
             }
@@ -276,11 +280,11 @@ class CreateFileAction extends Action
     }
 
     /**
-     * Determina dónde queda el archivo en el backend y devuelve los datos
-     * finales para crear el File model.
+     * Determines where the file ends up in the backend and returns the final
+     * data to create the File model.
      *
-     * Convención del array devuelto: `path` = key entera del objeto en disk;
-     * `name` = denormalización (basename) por comodidad de queries/display.
+     * Convention of the returned array: `path` = the whole object key in disk;
+     * `name` = denormalization (basename) for convenience in queries/display.
      */
     protected function resolveUpload(
         UploadedFile|Binary|FileUpload|string $upload,
@@ -291,12 +295,12 @@ class CreateFileAction extends Action
         bool $encrypt = false,
         ?Model $tenant = null,
     ): array {
-        // Caso A: presigned upload completado por el cliente.
+        // Case A: presigned upload completed by the client.
         if ($upload instanceof FileUpload) {
             $key = ltrim($upload->key, '/');
 
-            // Si la key vive en temp/ y conocemos el fileable, movemos
-            // server-side al path canónico (cero descarga al PHP).
+            // If the key lives in temp/ and we know the fileable, move it
+            // server-side to the canonical path (zero download to PHP).
             if (str_starts_with($key, 'temp/') && $fileable) {
                 $name     = basename($key);
                 $finalKey = trim($this->buildPath($collection, $fileable, $tenant) . '/' . $name, '/');
@@ -314,7 +318,7 @@ class CreateFileAction extends Action
             ]);
         }
 
-        // Caso B: ya está en el backend, key suelto.
+        // Case B: already in the backend, loose key.
         if (is_string($upload)) {
             $key = ltrim($upload, '/');
 
@@ -324,9 +328,9 @@ class CreateFileAction extends Action
             ]);
         }
 
-        // Caso D: Binary — contenido en memoria generado server-side. Escribimos
-        // al disk directamente; el paquete elige path canónico, el caller jamás
-        // toca Storage::*.
+        // Case D: Binary, in-memory content generated server-side. We write to
+        // the disk directly; the package chooses the canonical path, the caller
+        // never touches Storage::*.
         if ($upload instanceof Binary) {
             $name = time() . '_' . Str::random(24) . '.' . $upload->extension();
             $key  = trim($this->buildPath($collection, $fileable, $tenant) . '/' . $name, '/');
@@ -346,7 +350,7 @@ class CreateFileAction extends Action
             ]);
         }
 
-        // Caso C: UploadedFile — hay que subirlo al backend ahora.
+        // Case C: UploadedFile, must be uploaded to the backend now.
         $extension = $upload->getClientOriginalExtension() ?: 'bin';
         $name      = time() . '_' . Str::random(24) . '.' . $extension;
         $key       = trim($this->buildPath($collection, $fileable, $tenant) . '/' . $name, '/');
@@ -365,10 +369,10 @@ class CreateFileAction extends Action
     }
 
     /**
-     * Construye el array que `CreateFileAction::handle` pasa a `File::create`.
-     * Encapsula el contrato `path = key entera`, `name = basename(key)` y
-     * deriva `extension` de `original_name` por defecto. El caller solo
-     * pasa los campos específicos del upload.
+     * Builds the array that `CreateFileAction::handle` passes to `File::create`.
+     * Encapsulates the contract `path = whole key`, `name = basename(key)` and
+     * derives `extension` from `original_name` by default. The caller only
+     * passes the upload-specific fields.
      */
     protected function makeRow(string $key, string $originalName, array $extras): array
     {
@@ -381,15 +385,15 @@ class CreateFileAction extends Action
     }
 
     /**
-     * Construye el path canónico de un file dentro del bucket. Si hay tenant
-     * resuelto, su id se usa como prefix raíz — aísla por tenant dentro del
-     * mismo bucket compartido, facilita auditoría y borrado RGPD ("rm -rf
-     * /{tenant_id}/*"), y prepara migración a bucket dedicado preservando
-     * estructura.
+     * Builds the canonical path of a file inside the bucket. If a tenant is
+     * resolved, its id is used as the root prefix: it isolates per tenant
+     * within the same shared bucket, eases auditing and GDPR deletion ("rm -rf
+     * /{tenant_id}/*"), and prepares migration to a dedicated bucket while
+     * preserving structure.
      *
-     * Resultados típicos:
-     *   sin tenant:     case/123/documents
-     *   con tenant=42:  42/case/123/documents
+     * Typical results:
+     *   without tenant:  case/123/documents
+     *   with tenant=42:  42/case/123/documents
      */
     protected function buildPath(string $collection, ?Model $fileable, ?Model $tenant = null): string
     {

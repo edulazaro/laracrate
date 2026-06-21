@@ -9,27 +9,30 @@ use EduLazaro\Laractions\Action;
 use Throwable;
 
 /**
- * Aborta una sesión multipart en S3/R2 y marca el row como ABORTED o EXPIRED.
- * Llamarse cuando el usuario cancela explícitamente, cuando el cron detecta
- * sesiones más allá de expires_at, o tras un fallo no recuperable.
+ * Aborts a multipart session in S3/R2 and marks the row as ABORTED or EXPIRED.
+ * Called when the user explicitly cancels, when the cron detects sessions past
+ * expires_at, or after an unrecoverable failure.
  *
- * IMPORTANTE: si no se llama a esto, las partes ya subidas quedan ocupando
- * storage en el bucket indefinidamente y el provider las factura. Por eso
- * el cron `laracrate:abort-stale-multipart` es obligatorio en producción.
+ * IMPORTANT: if this is not called, the already-uploaded parts keep occupying
+ * storage in the bucket indefinitely and the provider bills for them. That is
+ * why the `laracrate:abort-stale-multipart` cron is mandatory in production.
  *
  *   AbortMultipartUploadAction::create()->run([
  *       'upload' => $multipartUpload,
- *       'reason' => MultipartUploadStatus::EXPIRED,  // opcional, default ABORTED
+ *       'reason' => MultipartUploadStatus::EXPIRED,  // optional, default ABORTED
  *   ]);
  */
 class AbortMultipartUploadAction extends Action
 {
+    /**
+     * Abort the multipart session and mark the row as ABORTED or EXPIRED.
+     */
     public function handle(
         MultipartUpload $upload,
         ?MultipartUploadStatus $reason = null,
     ): MultipartUpload {
         if ($upload->status === MultipartUploadStatus::COMPLETED) {
-            // No-op: ya está cerrada del lado provider.
+            // No-op: it is already closed on the provider side.
             return $upload;
         }
 
@@ -48,9 +51,9 @@ class AbortMultipartUploadAction extends Action
                     'UploadId' => $upload->upload_id,
                 ]);
             } catch (Throwable $e) {
-                // Si S3 ya no la conoce (ya abortada externamente, expirada por
-                // lifecycle del bucket, etc.), seguimos y marcamos local.
-                logger()->warning('Laracrate: AbortMultipartUpload provider falló', [
+                // If S3 no longer knows it (already aborted externally, expired
+                // by the bucket lifecycle, etc.), we continue and mark it locally.
+                logger()->warning('Laracrate: AbortMultipartUpload provider failed', [
                     'upload_id' => $upload->upload_id,
                     'error'     => $e->getMessage(),
                 ]);

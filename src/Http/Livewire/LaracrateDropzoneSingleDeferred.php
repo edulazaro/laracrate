@@ -10,17 +10,17 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /**
- * Dropzone single-file con confirmación explícita antes de subir.
+ * Single-file dropzone with explicit confirmation before uploading.
  *
- * Diferencia con `laracrate-dropzone-single`:
- *   - El usuario selecciona/arrastra el archivo, lo ve "staged" (preview
- *     pendiente de confirmar) y pulsa el botón "Subir" para lanzar el PUT.
- *   - Sin confirmación, puede quitarlo y elegir otro.
- *   - Para arrancar desde fuera, dispatch `laracrate-start-batch` con
- *     `{ contextKey }` matching.
+ * Difference from `laracrate-dropzone-single`:
+ *   - The user selects/drags the file, sees it "staged" (preview pending
+ *     confirmation) and presses the "Upload" button to start the PUT.
+ *   - Before confirming, they can remove it and choose another.
+ *   - To start from outside, dispatch `laracrate-start-batch` with a matching
+ *     `{ contextKey }`.
  *
- * Igual que `laracrate-dropzone-deferred` pero limitado a 1 archivo, sin
- * lista de queue: el archivo se muestra IN-PLACE.
+ * Same as `laracrate-dropzone-deferred` but limited to 1 file, with no queue
+ * list: the file is shown IN-PLACE.
  *
  *   <livewire:laracrate-dropzone-single-deferred :model="$user" collection="cover" />
  */
@@ -42,12 +42,13 @@ class LaracrateDropzoneSingleDeferred extends Component
     public bool $hideExisting = false;
 
     /**
-     * Oculta el botón "Subir/Cancelar" interno (el caller arranca el batch
-     * desde fuera con `dispatch('laracrate-start-batch', { contextKey })`).
+     * Hides the internal "Upload/Cancel" button (the caller starts the batch
+     * from outside with `dispatch('laracrate-start-batch', { contextKey })`).
      */
     #[Locked]
     public bool $hideActions = false;
 
+    /** Livewire mount: initialize the component props. */
     public function mount(
         Model $model,
         string $collection,
@@ -64,6 +65,7 @@ class LaracrateDropzoneSingleDeferred extends Component
         $this->hideActions  = $hideActions;
     }
 
+    /** Register an uploaded file, replacing the current File of the collection. */
     public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
     {
         $upload = FileUpload::fromArray([
@@ -90,6 +92,7 @@ class LaracrateDropzoneSingleDeferred extends Component
         return $file->id;
     }
 
+    /** Remove the current file of the collection and notify the caller. */
     public function removeFile(): void
     {
         $existing = $this->model->files($this->collection)->first();
@@ -105,14 +108,15 @@ class LaracrateDropzoneSingleDeferred extends Component
     }
 
     /**
-     * Callback que el shared `dropzone._script` invoca al terminar el batch.
-     * No-op en single — registerUploaded() ya disparó el evento al caller.
+     * Callback the shared `dropzone._script` invokes when the batch finishes.
+     * No-op in single: registerUploaded() already dispatched the event to the caller.
      */
     public function batchCompleted(int $ok, int $error): void
     {
         // No-op.
     }
 
+    /** Extensions accepted across all types declared in the collection. */
     public function acceptedExtensions(): array
     {
         $manager = app(StorageManager::class);
@@ -130,6 +134,7 @@ class LaracrateDropzoneSingleDeferred extends Component
         return array_values(array_unique($exts));
     }
 
+    /** Mime types accepted across all types declared in the collection. */
     public function acceptedMimeTypes(): array
     {
         $manager = app(StorageManager::class);
@@ -147,6 +152,7 @@ class LaracrateDropzoneSingleDeferred extends Component
         return array_values(array_unique($mimes));
     }
 
+    /** Largest max file size (in KB) across the collection's types. */
     public function maxSizeKb(): int
     {
         $manager = app(StorageManager::class);
@@ -162,11 +168,13 @@ class LaracrateDropzoneSingleDeferred extends Component
         return $max ?: 10240;
     }
 
+    /** Disk configured for this collection. */
     public function disk(): string
     {
         return $this->model->getDiskFor($this->collection);
     }
 
+    /** Normalize the collection types config to an associative map. */
     protected function normalizeTypes(array $types): array
     {
         $out = [];
@@ -180,6 +188,7 @@ class LaracrateDropzoneSingleDeferred extends Component
         return $out;
     }
 
+    /** Detect the visual category (image, video, audio, document, mixed) from extensions. */
     protected function detectIconCategory(array $extensions): string
     {
         if (empty($extensions)) return 'mixed';
@@ -200,6 +209,7 @@ class LaracrateDropzoneSingleDeferred extends Component
         return 'mixed';
     }
 
+    /** Render the single deferred dropzone theme view. */
     public function render()
     {
         $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');

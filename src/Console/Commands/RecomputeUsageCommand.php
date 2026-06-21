@@ -8,22 +8,23 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
 /**
- * Recalcula las filas de `laracrate_folderables` desde laracrate_files.
- * Defensa contra drift (observer falla, importaciones a mano, restore desde
- * backup). Idempotente — siempre deja la fila en el estado correcto.
+ * Recomputes the `laracrate_folderables` rows from laracrate_files.
+ * Defense against drift (observer failure, manual imports, restore from
+ * backup). Idempotent: it always leaves the row in the correct state.
  *
- *   php artisan laracrate:recompute-usage              # todas las collections trackeadas
- *   php artisan laracrate:recompute-usage drive        # solo drive
- *   php artisan laracrate:recompute-usage --dry-run    # muestra deltas sin escribir
+ *   php artisan laracrate:recompute-usage              # all tracked collections
+ *   php artisan laracrate:recompute-usage drive        # only drive
+ *   php artisan laracrate:recompute-usage --dry-run    # shows deltas without writing
  */
 class RecomputeUsageCommand extends Command
 {
     protected $signature = 'laracrate:recompute-usage
-                            {collection? : Restringir a una collection concreta}
-                            {--dry-run : Mostrar diferencias sin persistir}';
+                            {collection? : Restrict to a specific collection}
+                            {--dry-run : Show differences without persisting}';
 
-    protected $description = 'Recalcula los counters de laracrate_folderables desde laracrate_files.';
+    protected $description = 'Recomputes the laracrate_folderables counters from laracrate_files.';
 
+    /** Recomputes usage counters for the tracked collections (or a single one). */
     public function handle(): int
     {
         $only = $this->argument('collection');
@@ -37,7 +38,7 @@ class RecomputeUsageCommand extends Command
                 ->all();
 
         if (empty($collections)) {
-            $this->warn('No hay collections con track_usage habilitado.');
+            $this->warn('No collections with track_usage enabled.');
             return self::SUCCESS;
         }
 
@@ -48,11 +49,12 @@ class RecomputeUsageCommand extends Command
         return self::SUCCESS;
     }
 
+    /** Recomputes and persists folderable counters for a single collection. */
     protected function recomputeCollection(string $collection, bool $dryRun): void
     {
-        $this->info("Recomputando collection: {$collection}");
+        $this->info("Recomputing collection: {$collection}");
 
-        // Agregamos por (fileable_type, fileable_id) en una sola query.
+        // We aggregate by (fileable_type, fileable_id) in a single query.
         $aggregates = File::query()
             ->selectRaw('fileable_type, fileable_id, COUNT(*) as files_count, COALESCE(SUM(size), 0) as total_size_bytes')
             ->where('collection', $collection)
@@ -78,7 +80,7 @@ class RecomputeUsageCommand extends Command
             if ($row->exists
                 && (int) $row->total_size_bytes === $newBytes
                 && (int) $row->files_count === $newCount) {
-                continue; // sin cambios
+                continue; // no changes
             }
 
             $delta = $newBytes - (int) $row->total_size_bytes;
@@ -101,9 +103,9 @@ class RecomputeUsageCommand extends Command
             $touched++;
         }
 
-        // Filas Folderable existentes que YA NO tienen ningún file (orphan).
-        // Las llevamos a 0/0 para reflejar la realidad sin borrar la fila
-        // (puede tener histórico/last_recomputed_at útil).
+        // Existing Folderable rows that NO LONGER have any file (orphan).
+        // We set them to 0/0 to reflect reality without deleting the row
+        // (it may have useful history / last_recomputed_at).
         $existingKeys = $aggregates->map(fn ($a) => $a->fileable_type . '#' . $a->fileable_id)->all();
         $orphans = Folderable::where('collection', $collection)->get()
             ->filter(fn ($r) => ! in_array($r->folderable_type . '#' . $r->folderable_id, $existingKeys, true))
@@ -111,7 +113,7 @@ class RecomputeUsageCommand extends Command
 
         foreach ($orphans as $orphan) {
             $this->line(sprintf(
-                '  %s#%s: ORPHAN, reset a 0/0 (era %d files / %s bytes)',
+                '  %s#%s: ORPHAN, reset to 0/0 (was %d files / %s bytes)',
                 $orphan->folderable_type,
                 $orphan->folderable_id,
                 $orphan->files_count,
@@ -127,7 +129,7 @@ class RecomputeUsageCommand extends Command
             $touched++;
         }
 
-        $verb = $dryRun ? 'cambiarían' : 'actualizadas';
-        $this->info("  → {$touched} filas {$verb}.");
+        $verb = $dryRun ? 'would change' : 'updated';
+        $this->info("  → {$touched} rows {$verb}.");
     }
 }

@@ -13,19 +13,20 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 
 /**
- * Endpoints HTTP para multipart upload directo a S3/R2.
+ * HTTP endpoints for direct multipart upload to S3/R2.
  *
- * Flujo desde el cliente:
- *   1. POST /laracrate/multipart/init       → { upload_id, total_parts, parts: [{part_number, url}] }
- *   2. PUT directo a cada `url` con la parte (en paralelo). Capturar `ETag` de cada respuesta.
- *   3. POST /laracrate/multipart/{id}/parts → re-emite URLs si alguna caducó (opcional).
- *   4. POST /laracrate/multipart/{id}/complete con la lista [{part_number, etag}].
- *   5. (cancelación) DELETE /laracrate/multipart/{id}.
+ * Client flow:
+ *   1. POST /laracrate/multipart/init       -> { upload_id, total_parts, parts: [{part_number, url}] }
+ *   2. PUT each part directly to its `url` (in parallel). Capture the `ETag` from each response.
+ *   3. POST /laracrate/multipart/{id}/parts -> re-issues URLs if any expired (optional).
+ *   4. POST /laracrate/multipart/{id}/complete with the list [{part_number, etag}].
+ *   5. (cancellation) DELETE /laracrate/multipart/{id}.
  *
- * Autorización: middleware en config('laracrate.multipart.middleware').
+ * Authorization: middleware in config('laracrate.multipart.middleware').
  */
 class MultipartUploadController extends Controller
 {
+    /** Initiate a multipart upload session and return the part URLs. */
     public function init(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -36,7 +37,7 @@ class MultipartUploadController extends Controller
             'part_size'      => 'nullable|integer|min:5242880', // 5 MB
             'expire_minutes' => 'nullable|integer|min:1|max:1440',
 
-            // Opcionales para key canónica directa.
+            // Optional for a direct canonical key.
             'fileable_type' => 'nullable|string',
             'fileable_id'   => 'nullable',
             'collection'    => 'nullable|string',
@@ -46,7 +47,7 @@ class MultipartUploadController extends Controller
 
         $allowedDisks = config('laracrate.uploads.allowed_disks', []);
         if (!empty($allowedDisks) && !in_array($disk, $allowedDisks, true)) {
-            abort(403, "Disk '{$disk}' no permitido para uploads directos.");
+            abort(403, "Disk '{$disk}' is not allowed for direct uploads.");
         }
 
         $fileName = $data['file_name'] ?? 'upload';
@@ -86,6 +87,7 @@ class MultipartUploadController extends Controller
         ]);
     }
 
+    /** Re-issue presigned URLs for the requested part numbers. */
     public function reissueParts(Request $request, MultipartUpload $multipart): JsonResponse
     {
         $this->authorizeOwner($request, $multipart);
@@ -105,6 +107,7 @@ class MultipartUploadController extends Controller
         return response()->json(['parts' => $parts]);
     }
 
+    /** Complete the multipart upload from the submitted part ETags. */
     public function complete(Request $request, MultipartUpload $multipart): JsonResponse
     {
         $this->authorizeOwner($request, $multipart);
@@ -129,6 +132,7 @@ class MultipartUploadController extends Controller
         ]);
     }
 
+    /** Abort the multipart upload session. */
     public function abort(Request $request, MultipartUpload $multipart): JsonResponse
     {
         $this->authorizeOwner($request, $multipart);
@@ -143,9 +147,9 @@ class MultipartUploadController extends Controller
     }
 
     /**
-     * Solo el creator (si lo hubo) puede tocar la sesión. Apps con flujos
-     * más complejos (admin que limpia uploads ajenos) sobreescriben la
-     * lógica via Gate o middleware adicional.
+     * Only the creator (if there was one) can touch the session. Apps with
+     * more complex flows (an admin cleaning up other people's uploads) override
+     * the logic via a Gate or additional middleware.
      */
     protected function authorizeOwner(Request $request, MultipartUpload $upload): void
     {
@@ -160,7 +164,7 @@ class MultipartUploadController extends Controller
             || $upload->creator_type !== $user->getMorphClass()
             || (string) $upload->creator_id !== (string) $user->getKey()
         ) {
-            abort(403, 'No autorizado para esta sesión multipart.');
+            abort(403, 'Not authorized for this multipart session.');
         }
     }
 

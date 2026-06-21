@@ -10,24 +10,30 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Driver default: persiste chunks (texto + embedding + metadata) en
- * `laracrate_file_chunks` y busca con keyword LIKE + cosine similarity
- * en PHP. Sin dependencias externas.
+ * Default driver: persists chunks (text + embedding + metadata) in
+ * `laracrate_file_chunks` and searches with keyword LIKE + cosine similarity
+ * in PHP. No external dependencies.
  */
 class MysqlChunkStore implements ChunkStore
 {
     private const SEMANTIC_CANDIDATE_POOL = 500;
     private const KEYWORD_SCORE = 1.0;
 
+    /**
+     * Return the driver name.
+     */
     public function driverName(): string
     {
         return 'mysql';
     }
 
+    /**
+     * Store the chunks for a file and return the count written.
+     */
     public function store(File $file, array $chunks): int
     {
-        // Idempotente: borra chunks viejos y reescribe. Mantenemos los
-        // chunk_index del JSONL (estables, no auto-increment).
+        // Idempotent: delete old chunks and rewrite. We keep the JSONL
+        // chunk_index values (stable, not auto-increment).
         FileChunk::where('file_id', $file->id)->delete();
 
         $count = 0;
@@ -49,6 +55,9 @@ class MysqlChunkStore implements ChunkStore
         return $count;
     }
 
+    /**
+     * Return all stored chunks for a file, ordered by chunk index.
+     */
     public function getByFile(File $file): Collection
     {
         return FileChunk::where('file_id', $file->id)
@@ -63,11 +72,17 @@ class MysqlChunkStore implements ChunkStore
             ]);
     }
 
+    /**
+     * Remove all stored chunks for a file.
+     */
     public function deleteByFile(File $file): void
     {
         FileChunk::where('file_id', $file->id)->delete();
     }
 
+    /**
+     * Run a hybrid keyword/semantic search and return scored chunk hits.
+     */
     public function search(string $query, array $filters = [], array $options = []): Collection
     {
         $limit         = max(1, (int) ($options['limit'] ?? 10));
@@ -118,7 +133,7 @@ class MysqlChunkStore implements ChunkStore
             ];
         }
 
-        // ===== Semántica =====
+        // ===== Semantic =====
         if ($semanticRatio > 0) {
             $queryEmbedding = $this->embedQuery($query);
 
@@ -170,6 +185,9 @@ class MysqlChunkStore implements ChunkStore
             });
     }
 
+    /**
+     * Embed a search query, returning the vector or null on failure.
+     */
     protected function embedQuery(string $query): ?array
     {
         try {
@@ -182,6 +200,9 @@ class MysqlChunkStore implements ChunkStore
         }
     }
 
+    /**
+     * Compute the cosine similarity between two vectors.
+     */
     protected function cosineSimilarity(array $a, array $b): float
     {
         if (count($a) !== count($b) || empty($a)) return 0.0;

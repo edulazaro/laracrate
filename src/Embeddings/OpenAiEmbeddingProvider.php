@@ -6,8 +6,14 @@ use EduLazaro\Laracrate\Contracts\EmbeddingProvider;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
+/**
+ * Embedding provider backed by the OpenAI embeddings API.
+ */
 class OpenAiEmbeddingProvider implements EmbeddingProvider
 {
+    /**
+     * Create a new OpenAI embedding provider.
+     */
     public function __construct(
         protected ?string $apiKey = null,
         protected string $model = 'text-embedding-3-small',
@@ -18,6 +24,9 @@ class OpenAiEmbeddingProvider implements EmbeddingProvider
         $this->apiKey ??= config('laracrate.embeddings.api_key') ?: env('OPENAI_API_KEY');
     }
 
+    /**
+     * Generate embeddings for the given texts.
+     */
     public function embed(array $texts): array
     {
         if (empty($texts)) {
@@ -25,7 +34,7 @@ class OpenAiEmbeddingProvider implements EmbeddingProvider
         }
 
         if (!$this->apiKey) {
-            throw new RuntimeException('OpenAI API key no configurada (OPENAI_API_KEY o laracrate.embeddings.api_key).');
+            throw new RuntimeException('OpenAI API key not configured (OPENAI_API_KEY or laracrate.embeddings.api_key).');
         }
 
         $response = Http::withToken($this->apiKey)
@@ -48,16 +57,25 @@ class OpenAiEmbeddingProvider implements EmbeddingProvider
         return array_map(fn ($row) => $row['embedding'] ?? [], $data);
     }
 
+    /**
+     * Return the embedding dimensions.
+     */
     public function dimensions(): int
     {
         return $this->dimensions;
     }
 
+    /**
+     * Return the model identifier.
+     */
     public function model(): string
     {
         return $this->model;
     }
 
+    /**
+     * Return the provider name.
+     */
     public function name(): string
     {
         return 'openai';

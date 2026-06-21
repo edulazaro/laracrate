@@ -10,9 +10,9 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Completa una sesión multipart en S3/R2. El cliente nos pasa la lista de
- * partes con su PartNumber y ETag (que recibió en cada PUT exitoso) y aquí
- * llamamos a CompleteMultipartUpload para que S3 ensamble el objeto final.
+ * Completes a multipart session in S3/R2. The client passes us the list of
+ * parts with their PartNumber and ETag (received on each successful PUT) and
+ * here we call CompleteMultipartUpload so S3 assembles the final object.
  *
  *   CompleteMultipartUploadAction::create()->run([
  *       'upload' => $multipartUpload,
@@ -23,38 +23,41 @@ use Throwable;
  *       ],
  *   ]);
  *
- * Marca el row como COMPLETED. La creación del File row se delega a la app
- * (escuchando el evento o llamando a `addFile` con la key); este paquete
- * solo concierne al transporte.
+ * Marks the row as COMPLETED. Creating the File row is delegated to the app
+ * (listening to the event or calling `addFile` with the key); this package
+ * only concerns the transport.
  */
 class CompleteMultipartUploadAction extends Action
 {
+    /**
+     * Complete the multipart session and mark the row as COMPLETED.
+     */
     public function handle(MultipartUpload $upload, array $parts): MultipartUpload
     {
         if (!$upload->isActive()) {
             throw new RuntimeException(
-                "Upload {$upload->upload_id} no está activo (status={$upload->status->value})."
+                "Upload {$upload->upload_id} is not active (status={$upload->status->value})."
             );
         }
 
         if ($parts === []) {
-            throw new RuntimeException("Lista de partes vacía.");
+            throw new RuntimeException("Empty parts list.");
         }
 
         $manager = app(StorageManager::class);
         $client  = $manager->s3ClientOf($upload->disk);
 
         if ($client === null) {
-            throw new RuntimeException("Disk '{$upload->disk}' no es S3-compatible.");
+            throw new RuntimeException("Disk '{$upload->disk}' is not S3-compatible.");
         }
 
         $bucket = config("filesystems.disks.{$upload->disk}.bucket");
 
-        // Normaliza y ordena por PartNumber ascendente (S3 lo exige).
+        // Normalize and sort by ascending PartNumber (S3 requires it).
         $normalized = [];
         foreach ($parts as $p) {
             if (!isset($p['part_number'], $p['etag'])) {
-                throw new RuntimeException("Cada part requiere 'part_number' y 'etag'.");
+                throw new RuntimeException("Each part requires 'part_number' and 'etag'.");
             }
             $normalized[] = [
                 'PartNumber' => (int) $p['part_number'],

@@ -11,23 +11,23 @@ use Intervention\Image\Interfaces\ImageInterface;
 use Throwable;
 
 /**
- * Incrusta una marca de agua (PNG superpuesta + texto opcional) en una
- * imagen viva (`ImageInterface` de Intervention). Usado por
- * `GenerateImageVariantAction` cuando la config de la variant declara
- * `'watermark' => true`.
+ * Embeds a watermark (overlaid PNG + optional text) into a live image
+ * (Intervention's `ImageInterface`). Used by `GenerateImageVariantAction`
+ * when the variant config declares `'watermark' => true`.
  *
- * Convenciones:
- *  - El watermark se aplica SOLO a variants. El original (master) nunca
- *    lleva watermark — lo garantiza el caller.
- *  - La PNG escala proporcionalmente al ancho de la variant (`size` en
- *    config = fracción del ancho).
- *  - El texto auxiliar (opcional) es config-driven: string fijo o closure
- *    que recibe el `File` y devuelve el texto.
- *  - Si no hay PNG configurada y no hay texto, es no-op (devuelve la
- *    imagen tal cual).
+ * Conventions:
+ *  - The watermark is applied ONLY to variants. The original (master) never
+ *    carries a watermark, guaranteed by the caller.
+ *  - The PNG scales proportionally to the variant width (`size` in config
+ *    = fraction of the width).
+ *  - The auxiliary text (optional) is config-driven: a fixed string or a
+ *    closure that receives the `File` and returns the text.
+ *  - If no PNG is configured and there is no text, it is a no-op (returns
+ *    the image as-is).
  */
 class ApplyWatermarkAction extends Action
 {
+    /** Apply the configured watermark image and text to the image. */
     public function handle(ImageInterface $image, ?File $file = null): ImageInterface
     {
         $config = config('laracrate.watermark', []);
@@ -36,7 +36,7 @@ class ApplyWatermarkAction extends Action
             $this->stampImage($image, $config);
             $this->stampText($image, $config['text'] ?? [], $file);
         } catch (Throwable $e) {
-            logger()->warning('Laracrate: fallo al aplicar watermark', [
+            logger()->warning('Laracrate: failed to apply watermark', [
                 'file_id' => $file?->id,
                 'error'   => $e->getMessage(),
             ]);
@@ -45,6 +45,7 @@ class ApplyWatermarkAction extends Action
         return $image;
     }
 
+    /** Overlay the configured watermark PNG onto the image. */
     protected function stampImage(ImageInterface $image, array $config): void
     {
         $imagePath = $config['image_path'] ?? null;
@@ -67,8 +68,8 @@ class ApplyWatermarkAction extends Action
         $targetWidth = (int) ($image->width() * $size);
         $watermark   = $watermark->scaleDown($targetWidth);
 
-        // Posicionamiento: 'center' calculamos desplazamiento; los demás
-        // delegan en Intervention con offset 0.
+        // Positioning: for 'center' we compute the offset; the rest delegate
+        // to Intervention with offset 0.
         if ($position === 'center') {
             $x = (int) (($image->width() - $watermark->width()) / 2);
             $y = (int) (($image->height() - $watermark->height()) / 2);
@@ -79,6 +80,7 @@ class ApplyWatermarkAction extends Action
         $image->place($watermark, $position, 0, 0, $opacity);
     }
 
+    /** Draw the configured watermark text onto the image. */
     protected function stampText(ImageInterface $image, array $textConfig, ?File $file): void
     {
         $content = $this->resolveTextContent($textConfig['content'] ?? null, $file);
@@ -108,9 +110,9 @@ class ApplyWatermarkAction extends Action
     }
 
     /**
-     * Resuelve el contenido del texto: string fijo, closure(File): ?string,
-     * o null. Si llega closure, se invoca con el File (puede devolver null
-     * para saltar el texto).
+     * Resolves the text content: a fixed string, a closure(File): ?string,
+     * or null. If a closure is given, it is invoked with the File (it may
+     * return null to skip the text).
      */
     protected function resolveTextContent(mixed $content, ?File $file): ?string
     {
@@ -131,7 +133,7 @@ class ApplyWatermarkAction extends Action
     }
 
     /**
-     * Devuelve [x, y, align, valign] para la combinación posición + padding.
+     * Returns [x, y, align, valign] for the given position + padding combination.
      */
     protected function textCoordinates(ImageInterface $image, string $position, int $padding): array
     {
@@ -144,8 +146,8 @@ class ApplyWatermarkAction extends Action
     }
 
     /**
-     * Resuelve un path: si es absoluto y existe, lo usa; si es relativo,
-     * intenta `public_path()`.
+     * Resolves a path: if absolute and it exists, uses it; if relative,
+     * tries `public_path()`.
      */
     protected function resolvePath(string $path): ?string
     {
@@ -163,6 +165,7 @@ class ApplyWatermarkAction extends Action
         return file_exists($path) ? $path : null;
     }
 
+    /** Build the Intervention image manager for the configured driver. */
     protected function imageManager(): ImageManager
     {
         return config('laracrate.image.driver') === 'gd'

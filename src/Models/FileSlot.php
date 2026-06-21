@@ -7,24 +7,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * FileSlot: un "hueco" con reglas que un usuario rellena con archivos.
+ * FileSlot: a "slot" with rules that a user fills with files.
  *
- * Casos típicos:
- *   - Requisito en un proceso de admisión: "Sube tu DNI (slot 'DNI', max 1, .pdf/.jpg)"
- *   - Cupo definido: "Sube hasta 3 facturas de junio"
- *   - Limitar tipos: "Sube fotos (solo .jpg/.png)"
+ * Typical cases:
+ *   - Requirement in an admission process: "Upload your ID (slot 'DNI', max 1, .pdf/.jpg)"
+ *   - Defined quota: "Upload up to 3 June invoices"
+ *   - Limit types: "Upload photos (only .jpg/.png)"
  *
- * No es un sistema de clasificación — eso queda al desarrollador (categorías,
- * tags libres, jerarquías, lo que necesite). El slot solo define **dónde
- * encajan los archivos y bajo qué reglas**.
+ * It is not a classification system: that is left to the developer (categories,
+ * free tags, hierarchies, whatever is needed). The slot only defines **where
+ * files fit and under which rules**.
  *
  * Scope:
- *   - tenant_type/tenant_id  → multi-tenancy (igual que File)
- *   - context_type/context_id → scope opcional dentro del tenant
- *     (ej. context='case' para slots solo de un caso concreto)
+ *   - tenant_type/tenant_id  -> multi-tenancy (same as File)
+ *   - context_type/context_id -> optional scope within the tenant
+ *     (e.g. context='case' for slots of a specific case only)
  *
- * Relación con archivos: m2m simple vía `laracrate_file_slot_pivot`.
- * El contexto del slot actúa como ámbito natural del límite.
+ * Relationship with files: simple m2m via `laracrate_file_slot_pivot`.
+ * The slot context acts as the natural scope of the limit.
  */
 class FileSlot extends Model
 {
@@ -53,16 +53,19 @@ class FileSlot extends Model
         'position'              => 'integer',
     ];
 
+    /** The tenant that scopes this slot. */
     public function tenant(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** Optional context within the tenant. */
     public function context(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** Files attached to this slot (many-to-many). */
     public function files(): BelongsToMany
     {
         return $this->belongsToMany(
@@ -74,7 +77,7 @@ class FileSlot extends Model
     }
 
     /**
-     * Cuenta archivos en el slot. Opcionalmente filtra por creator polimórfico
+     * Counts files in the slot. Optionally filters by polymorphic creator
      * (creator_type, creator_id).
      */
     public function uploadedCount(?string $creatorType = null, ?int $creatorId = null): int
@@ -88,8 +91,8 @@ class FileSlot extends Model
     }
 
     /**
-     * Determina si el slot acepta más archivos. Devuelve detalle del por qué
-     * cuando no acepta:
+     * Determines whether the slot accepts more files. Returns detail of why
+     * when it does not:
      *   ['can' => bool, 'reason' => 'global'|'per_creator'|null, 'limit' => int|null]
      */
     public function canAcceptMore(?string $creatorType = null, ?int $creatorId = null): array
@@ -112,8 +115,8 @@ class FileSlot extends Model
     }
 
     /**
-     * Comprueba si la extensión está permitida por este slot.
-     * Lista vacía = todo permitido.
+     * Checks whether the extension is allowed by this slot.
+     * Empty list = everything allowed.
      */
     public function acceptsExtension(string $extension): bool
     {
@@ -123,8 +126,8 @@ class FileSlot extends Model
     }
 
     /**
-     * Comprueba si el FileType (document/image/video/audio) está permitido
-     * por este slot. Lista vacía/null = todo permitido.
+     * Checks whether the FileType (document/image/video/audio) is allowed
+     * by this slot. Empty/null list = everything allowed.
      */
     public function acceptsType(string $type): bool
     {
@@ -133,9 +136,9 @@ class FileSlot extends Model
     }
 
     /**
-     * Validación completa del file contra el slot. Aplica AND entre extension
-     * y type: si ambas restricciones están declaradas, el file debe cumplir las
-     * dos. Si solo una está declarada, solo se valida esa.
+     * Full validation of the file against the slot. Applies AND between
+     * extension and type: if both restrictions are declared, the file must
+     * satisfy both. If only one is declared, only that one is validated.
      */
     public function accepts(File $file): bool
     {

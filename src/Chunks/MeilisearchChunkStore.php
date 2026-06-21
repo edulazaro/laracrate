@@ -12,23 +12,26 @@ use Meilisearch\Client;
 use Meilisearch\Contracts\DocumentsQuery;
 
 /**
- * Driver Meilisearch: pushea chunks como documentos al índice configurado
- * con embeddings inyectados como `_vectors.{embedder}` (modo userProvided).
- * Búsqueda híbrida server-side con `semanticRatio`.
+ * Meilisearch driver: pushes chunks as documents to the configured index with
+ * embeddings injected as `_vectors.{embedder}` (userProvided mode). Server-side
+ * hybrid search with `semanticRatio`.
  *
- * Cuando este driver está activo, `laracrate_file_chunks` NO se escribe —
- * Meili es la única fuente de chunks. El artefacto `.chunks.jsonl` en R2
- * sigue siendo el backup portable (lo escribe ChunkTextAction y lo lee
- * PersistChunksAction para alimentar `store()`).
+ * When this driver is active, `laracrate_file_chunks` is NOT written: Meili is
+ * the sole source of chunks. The `.chunks.jsonl` artifact on R2 remains the
+ * portable backup (ChunkTextAction writes it and PersistChunksAction reads it
+ * to feed `store()`).
  *
- * Requiere `meilisearch/meilisearch-php` y un binding de Meilisearch\Client
- * en el container.
+ * Requires `meilisearch/meilisearch-php` and a Meilisearch\Client binding in
+ * the container.
  */
 class MeilisearchChunkStore implements ChunkStore
 {
-    /** Máximo de docs a pedir por request al leer (paginación de getByFile). */
+    /** Max docs to request per call when reading (pagination of getByFile). */
     private const FETCH_PAGE_SIZE = 1000;
 
+    /**
+     * Create a new Meilisearch chunk store.
+     */
     public function __construct(
         protected Client $client,
         protected MeilisearchSync $sync,
@@ -36,11 +39,17 @@ class MeilisearchChunkStore implements ChunkStore
         protected string $embedder = 'default',
     ) {}
 
+    /**
+     * Return the driver name.
+     */
     public function driverName(): string
     {
         return 'meilisearch';
     }
 
+    /**
+     * Store the chunks for a file in the index and return the count written.
+     */
     public function store(File $file, array $chunks): int
     {
         try {
@@ -78,8 +87,8 @@ class MeilisearchChunkStore implements ChunkStore
                 return 0;
             }
 
-            // Borra los previos del file (evita duplicados de chunks viejos) y
-            // pushea los nuevos.
+            // Delete the file's previous docs (avoids duplicate old chunks) and
+            // push the new ones.
             $this->sync->removeFile($file);
             $this->client->index($this->index)->addDocuments($docs, 'chunk_id');
 
@@ -95,6 +104,9 @@ class MeilisearchChunkStore implements ChunkStore
         }
     }
 
+    /**
+     * Return all stored chunks for a file, ordered by chunk index.
+     */
     public function getByFile(File $file): Collection
     {
         $all = collect();
@@ -139,6 +151,9 @@ class MeilisearchChunkStore implements ChunkStore
         return $all->sortBy('chunk_index')->values();
     }
 
+    /**
+     * Remove all stored chunks for a file from the index.
+     */
     public function deleteByFile(File $file): void
     {
         try {
@@ -151,6 +166,9 @@ class MeilisearchChunkStore implements ChunkStore
         }
     }
 
+    /**
+     * Run a hybrid keyword/semantic search and return scored chunk hits.
+     */
     public function search(string $query, array $filters = [], array $options = []): Collection
     {
         $limit         = max(1, (int) ($options['limit'] ?? 10));
@@ -169,8 +187,8 @@ class MeilisearchChunkStore implements ChunkStore
                 $params['filter'] = $meiliFilter;
             }
 
-            // userProvided exige `vector` server-side. Embedea el query
-            // con el mismo provider que generó los embeddings de los chunks.
+            // userProvided requires `vector` server-side. Embed the query with
+            // the same provider that generated the chunk embeddings.
             if ($semanticRatio > 0) {
                 $queryVector = $this->embedQuery($query);
 
@@ -208,6 +226,9 @@ class MeilisearchChunkStore implements ChunkStore
         }
     }
 
+    /**
+     * Embed a search query, returning the vector or null on failure.
+     */
     protected function embedQuery(string $query): ?array
     {
         try {
@@ -220,6 +241,9 @@ class MeilisearchChunkStore implements ChunkStore
         }
     }
 
+    /**
+     * Build the Meilisearch filter expression from the given filters.
+     */
     protected function buildFilter(array $filters): ?string
     {
         $parts = [];

@@ -2,21 +2,24 @@
 
 namespace EduLazaro\Laracrate\Enums;
 
+/**
+ * Access mode of a File collection: how its contents are served.
+ */
 enum FileAccess: string
 {
     /**
-     * URL directa al CDN (Storage::url()). Sin firma, sin audit.
+     * Direct URL to the CDN (Storage::url()). No signature, no audit.
      */
     case PUBLIC = 'public';
 
     /**
-     * URL firmada temporal (Storage::temporaryUrl()), cacheada server-side.
+     * Temporary signed URL (Storage::temporaryUrl()), cached server-side.
      */
     case SIGNED = 'signed';
 
     /**
-     * Sirve por controller del paquete: audit, permisos por request,
-     * opcionalmente bind viewer (sensitive), encrypt y watermark.
+     * Served by the package controller: audit, per-request permissions,
+     * optionally viewer bind (sensitive), encrypt and watermark.
      */
     case STREAM = 'stream';
 }

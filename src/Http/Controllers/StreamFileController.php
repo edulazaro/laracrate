@@ -13,30 +13,33 @@ use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Sirve files con access=stream (incluye sensitive). Re-valida permisos
- * por request, audita la descarga y opcionalmente desencripta antes de
- * servir.
+ * Serves files with access=stream (including sensitive). Re-validates
+ * permissions per request, audits the download and optionally decrypts
+ * before serving.
  *
- * El watermark NO se aplica aquí — se incrusta en el binario de la
- * variant correspondiente cuando se genera, no en stream-time. Ver
- * `ApplyWatermarkAction` y `GenerateImageVariantAction`.
+ * The watermark is NOT applied here: it is baked into the binary of the
+ * corresponding variant when it is generated, not at stream time. See
+ * `ApplyWatermarkAction` and `GenerateImageVariantAction`.
  *
- * Nunca expone la URL del backend al cliente.
+ * Never exposes the backend URL to the client.
  */
 class StreamFileController extends Controller
 {
+    /** Stream the file inline and count it as a download. */
     public function stream(Request $request, File $file): StreamedResponse
     {
         $this->validateAccess($request, $file);
         return $this->sendFile($request, $file, increment: true, attachment: false);
     }
 
+    /** Stream the file inline without counting a download. */
     public function preview(Request $request, File $file): StreamedResponse
     {
         $this->validateAccess($request, $file);
         return $this->sendFile($request, $file, increment: false, attachment: false);
     }
 
+    /** Stream the file as an attachment (forced download). */
     public function download(Request $request, File $file): StreamedResponse
     {
         $this->validateAccess($request, $file);
@@ -44,17 +47,17 @@ class StreamFileController extends Controller
     }
 
     /**
-     * Modo "link": URL Laravel persistente que se resuelve al vuelo según
-     * el access real del File. Valida acceso (HMAC + policy) y redirige (302)
-     * a la URL apropiada:
+     * "link" mode: persistent Laravel URL resolved on the fly based on the
+     * File's actual access. Validates access (HMAC + policy) and redirects (302)
+     * to the appropriate URL:
      *
-     *   public → URL pública del bucket (no caduca; redirect por consistencia)
-     *   signed → R2 signed URL generada en este instante (~30s, suficiente
-     *            para que el navegador siga el redirect)
-     *   stream → ruta interna de stream firmada al vuelo (proxea via Laravel)
+     *   public -> public bucket URL (does not expire; redirect for consistency)
+     *   signed -> R2 signed URL generated at this instant (~30s, enough for
+     *             the browser to follow the redirect)
+     *   stream -> internal stream route signed on the fly (proxied via Laravel)
      *
-     * La URL en el HTML siempre es esta ruta `laracrate.files.link`, así
-     * el HTML no caduca aunque el TTL real de R2 sea corto.
+     * The URL in the HTML is always this `laracrate.files.link` route, so the
+     * HTML does not expire even if the real R2 TTL is short.
      */
     public function link(Request $request, File $file): RedirectResponse|StreamedResponse
     {
@@ -72,17 +75,17 @@ class StreamFileController extends Controller
 
         $access = $file->access?->value ?? $file->access;
 
-        // public → URL del bucket público, no caduca
+        // public -> public bucket URL, does not expire
         if ($access === 'public') {
             return redirect()->away($disk->url($key), 302);
         }
 
-        // stream → proxear vía Laravel (binario pasa por nosotros)
+        // stream -> proxy via Laravel (the binary passes through us)
         if ($access === 'stream') {
             return $this->sendFile($request, $file, increment: false, attachment: false);
         }
 
-        // signed (default) → firmar R2 al vuelo y redirigir
+        // signed (default) -> sign R2 on the fly and redirect
         $driver = config("filesystems.disks.{$file->disk}.driver");
         if ($driver === 's3') {
             $redirectTtl = (int) config('laracrate.urls.link_redirect_ttl_seconds', 30);
@@ -90,22 +93,23 @@ class StreamFileController extends Controller
             return redirect()->away($r2Url, 302);
         }
 
-        // Fallback para disks no-s3 (local dev): servir el binario.
+        // Fallback for non-s3 disks (local dev): serve the binary.
         return $this->sendFile($request, $file, increment: false, attachment: false);
     }
 
     /* ------------------------------------------------------------------
-     | Validación: firma + viewer bind + policy
+     | Validation: signature + viewer bind + policy
      * ------------------------------------------------------------------ */
 
+    /** Validate the request signature, viewer binding and view policy. */
     protected function validateAccess(Request $request, File $file): void
     {
-        // 1. Firma de Laravel (signed routes).
+        // 1. Laravel signature (signed routes).
         if (!$request->hasValidSignature()) {
             abort(403, 'Invalid or expired signature.');
         }
 
-        // 2. Si sensitive, ligar la URL al usuario que la generó.
+        // 2. If sensitive, bind the URL to the user that generated it.
         if ($file->isSensitive() && config('laracrate.urls.bind_to_user', true)) {
             if (!Auth::check()) {
                 abort(401);
@@ -123,9 +127,10 @@ class StreamFileController extends Controller
     }
 
     /* ------------------------------------------------------------------
-     | Servir el binario (con encrypt + watermark si aplica)
+     | Serve the binary (with decryption if applicable)
      * ------------------------------------------------------------------ */
 
+    /** Stream the binary to the client, decrypting and auditing as needed. */
     protected function sendFile(Request $request, File $file, bool $increment, bool $attachment): StreamedResponse
     {
         $manager = app(StorageManager::class);
@@ -138,7 +143,7 @@ class StreamFileController extends Controller
 
         $this->audit($request, $file, $increment, $attachment);
 
-        // Leer binario (desencriptado si is_encrypted).
+        // Read the binary (decrypted if is_encrypted).
         $content = $file->is_encrypted
             ? DecryptFileAction::create()->run(['file' => $file])
             : (string) $disk->get($key);
@@ -161,6 +166,7 @@ class StreamFileController extends Controller
         );
     }
 
+    /** Increment download counters and optionally log the access. */
     protected function audit(Request $request, File $file, bool $increment, bool $attachment): void
     {
         if ($increment && config('laracrate.stream.increment_downloads', true)) {

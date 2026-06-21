@@ -8,19 +8,20 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Reportes de uso de storage. Singleton del paquete:
+ * Storage usage reports. Package singleton:
  *
  *   $stats = app(UsageReporter::class)->forTenant($organization);
  *   $stats->human();                  // "1.42 GB"
- *   $stats->exceeds(5 * 1024**3);     // true si > 5 GB
+ *   $stats->exceeds(5 * 1024**3);     // true if > 5 GB
  *   $stats->byCollection['gallery'];  // ['bytes' => 123, 'files' => 45]
  *
- * Las queries cuentan **todos los Files** (incluido variants y soft-deleted)
- * porque ambos consumen storage real en el bucket. Para excluir trashed
- * pasa `excludeTrashed: true`.
+ * The queries count **all Files** (including variants and soft-deleted)
+ * because both consume real storage in the bucket. To exclude trashed,
+ * pass `excludeTrashed: true`.
  */
 class UsageReporter
 {
+    /** Usage stats scoped to a tenant. */
     public function forTenant(Model $tenant, bool $excludeTrashed = false): UsageStats
     {
         return $this->aggregate(function (Builder $q) use ($tenant) {
@@ -29,6 +30,7 @@ class UsageReporter
         }, $excludeTrashed);
     }
 
+    /** Usage stats scoped to a creator. */
     public function forCreator(Model $creator, bool $excludeTrashed = false): UsageStats
     {
         return $this->aggregate(function (Builder $q) use ($creator) {
@@ -37,6 +39,7 @@ class UsageReporter
         }, $excludeTrashed);
     }
 
+    /** Usage stats scoped to a collection, optionally within a tenant. */
     public function forCollection(string $collection, ?Model $tenant = null, bool $excludeTrashed = false): UsageStats
     {
         return $this->aggregate(function (Builder $q) use ($collection, $tenant) {
@@ -50,8 +53,8 @@ class UsageReporter
     }
 
     /**
-     * Uso total del sistema. Cuidado: en bases grandes puede ser un escaneo
-     * pesado — considera ejecutar offline o con cache.
+     * Total system usage. Careful: on large databases this can be a heavy
+     * scan, so consider running it offline or with a cache.
      */
     public function global(bool $excludeTrashed = false): UsageStats
     {
@@ -59,8 +62,8 @@ class UsageReporter
     }
 
     /**
-     * Núcleo: una sola query con SUM/COUNT agrupada por (collection, type).
-     * Construye el DTO a partir de las filas resultantes.
+     * Core: a single query with SUM/COUNT grouped by (collection, type).
+     * Builds the DTO from the resulting rows.
      */
     protected function aggregate(callable $scope, bool $excludeTrashed): UsageStats
     {
@@ -86,8 +89,8 @@ class UsageReporter
             $bytes = (int) $row->bytes;
             $files = (int) $row->files;
             $collection = $row->collection ?? '';
-            // type es enum cast en File, pero como aquí es una query raw selectRaw,
-            // viene como string crudo — perfecto para indexar el array.
+            // type is an enum cast on File, but since this is a raw selectRaw query,
+            // it comes back as a raw string, which is perfect for indexing the array.
             $type = (string) ($row->type ?? '');
 
             $totalBytes += $bytes;

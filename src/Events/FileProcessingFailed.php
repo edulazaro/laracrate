@@ -7,13 +7,14 @@ use Illuminate\Foundation\Events\Dispatchable;
 use Throwable;
 
 /**
- * Un step del pipeline lanzó. El File queda FAILED y processing_error
- * tiene el mensaje. La queue reintentará si el job aún tiene tries.
+ * A pipeline step threw. The File is left FAILED and processing_error
+ * holds the message. The queue will retry if the job still has tries left.
  */
 class FileProcessingFailed
 {
     use Dispatchable;
 
+    /** Create the event for the failed file and its exception. */
     public function __construct(
         public File $file,
         public Throwable $exception,

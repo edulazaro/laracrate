@@ -8,21 +8,22 @@ use EduLazaro\Laractions\Action;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Trocea el contenido extraído (storage `{path}.json`) en N chunks según
- * config y los persiste como `.chunks.jsonl` (artefacto canónico de la
- * pipeline, portable en R2).
+ * Splits the extracted content (storage `{path}.json`) into N chunks
+ * according to config and persists them as `.chunks.jsonl` (the canonical
+ * pipeline artifact, portable on R2).
  *
- * NO escribe a BD ni a Meili. El persist al backend final lo hace
- * `PersistChunksAction` al final de la pipeline a través del
- * `ChunkStore` driver activo.
+ * Does NOT write to the DB or Meili. The persist to the final backend is
+ * done by `PersistChunksAction` at the end of the pipeline through the
+ * active `ChunkStore` driver.
  *
- * Devuelve la lista de chunks generados (en memoria) por si el caller
- * quiere usarlos directo sin re-leer JSONL.
+ * Returns the list of generated chunks (in memory) in case the caller
+ * wants to use them directly without re-reading the JSONL.
  *
  * @return array<int,array{chunk_index:int,context:?string,text:string,tokens:int,metadata:array}>
  */
 class ChunkTextAction extends Action
 {
+    /** Split the extracted content into chunks and persist them as JSONL. */
     public function handle(File $file, ?int $chunkSize = null, ?int $overlap = null): array
     {
         $chunkSize = $chunkSize ?? config('laracrate.embeddings.chunk_size', 1000);
@@ -45,8 +46,8 @@ class ChunkTextAction extends Action
             return [];
         }
 
-        // Si CUALQUIER página declara `context`, troceamos por página y
-        // propagamos el context al chunk. Si ninguna lo tiene, concatenamos.
+        // If ANY page declares `context`, we chunk per page and propagate the
+        // context to the chunk. If none has it, we concatenate.
         $hasContext = collect($extracted->pages)->contains(fn ($p) => !empty($p['context'] ?? null));
 
         $chunks = [];
@@ -85,7 +86,7 @@ class ChunkTextAction extends Action
             }
         }
 
-        // Persistimos el JSONL (canónico). Cada línea es un chunk completo.
+        // Persist the JSONL (canonical). Each line is a complete chunk.
         $jsonl = collect($chunks)
             ->map(fn ($c) => json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
             ->implode("\n");
@@ -96,6 +97,8 @@ class ChunkTextAction extends Action
     }
 
     /**
+     * Build a single chunk record.
+     *
      * @return array{chunk_index:int,context:?string,text:string,tokens:int,metadata:array}
      */
     protected function makeChunk(int $index, string $text, ?string $context, array $metadata): array
@@ -110,7 +113,7 @@ class ChunkTextAction extends Action
     }
 
     /**
-     * Trocea un texto en chunks. chunkSize=0 → un único chunk.
+     * Splits a text into chunks. chunkSize=0 yields a single chunk.
      *
      * @return array<int,string>
      */
@@ -141,7 +144,7 @@ class ChunkTextAction extends Action
     }
 
     /**
-     * Trocea con tracking de rango (start, end) para el mapeo a páginas.
+     * Chunks while tracking the range (start, end) for the page mapping.
      *
      * @return array<int,array{text:string,start:int,end:int}>
      */
@@ -171,7 +174,11 @@ class ChunkTextAction extends Action
         return $chunks;
     }
 
-    /** @return array{0:string,1:array<int,int>} */
+    /**
+     * Build the concatenated full text and a map of char offset to page number.
+     *
+     * @return array{0:string,1:array<int,int>}
+     */
     protected function buildCharToPageMap(ExtractedContent $extracted): array
     {
         if (empty($extracted->pages)) {
@@ -197,7 +204,11 @@ class ChunkTextAction extends Action
         return [implode($separator, $parts), $charToPage];
     }
 
-    /** @return array<int> */
+    /**
+     * Return the page numbers that overlap the given char range.
+     *
+     * @return array<int>
+     */
     protected function pagesForRange(array $charToPage, int $start, int $end): array
     {
         if (empty($charToPage)) {

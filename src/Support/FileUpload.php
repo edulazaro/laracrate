@@ -5,19 +5,20 @@ namespace EduLazaro\Laracrate\Support;
 use EduLazaro\Laracrate\Models\File;
 
 /**
- * Value object que representa un archivo YA presente en el backend (subido
- * vía presigned URL a S3/R2, o por cualquier otro mecanismo), antes de
- * persistir el File model.
+ * Value object representing a file that is ALREADY present in the backend
+ * (uploaded via presigned URL to S3/R2, or by any other mechanism), before
+ * persisting the File model.
  *
- * Lo construye el cliente JS tras completar el upload directo y lo envía
- * de vuelta al servidor para que CreateFileAction lo materialice.
+ * The JS client builds it after completing the direct upload and sends it
+ * back to the server so CreateFileAction can materialize it.
  *
- * Solo describe el binario físico (disk, key, mime, size, dimensiones,
- * digest). Para atributos del File model (title, description, category,
- * visibility, metadata JSON) usa el parámetro `$data` de `addFile()`.
+ * It only describes the physical binary (disk, key, mime, size, dimensions,
+ * digest). For File model attributes (title, description, category,
+ * visibility, metadata JSON) use the `$data` parameter of `addFile()`.
  */
 class FileUpload
 {
+    /** Create a value object describing an already-uploaded binary. */
     public function __construct(
         public readonly string $disk,
         public readonly string $key,
@@ -30,6 +31,7 @@ class FileUpload
         public readonly ?string $digest = null,
     ) {}
 
+    /** Build a FileUpload from a loosely-keyed array (snake or camel case). */
     public static function fromArray(array $data): self
     {
         return new self(
@@ -47,11 +49,13 @@ class FileUpload
 
     protected ?File $resultingFile = null;
 
+    /** Associate the persisted File model produced from this upload. */
     public function bindTo(File $file): void
     {
         $this->resultingFile = $file;
     }
 
+    /** The File model produced from this upload, if any. */
     public function getFile(): ?File
     {
         return $this->resultingFile;

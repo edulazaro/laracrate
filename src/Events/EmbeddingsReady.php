@@ -6,17 +6,18 @@ use EduLazaro\Laracrate\Models\File;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * El step de embeddings terminó y generó al menos un vector nuevo. Las apps
- * lo usan para indexar en pgvector / Meilisearch / Qdrant escuchando este
- * evento en un listener (mantiene los vectores en file_contents.embedding
- * para portabilidad).
+ * The embeddings step finished and generated at least one new vector. Apps
+ * use it to index into pgvector / Meilisearch / Qdrant by listening to this
+ * event in a listener (it keeps the vectors in file_contents.embedding
+ * for portability).
  *
- * `count` = nº de chunks que quedaron con embedding tras este pase.
+ * `count` = number of chunks that ended up with an embedding after this pass.
  */
 class EmbeddingsReady
 {
     use Dispatchable;
 
+    /** Create the event for the file and the number of embedded chunks. */
     public function __construct(
         public File $file,
         public int $count,

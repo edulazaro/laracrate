@@ -7,11 +7,12 @@ use EduLazaro\Laractions\Action;
 use Illuminate\Support\Facades\URL;
 
 /**
- * URL firmada para descarga de un File local. Apunta al ServeLocalController
- * del paquete, que verifica la firma y sirve el binario.
+ * Signed URL for downloading a local File. Points to the package's
+ * ServeLocalController, which verifies the signature and serves the binary.
  */
 class GenerateLocalSignedUrlAction extends Action
 {
+    /** Build a temporary signed URL for the given local file. */
     public function handle(File $file, int $minutes = 5): string
     {
         return URL::temporarySignedRoute(

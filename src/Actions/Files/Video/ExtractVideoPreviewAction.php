@@ -12,16 +12,20 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Extrae un frame del vídeo con ffmpeg, lo sube como JPG al backend, y crea
- * un File hijo con parent_id = $file->id, variant = 'preview', type = image.
+ * Extracts a frame from the video with ffmpeg, uploads it as JPG to the
+ * backend, and creates a child File with parent_id = $file->id,
+ * variant = 'preview', type = image.
  *
- * Después dispatcha GenerateImageVariantsAction sobre el preview para crear
- * sus thumbnail/medium/large según config.preview.variants.
+ * Afterwards it dispatches GenerateImageVariantsAction on the preview to
+ * create its thumbnail/medium/large according to config.preview.variants.
  *
- * Requiere ffmpeg en el path.
+ * Requires ffmpeg on the path.
  */
 class ExtractVideoPreviewAction extends Action
 {
+    /**
+     * Extract a frame from the video and persist it as the 'preview' variant.
+     */
     public function handle(File $file, ?string $frameAt = null, array $previewVariants = []): ?File
     {
         if (!$file->isVideo()) {
@@ -32,7 +36,7 @@ class ExtractVideoPreviewAction extends Action
 
         $manager = app(StorageManager::class);
 
-        // Limpia preview previo (regeneración).
+        // Clean up the previous preview (regeneration).
         $existing = $file->children()->where('variant', 'preview')->first();
         if ($existing) {
             $existing->forceDelete();
@@ -52,7 +56,7 @@ class ExtractVideoPreviewAction extends Action
                 exec($cmd, $output, $code);
 
                 if ($code !== 0 || !is_file($tempOut)) {
-                    logger()->warning('Laracrate: ffmpeg falló al extraer preview', [
+                    logger()->warning('Laracrate: ffmpeg failed to extract preview', [
                         'cmd'    => $cmd,
                         'output' => $output,
                         'code'   => $code,
@@ -69,14 +73,14 @@ class ExtractVideoPreviewAction extends Action
                 return null;
             }
         } catch (Throwable $e) {
-            logger()->warning('Laracrate: fallo al extraer preview de vídeo', [
+            logger()->warning('Laracrate: failed to extract video preview', [
                 'file_id' => $file->id,
                 'error'   => $e->getMessage(),
             ]);
             return null;
         }
 
-        // Sube el JPG y crea el File hijo.
+        // Upload the JPG and create the child File.
         $baseName = Str::beforeLast($file->name, '.');
         $newName  = "{$baseName}_preview.jpg";
         $key      = $file->variantKey($newName);
@@ -97,7 +101,7 @@ class ExtractVideoPreviewAction extends Action
             'height'        => $height,
         ]);
 
-        // Variants del preview (thumbnail/medium/large) si vienen definidos.
+        // Preview variants (thumbnail/medium/large) if they are defined.
         if (!empty($previewVariants)) {
             GenerateImageVariantsAction::create()->run([
                 'file'     => $preview,

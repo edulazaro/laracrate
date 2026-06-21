@@ -6,6 +6,9 @@ use EduLazaro\Laracrate\Contracts\TextExtractor;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Support\ExtractedContent;
 
+/**
+ * Text extractor for plain-text based files (txt, csv, markdown, json, xml, html).
+ */
 class PlainTextExtractor implements TextExtractor
 {
     protected array $supportedMimes = [
@@ -18,6 +21,9 @@ class PlainTextExtractor implements TextExtractor
         'text/html',
     ];
 
+    /**
+     * Determine whether this extractor can handle the given file.
+     */
     public function supports(File $file): bool
     {
         if (in_array($file->mime_type, $this->supportedMimes, true)) {
@@ -27,6 +33,9 @@ class PlainTextExtractor implements TextExtractor
         return str_starts_with((string) $file->mime_type, 'text/');
     }
 
+    /**
+     * Read the file contents and return them as extracted content.
+     */
     public function extract(File $file): ExtractedContent
     {
         $key = $file->key;

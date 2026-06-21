@@ -6,16 +6,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Un chunk de un File. 1 fila = 1 trozo del documento extraído.
+ * A chunk of a File. 1 row = 1 piece of the extracted document.
  *
- * En modo MySQL search, guarda `text` (con FULLTEXT) y `embedding` (cosine
- * en PHP) para queries semánticas y keyword. En modo Meilisearch, esta
- * tabla se dropea entera y los chunks viven en Meili docs + JSONL backup
- * en storage.
+ * In MySQL search mode, it stores `text` (with FULLTEXT) and `embedding`
+ * (cosine in PHP) for semantic and keyword queries. In Meilisearch mode, this
+ * table is dropped entirely and the chunks live in Meili docs + a JSONL backup
+ * in storage.
  *
- * State del processing (status, error, provider, model, summary) vive
- * en el `File`, no aquí — porque se re-escribe con cada extracción del
- * file y aplica al file completo, no chunk por chunk.
+ * The processing state (status, error, provider, model, summary) lives in the
+ * `File`, not here, because it is rewritten with each extraction of the file
+ * and applies to the whole file, not chunk by chunk.
  *
  * @property int $id
  * @property int $file_id
@@ -46,11 +46,13 @@ class FileChunk extends Model
         'metadata'    => 'array',
     ];
 
+    /** The file this chunk belongs to. */
     public function file(): BelongsTo
     {
         return $this->belongsTo(File::class);
     }
 
+    /** True if this chunk has an embedding. */
     public function hasEmbedding(): bool
     {
         return is_array($this->embedding) && count($this->embedding) > 0;

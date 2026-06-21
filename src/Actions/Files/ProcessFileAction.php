@@ -14,20 +14,21 @@ use EduLazaro\Laractions\Action;
 use Throwable;
 
 /**
- * Orquestador del pipeline de procesamiento.
+ * Orchestrator of the processing pipeline.
  *
- * Recorre los pasos del FileActionRegistry en orden de prioridad.
- * Cada step decide si aplica via `supports($file)` y ejecuta su trabajo via
- * `handle($file)`. Las apps registran sus propios steps en su ServiceProvider:
+ * Iterates the FileActionRegistry steps in priority order.
+ * Each step decides whether it applies via `supports($file)` and runs its
+ * work via `handle($file)`. Apps register their own steps in their
+ * ServiceProvider:
  *
  *   app(FileActionRegistry::class)
  *       ->add(new MyVirusScanStep())
  *       ->add(new MyOcrStep())
  *       ->remove(\EduLazaro\Laracrate\Pipeline\Steps\Image\OptimizeImageStep::class);
  *
- * Adicionalmente, cada collection puede declarar steps específicos en su
- * config bajo la clave `actions`. Estos se resuelven via container y se
- * fusionan con los globales antes del sort por priority:
+ * Additionally, each collection can declare specific steps in its config
+ * under the `actions` key. These are resolved via the container and merged
+ * with the global ones before the sort by priority:
  *
  *   'collections' => [
  *       'documents' => [
@@ -38,20 +39,21 @@ use Throwable;
  *       ],
  *   ],
  *
- * Solo procesa top-level files. Los variants generados internamente marcan
- * processing_status=COMPLETED al crearse, sin pasar por aquí.
+ * Only processes top-level files. Internally generated variants mark
+ * processing_status=COMPLETED on creation, without going through here.
  *
- * Eventos disparados:
- *   - FileProcessingStarted  (tras marcar PROCESSING, antes del primer step)
- *   - FileProcessed          (al terminar OK, tras marcar COMPLETED)
- *   - FileProcessingFailed   (cuando un step lanza, tras marcar FAILED)
+ * Dispatched events:
+ *   - FileProcessingStarted  (after marking PROCESSING, before the first step)
+ *   - FileProcessed          (when finishing OK, after marking COMPLETED)
+ *   - FileProcessingFailed   (when a step throws, after marking FAILED)
  *
- * Política de errores: fail-fast. Si un step lanza, el File queda FAILED
- * y la queue reintenta con el backoff configurado en ProcessFileJob. Los
- * pasos posteriores no se ejecutan.
+ * Error policy: fail-fast. If a step throws, the File stays FAILED and the
+ * queue retries with the backoff configured in ProcessFileJob. The later
+ * steps are not executed.
  */
 class ProcessFileAction extends Action
 {
+    /** Run the ordered pipeline steps for a top-level file. */
     public function handle(File $file): File
     {
         if ($file->isVariant()) {
@@ -67,8 +69,8 @@ class ProcessFileAction extends Action
 
         try {
             foreach ($this->resolveSteps($file) as $step) {
-                // `supports()` es opcional. Si la action lo declara, lo
-                // respetamos; si no, se invoca `handle()` directamente.
+                // `supports()` is optional. If the action declares it, we
+                // respect it; otherwise `handle()` is invoked directly.
                 if (method_exists($step, 'supports') && ! $step->supports($file)) {
                     continue;
                 }
@@ -102,9 +104,9 @@ class ProcessFileAction extends Action
     }
 
     /**
-     * Steps que aplican al file: globales (registry) + específicos de la
-     * collection (`actions` en config). Resueltos via container y ordenados
-     * por priority ascendente.
+     * Steps that apply to the file: global (registry) + collection-specific
+     * (`actions` in config). Resolved via the container and ordered by
+     * ascending priority.
      *
      * @return FileActionInterface[]
      */
@@ -112,10 +114,10 @@ class ProcessFileAction extends Action
     {
         $global = app(FileActionRegistry::class)->all();
 
-        // Acciones de la collection: top-level + model-specific (acumulativas).
-        // Top-level aplica a todos los fileables; las del bloque models.{alias}
-        // se SUMAN (no reemplazan) — permite declarar actions generales del
-        // colectivo más actions específicas por morph type.
+        // Collection actions: top-level + model-specific (cumulative).
+        // Top-level applies to all fileables; those in the models.{alias} block
+        // are ADDED (not replaced), allowing general collective actions plus
+        // morph-type-specific actions.
         //
         //   'documents' => [
         //       'actions' => [ClassifyDocumentAction::class],   ← todos los docs

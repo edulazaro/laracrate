@@ -3,15 +3,15 @@
 namespace EduLazaro\Laracrate\Enums;
 
 /**
- * Estado del pipeline de procesamiento de un File.
+ * Status of a File's processing pipeline.
  *
- *   pending     → recién creado, en cola.
- *   processing  → ProcessFileAction está corriendo los steps.
- *   completed   → todos los steps que aplican corrieron sin error.
- *   failed      → un step lanzó; processing_error contiene el mensaje.
+ *   pending     → just created, queued.
+ *   processing  → ProcessFileAction is running the steps.
+ *   completed   → all applicable steps ran without error.
+ *   failed      → a step threw; processing_error holds the message.
  *
- * Aplica solo al File top-level. Las variants nacen ya con `completed`
- * (su action las marca) o sin estado de pipeline.
+ * Applies only to the top-level File. Variants are born already `completed`
+ * (their action marks them) or without a pipeline status.
  */
 enum ProcessingStatus: string
 {
@@ -20,6 +20,7 @@ enum ProcessingStatus: string
     case COMPLETED  = 'completed';
     case FAILED     = 'failed';
 
+    /** Whether this status is final (completed or failed). */
     public function isTerminal(): bool
     {
         return match ($this) {
@@ -28,6 +29,7 @@ enum ProcessingStatus: string
         };
     }
 
+    /** Whether this status means the pipeline is still running (pending or processing). */
     public function isInProgress(): bool
     {
         return match ($this) {

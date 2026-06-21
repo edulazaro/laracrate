@@ -8,21 +8,22 @@ use EduLazaro\Laractions\Action;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Paso final de la pipeline de chunks: lee `{path}.chunks.jsonl` (escrito
- * por ChunkTextAction + enriquecido con embeddings por
- * GenerateEmbeddingAction) y persiste al backend del ChunkStore activo.
+ * Final step of the chunks pipeline: reads `{path}.chunks.jsonl` (written by
+ * ChunkTextAction + enriched with embeddings by GenerateEmbeddingAction) and
+ * persists it to the active ChunkStore backend.
  *
- *   - MysqlChunkStore: inserta filas en `laracrate_file_chunks`.
- *   - MeilisearchChunkStore: pushea docs al índice Meili.
- *   - Drivers custom: lo que decidan.
+ *   - MysqlChunkStore: inserts rows into `laracrate_file_chunks`.
+ *   - MeilisearchChunkStore: pushes docs to the Meili index.
+ *   - Custom drivers: whatever they decide.
  *
- * JSONL = artefacto portable. Permite rebuild si cambias de driver (basta
- * volver a llamar a este action sobre todos los files de un disco).
+ * JSONL = portable artifact. It allows a rebuild if you change driver (just
+ * call this action again over all the files of a disk).
  *
- * Devuelve el número de chunks persistidos.
+ * Returns the number of persisted chunks.
  */
 class PersistChunksAction extends Action
 {
+    /** Read the chunks JSONL and persist it to the active ChunkStore. */
     public function handle(File $file): int
     {
         $disk = Storage::disk($file->disk);
@@ -41,6 +42,8 @@ class PersistChunksAction extends Action
     }
 
     /**
+     * Parse a JSONL string into an ordered array of chunks.
+     *
      * @return array<int,array>
      */
     protected function readJsonl(string $jsonl): array

@@ -8,8 +8,12 @@ use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 
+/**
+ * Pipeline step that generates preview images for PDF documents.
+ */
 class ExtractPdfPreviewStep implements FileActionInterface
 {
+    /** Determines whether this step applies to the given file. */
     public function supports(File $file): bool
     {
         if ($file->type !== FileType::DOCUMENT) {
@@ -23,11 +27,13 @@ class ExtractPdfPreviewStep implements FileActionInterface
         return !empty($this->previewConfig($file));
     }
 
+    /** Returns the priority that orders this step within the pipeline. */
     public function priority(): int
     {
         return 45;
     }
 
+    /** Runs the PDF preview extraction for the file. */
     public function handle(File $file): void
     {
         $preview = $this->previewConfig($file);
@@ -42,6 +48,7 @@ class ExtractPdfPreviewStep implements FileActionInterface
         ]);
     }
 
+    /** Resolves the preview configuration for the file's collection. */
     protected function previewConfig(File $file): array
     {
         $config = app(StorageManager::class)->getTypeConfig($file->collection, 'document', $file->fileable_type);

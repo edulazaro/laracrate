@@ -9,11 +9,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * Sesión de upload multipart contra un disk S3-compatible.
+ * Multipart upload session against an S3-compatible disk.
  *
- * Las acciones (`InitiateMultipartUploadAction`, `CompleteMultipartUploadAction`,
- * etc.) leen y escriben aquí. El controller la usa de fachada para los
- * endpoints HTTP. El cron de cleanup la usa para encontrar abandonadas.
+ * The actions (`InitiateMultipartUploadAction`, `CompleteMultipartUploadAction`,
+ * etc.) read and write here. The controller uses it as a facade for the HTTP
+ * endpoints. The cleanup cron uses it to find abandoned ones.
  */
 class MultipartUpload extends Model
 {
@@ -44,21 +44,25 @@ class MultipartUpload extends Model
         'aborted_at'    => 'datetime',
     ];
 
+    /** The file produced by this upload, once completed. */
     public function file(): BelongsTo
     {
         return $this->belongsTo(File::class, 'file_id');
     }
 
+    /** The model that created this upload. */
     public function creator(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** The tenant that scopes this upload. */
     public function tenant(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /** The model this upload belongs to. */
     public function fileable(): MorphTo
     {
         return $this->morphTo();
@@ -68,11 +72,13 @@ class MultipartUpload extends Model
      | Scopes
      * ------------------------------------------------------------------ */
 
+    /** Limit the query to active uploads. */
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', MultipartUploadStatus::ACTIVE);
     }
 
+    /** Limit the query to stale uploads (active and expired). */
     public function scopeStale(Builder $query): Builder
     {
         return $query
@@ -80,6 +86,7 @@ class MultipartUpload extends Model
             ->where('expires_at', '<', now());
     }
 
+    /** Limit the query to uploads created by the given creator. */
     public function scopeForCreator(Builder $query, Model $creator): Builder
     {
         return $query
@@ -88,14 +95,16 @@ class MultipartUpload extends Model
     }
 
     /* ------------------------------------------------------------------
-     | Helpers de estado
+     | State helpers
      * ------------------------------------------------------------------ */
 
+    /** True if the upload is active. */
     public function isActive(): bool
     {
         return $this->status === MultipartUploadStatus::ACTIVE;
     }
 
+    /** True if the upload has expired. */
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
