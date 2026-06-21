@@ -30,5 +30,6 @@ yarn.lock
 .DS_Store
 Thumbs.db
 
-# Guía interna para agentes (no se publica)
+# Guía interna para agentes / docs de trabajo (no se publican)
 CLAUDE.md
+research.md

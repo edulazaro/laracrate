@@ -311,6 +311,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Uploads directos (presigned a R2/S3)
+    |--------------------------------------------------------------------------
+    |
+    | route_prefix:  prefijo URL de los endpoints de presign / cancel.
+    | middleware:    middleware del grupo de rutas de uploads. La app es
+    |                responsable de la autorización (auth, throttle, etc.).
+    | allowed_disks: lista blanca de disks a los que se permite subir
+    |                directamente (se valida en presign y multipart init).
+    |                Vacío = sin restricción. El bloque multipart hereda este
+    |                middleware cuando el suyo es null.
+    |
+    */
+
+    'uploads' => [
+        'route_prefix'  => 'laracrate/uploads',
+        'middleware'    => ['web', 'auth'],
+        'allowed_disks' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Multipart upload (archivos grandes a S3/R2)
     |--------------------------------------------------------------------------
     |
