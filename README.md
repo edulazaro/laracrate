@@ -965,6 +965,11 @@ Config for `OcrPdfTextExtractor`, the fallback for scanned PDFs. The provider is
 ```php
 'ocr' => [
     'provider'  => env('LARACRATE_OCR_PROVIDER', 'anthropic'),
+
+    // Fallback language for the auto-generated image description when the
+    // image has no visible text to infer the language from (image OCR only).
+    'locale'    => 'en',
+
     'anthropic' => [
         'api_key' => env('LARACRATE_ANTHROPIC_API_KEY') ?: env('ANTHROPIC_API_KEY'),
         'model'   => env('LARACRATE_OCR_ANTHROPIC_MODEL', env('LARACRATE_OCR_MODEL', 'claude-haiku-4-5')),
@@ -976,7 +981,7 @@ Config for `OcrPdfTextExtractor`, the fallback for scanned PDFs. The provider is
 ],
 ```
 
-`provider` is `anthropic` (default, model `claude-haiku-4-5`) or `openai` (model `gpt-4o-mini`). See the Text extraction section.
+`provider` is `anthropic` (default, model `claude-haiku-4-5`) or `openai` (model `gpt-4o-mini`). `locale` only affects image OCR (`OcrImageTextExtractor`): the image description follows the visible text's language, falling back to this locale when the image has no text. See the Text extraction section.
 
 ### Watermark
 
