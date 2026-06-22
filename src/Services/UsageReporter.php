@@ -89,9 +89,12 @@ class UsageReporter
             $bytes = (int) $row->bytes;
             $files = (int) $row->files;
             $collection = $row->collection ?? '';
-            // type is an enum cast on File, but since this is a raw selectRaw query,
-            // it comes back as a raw string, which is perfect for indexing the array.
-            $type = (string) ($row->type ?? '');
+            // `type` is cast to the FileType enum on the File model, so even from a
+            // selectRaw query it hydrates as an enum (not a string). Read its backing
+            // value to index the array; tolerate a plain string or null defensively.
+            $type = $row->type instanceof \EduLazaro\Laracrate\Enums\FileType
+                ? $row->type->value
+                : (string) ($row->type ?? '');
 
             $totalBytes += $bytes;
             $totalFiles += $files;

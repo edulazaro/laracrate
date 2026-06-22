@@ -2,14 +2,14 @@
 
 namespace EduLazaro\Laracrate\Tests\Support;
 
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Models\File;
 use RuntimeException;
 
 /**
  * Step de testing que siempre lanza RuntimeException con el mensaje dado.
  */
-class ExplodingStep implements ProcessingStep
+class ExplodingStep implements FileActionInterface
 {
     public function __construct(
         protected string $message,

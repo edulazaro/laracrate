@@ -15,6 +15,9 @@ abstract class TestCase extends BaseTestCase
 {
     use RefreshDatabase;
 
+    /** Guards the heavy migration chain so it runs once per process, not per test. */
+    protected static bool $schemaMigrated = false;
+
     protected function getPackageProviders($app): array
     {
         return [
@@ -50,6 +53,11 @@ abstract class TestCase extends BaseTestCase
             'charset'   => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
             'prefix'    => '',
+            // Non-strict mode: the tests intentionally create minimal File rows
+            // (omitting NOT NULL metadata like original_name/extension that
+            // CreateFileAction always sets in production). This matches the
+            // environment the suite was written against.
+            'strict'    => false,
         ]);
 
         // Disks fake (Storage::fake los reemplaza igualmente, pero dejamos default).
@@ -68,6 +76,16 @@ abstract class TestCase extends BaseTestCase
 
         // Colecciones de prueba que cubren los casos del paquete.
         $app['config']->set('laracrate.collections', [
+            'avatar' => [
+                'disk'   => 'media',
+                'access' => 'public',
+                'single' => true,
+                'types'  => [
+                    'image' => [
+                        'accepted_mime_types' => ['image/jpeg', 'image/png', 'image/webp'],
+                    ],
+                ],
+            ],
             'gallery' => [
                 'disk'   => 'media',
                 'access' => 'public',
@@ -154,10 +172,15 @@ abstract class TestCase extends BaseTestCase
 
     protected function defineDatabaseMigrations(): void
     {
-        // Package migrations plus a test-only migration for the `test_owners`
-        // table that backs HasFilesTestModel. Both run under RefreshDatabase's
-        // migrate:fresh, so the persistent MySQL test DB is rebuilt cleanly on
-        // every run (no "table already exists" across runs).
+        // Register the package + test migrations only on the first test of the
+        // process. RefreshDatabase runs migrate:fresh once (static-cached) and
+        // wraps each later test in a transaction, so re-registering here every
+        // test would re-run the whole (slow) MySQL chain per test.
+        if (static::$schemaMigrated) {
+            return;
+        }
+        static::$schemaMigrated = true;
+
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
         $this->loadMigrationsFrom(__DIR__ . '/database/migrations');
     }

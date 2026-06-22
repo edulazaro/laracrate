@@ -49,7 +49,7 @@ class MultipartUploadTest extends TestCase
         $this->fakeS3Client('s3test', new MockHandler());
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('part_size mínimo en S3 es 5 MB');
+        $this->expectExceptionMessage('minimum part_size in S3 is 5 MB');
 
         InitiateMultipartUploadAction::create()->run([
             'disk'         => 's3test',
@@ -65,7 +65,7 @@ class MultipartUploadTest extends TestCase
 
         // 100 GB / 5 MB = 20.000 partes → > 10.000 que es el máximo de S3.
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('S3 no permite más de 10.000 partes');
+        $this->expectExceptionMessage('does not allow more than 10,000 parts');
 
         InitiateMultipartUploadAction::create()->run([
             'disk'         => 's3test',
@@ -78,7 +78,7 @@ class MultipartUploadTest extends TestCase
     public function test_initiate_rejects_non_s3_disk(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('no es S3-compatible');
+        $this->expectExceptionMessage('is not S3-compatible');
 
         InitiateMultipartUploadAction::create()->run([
             'disk'         => 'media',  // local driver del TestCase
@@ -113,7 +113,7 @@ class MultipartUploadTest extends TestCase
         $upload = $this->makeActiveUpload('s3test', totalParts: 5);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('fuera de rango');
+        $this->expectExceptionMessage('out of range');
 
         GeneratePartUrlsAction::create()->run([
             'upload'      => $upload,
@@ -149,7 +149,7 @@ class MultipartUploadTest extends TestCase
         $upload->forceFill(['status' => MultipartUploadStatus::COMPLETED])->save();
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('no está activo');
+        $this->expectExceptionMessage('is not active');
 
         CompleteMultipartUploadAction::create()->run([
             'upload' => $upload,

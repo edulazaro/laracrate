@@ -79,6 +79,62 @@ class OcrImageTextExtractor implements TextExtractor
     }
 
     /**
+     * Fallback language name for the image description when no visible text is
+     * present to infer it from. Resolves the configured locale ('en', 'es',
+     * ...) to a human language name for the prompt. Unknown locales fall back
+     * to the raw value so any language still works.
+     */
+    protected function descriptionLanguage(): string
+    {
+        $locale = (string) config('laracrate.ocr.locale', 'en');
+
+        $names = [
+            'en' => 'English',
+            'es' => 'Spanish',
+            'fr' => 'French',
+            'de' => 'German',
+            'it' => 'Italian',
+            'pt' => 'Portuguese',
+            'ca' => 'Catalan',
+            'nl' => 'Dutch',
+            'gl' => 'Galician',
+            'eu' => 'Basque',
+            'ro' => 'Romanian',
+            'pl' => 'Polish',
+            'cs' => 'Czech',
+            'sk' => 'Slovak',
+            'hu' => 'Hungarian',
+            'el' => 'Greek',
+            'sv' => 'Swedish',
+            'da' => 'Danish',
+            'fi' => 'Finnish',
+            'no' => 'Norwegian',
+            'is' => 'Icelandic',
+            'ru' => 'Russian',
+            'uk' => 'Ukrainian',
+            'bg' => 'Bulgarian',
+            'sr' => 'Serbian',
+            'hr' => 'Croatian',
+            'tr' => 'Turkish',
+            'ar' => 'Arabic',
+            'he' => 'Hebrew',
+            'fa' => 'Persian',
+            'hi' => 'Hindi',
+            'bn' => 'Bengali',
+            'ur' => 'Urdu',
+            'th' => 'Thai',
+            'vi' => 'Vietnamese',
+            'id' => 'Indonesian',
+            'ms' => 'Malay',
+            'ja' => 'Japanese',
+            'ko' => 'Korean',
+            'zh' => 'Chinese',
+        ];
+
+        return $names[strtolower($locale)] ?? $locale;
+    }
+
+    /**
      * Run OCR on the image and return the extracted content.
      */
     public function extract(File $file): ExtractedContent
@@ -170,6 +226,8 @@ class OcrImageTextExtractor implements TextExtractor
             ?? config('laracrate.ocr.anthropic.model')
             ?: env('LARACRATE_OCR_MODEL', 'claude-haiku-4-5');
 
+        $lang = $this->descriptionLanguage();
+
         $response = Http::withHeaders([
             'x-api-key'         => $apiKey,
             'anthropic-version' => '2023-06-01',
@@ -199,7 +257,7 @@ class OcrImageTextExtractor implements TextExtractor
                                 . "Leave this section empty if the image has no text.\n\n"
                                 . "[DESCRIPTION]\n"
                                 . "Brief description (1-3 sentences) in the same language as any visible text, "
-                                . "or Spanish if there is none. Cover what is shown: objects, people, "
+                                . "or {$lang} if there is none. Cover what is shown: objects, people, "
                                 . "screenshots, charts, scenes, document type. Omit this section only if "
                                 . "the image is purely text and a description adds nothing.\n\n"
                                 . "Output only these two sections with their headers. No other commentary.",
@@ -244,6 +302,8 @@ class OcrImageTextExtractor implements TextExtractor
 
         $dataUrl = "data:{$mime};base64,{$base64}";
 
+        $lang = $this->descriptionLanguage();
+
         $response = Http::withToken($apiKey)
             ->timeout($this->timeout)
             ->retry(2, 1000)
@@ -258,7 +318,7 @@ class OcrImageTextExtractor implements TextExtractor
                             . "Leave this section empty if the image has no text.\n\n"
                             . "[DESCRIPTION]\n"
                             . "Brief description (1-3 sentences) in the same language as any visible text, "
-                            . "or Spanish if there is none. Cover what is shown: objects, people, "
+                            . "or {$lang} if there is none. Cover what is shown: objects, people, "
                             . "screenshots, charts, scenes, document type. Omit this section only if "
                             . "the image is purely text and a description adds nothing.\n\n"
                             . "Output only these two sections with their headers. No other commentary."],

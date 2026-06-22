@@ -36,7 +36,7 @@ class StreamFileTest extends TestCase
             'disk'          => 'media',
         ]);
 
-        Storage::disk('media')->put($file->path . '/' . $file->name, 'hello');
+        Storage::disk('media')->put($file->key, 'hello');
 
         // Permitir view sobre test_owner.
         app(PolicyRegistry::class)->viewable('test_owner', fn () => true);
@@ -63,7 +63,7 @@ class StreamFileTest extends TestCase
             'fileable_id'   => $owner->id,
             'disk'          => 'media',
         ]);
-        Storage::disk('media')->put($file->path . '/' . $file->name, 'binary');
+        Storage::disk('media')->put($file->key, 'binary');
 
         app(PolicyRegistry::class)->viewable('test_owner', fn () => true);
 
@@ -89,7 +89,7 @@ class StreamFileTest extends TestCase
             'fileable_id'   => $owner->id,
             'disk'          => 'media',
         ]);
-        Storage::disk('media')->put($file->path . '/' . $file->name, 'binary');
+        Storage::disk('media')->put($file->key, 'binary');
 
         app(PolicyRegistry::class)->viewable('test_owner', fn () => true);
 
@@ -114,7 +114,7 @@ class StreamFileTest extends TestCase
             'fileable_id'   => $owner->id,
             'disk'          => 'media',
         ]);
-        Storage::disk('media')->put($file->path . '/' . $file->name, 'binary');
+        Storage::disk('media')->put($file->key, 'binary');
 
         app(PolicyRegistry::class)->viewable('test_owner', fn () => false);
 

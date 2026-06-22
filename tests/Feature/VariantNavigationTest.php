@@ -51,7 +51,7 @@ class VariantNavigationTest extends TestCase
         $root = $this->makeRoot();
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches("/'preview' no encontrado.*resuelto hasta: '<root>'/");
+        $this->expectExceptionMessageMatches("/'preview' not found.*resolved up to: '<root>'/");
 
         $root->variantOrFail('preview.thumbnail');
     }
@@ -62,7 +62,7 @@ class VariantNavigationTest extends TestCase
         $preview = $this->makeChild($root, 'preview');
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessageMatches("/'thumbnail' no encontrado.*resuelto hasta: 'preview'/");
+        $this->expectExceptionMessageMatches("/'thumbnail' not found.*resolved up to: 'preview'/");
 
         $root->variantOrFail('preview.thumbnail');
     }

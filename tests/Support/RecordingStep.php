@@ -2,14 +2,14 @@
 
 namespace EduLazaro\Laracrate\Tests\Support;
 
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Models\File;
 
 /**
  * Step de testing que registra cada `handle` en un array estático.
  * `$supports` opcional permite filtrar por File en runtime.
  */
-class RecordingStep implements ProcessingStep
+class RecordingStep implements FileActionInterface
 {
     public static array $calls = [];
 

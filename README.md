@@ -2900,16 +2900,42 @@ public function priority(): int;
 
 ## Testing
 
-Laracrate ships its own test suite. It uses `Storage::fake()` and an in-memory SQLite connection, so there is no Docker, no live S3, and no external services to stand up.
+Laracrate ships its own test suite (Testbench plus PHPUnit). It runs against a real **MySQL** database, because the package migrations use MySQL-specific features (FULLTEXT indexes, `information_schema` lookups, `ALTER ... MODIFY`) that SQLite cannot run. Object storage is never touched: the AWS S3 client is mocked and the disks are backed by `Storage::fake()`, so the suite makes no external calls and needs no ffmpeg, imagick, or live S3.
 
-Run it from inside the package directory:
+You need PHP with the `pdo_mysql` extension and a MySQL (or MariaDB) server. Use a **dedicated** test database: the suite runs `migrate:fresh`, which drops every table in it.
+
+### 1. Start a throwaway MySQL
+
+The simplest option is a disposable container:
+
+```bash
+docker run -d --name laracrate-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=laracrate_test \
+  -p 3307:3306 mysql:8
+```
+
+### 2. Run the suite
 
 ```bash
 composer install
 vendor/bin/phpunit
 ```
 
-The PHPUnit config defines two suites, `Unit` (`tests/Unit`) and `Feature` (`tests/Feature`), and sets `APP_ENV=testing` and `DB_CONNECTION=testing`. Any new feature you contribute should bring its own test under `tests/`.
+The test connection defaults to that container (`127.0.0.1:3307`, database `laracrate_test`, user `root`). Point it elsewhere with environment variables:
+
+```bash
+LARACRATE_TEST_DB_HOST=127.0.0.1 \
+LARACRATE_TEST_DB_PORT=3307 \
+LARACRATE_TEST_DB_DATABASE=laracrate_test \
+LARACRATE_TEST_DB_USERNAME=root \
+LARACRATE_TEST_DB_PASSWORD=root \
+vendor/bin/phpunit
+```
+
+The schema is built once per run with `migrate:fresh` and each test is wrapped in a transaction, so a full run finishes in a few seconds. The PHPUnit config defines two suites, `Unit` (`tests/Unit`) and `Feature` (`tests/Feature`), keeps the AWS SDK offline, and sets `APP_ENV=testing`. Any feature you contribute should bring its own test under `tests/`.
+
+When you are done, remove the container with `docker rm -f laracrate-mysql`.
 
 ## Roadmap
 

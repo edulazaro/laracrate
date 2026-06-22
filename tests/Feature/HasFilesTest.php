@@ -32,7 +32,7 @@ class HasFilesTest extends TestCase
         $this->assertSame($owner->id, $file->fileable_id);
         $this->assertSame('gallery', $file->collection);
         $this->assertSame(FileType::IMAGE, $file->type);
-        Storage::disk('media')->assertExists($file->path . '/' . $file->name);
+        Storage::disk('media')->assertExists($file->key);
 
         Bus::assertDispatched(ProcessFileJob::class);
     }
@@ -91,7 +91,9 @@ class HasFilesTest extends TestCase
         $first  = $owner->addFile(UploadedFile::fake()->image('a.jpg'), 'avatar');
         $second = $owner->setFile('avatar', UploadedFile::fake()->image('b.jpg'));
 
-        $this->assertSoftDeleted('files', ['id' => $first->id]);
+        // setFile() replaces by force-deleting the previous file (row + binary),
+        // so the old one is gone entirely, not soft-deleted.
+        $this->assertDatabaseMissing('laracrate_files', ['id' => $first->id]);
         $this->assertNotNull($second);
         $this->assertNotSame($first->id, $second->id);
     }

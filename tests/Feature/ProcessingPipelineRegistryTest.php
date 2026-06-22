@@ -3,7 +3,7 @@
 namespace EduLazaro\Laracrate\Tests\Feature;
 
 use EduLazaro\Laracrate\Actions\Files\ProcessFileAction;
-use EduLazaro\Laracrate\Contracts\ProcessingStep;
+use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Enums\ProcessingStatus;
 use EduLazaro\Laracrate\Models\File;
@@ -13,7 +13,7 @@ use EduLazaro\Laracrate\Pipeline\Steps\Image\OptimizeImageStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\ChunkTextStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\ExtractTextStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\GenerateEmbeddingStep;
-use EduLazaro\Laracrate\Support\ProcessingPipelineRegistry;
+use EduLazaro\Laracrate\Support\FileActionRegistry;
 use EduLazaro\Laracrate\Tests\Support\RecordingStep;
 use EduLazaro\Laracrate\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -24,14 +24,14 @@ class ProcessingPipelineRegistryTest extends TestCase
 
     public function test_registry_is_singleton_with_default_steps(): void
     {
-        $a = app(ProcessingPipelineRegistry::class);
-        $b = app(ProcessingPipelineRegistry::class);
+        $a = app(FileActionRegistry::class);
+        $b = app(FileActionRegistry::class);
 
         $this->assertSame($a, $b, 'Registry must be a singleton');
 
         $defaults = $a->all();
 
-        $classes = array_map(fn (ProcessingStep $s) => $s::class, $defaults);
+        $classes = array_map(fn (FileActionInterface $s) => $s::class, $defaults);
 
         $this->assertContains(ExtractImageDimensionsStep::class, $classes);
         $this->assertContains(OptimizeImageStep::class, $classes);
@@ -43,14 +43,14 @@ class ProcessingPipelineRegistryTest extends TestCase
 
     public function test_all_returns_steps_sorted_by_priority_ascending(): void
     {
-        $registry = new ProcessingPipelineRegistry();
+        $registry = new FileActionRegistry();
 
         $registry->add(new RecordingStep('c', 80));
         $registry->add(new RecordingStep('a', 10));
         $registry->add(new RecordingStep('b', 40));
 
         $names = array_map(
-            fn (ProcessingStep $s) => $s->name,
+            fn (FileActionInterface $s) => $s->name,
             $registry->all()
         );
 
@@ -59,7 +59,7 @@ class ProcessingPipelineRegistryTest extends TestCase
 
     public function test_remove_drops_steps_by_class(): void
     {
-        $registry = new ProcessingPipelineRegistry();
+        $registry = new FileActionRegistry();
         $registry->add(new RecordingStep('keep', 10));
         $registry->add(new RecordingStep('keep2', 20));
 
@@ -70,7 +70,7 @@ class ProcessingPipelineRegistryTest extends TestCase
 
     public function test_applicable_for_filters_by_supports(): void
     {
-        $registry = new ProcessingPipelineRegistry();
+        $registry = new FileActionRegistry();
         $registry->add(new RecordingStep('image-only', 10, fn (File $f) => $f->type === FileType::IMAGE));
         $registry->add(new RecordingStep('always', 20));
 
@@ -87,8 +87,8 @@ class ProcessingPipelineRegistryTest extends TestCase
     public function test_process_file_action_runs_registered_steps_in_priority_order(): void
     {
         // Reemplaza el registry con uno limpio para aislar el test.
-        $registry = new ProcessingPipelineRegistry();
-        $this->app->instance(ProcessingPipelineRegistry::class, $registry);
+        $registry = new FileActionRegistry();
+        $this->app->instance(FileActionRegistry::class, $registry);
 
         RecordingStep::$calls = [];
 
@@ -107,8 +107,8 @@ class ProcessingPipelineRegistryTest extends TestCase
 
     public function test_failing_step_marks_file_as_failed_and_stops_pipeline(): void
     {
-        $registry = new ProcessingPipelineRegistry();
-        $this->app->instance(ProcessingPipelineRegistry::class, $registry);
+        $registry = new FileActionRegistry();
+        $this->app->instance(FileActionRegistry::class, $registry);
 
         RecordingStep::$calls = [];
 

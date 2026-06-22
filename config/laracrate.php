@@ -514,6 +514,13 @@ return [
         // 'anthropic' | 'openai'
         'provider' => env('LARACRATE_OCR_PROVIDER', 'anthropic'),
 
+        // Locale ('en', 'es', 'fr', ...) for the auto-generated image
+        // description when the image has no visible text to infer the language
+        // from (image OCR only). The description follows the visible text
+        // language when present; this is just the fallback. Apps serving a
+        // non-English audience set it directly here, e.g. 'es'.
+        'locale' => 'en',
+
         'anthropic' => [
             'api_key' => env('LARACRATE_ANTHROPIC_API_KEY') ?: env('ANTHROPIC_API_KEY'),
             'model'   => env('LARACRATE_OCR_ANTHROPIC_MODEL', env('LARACRATE_OCR_MODEL', 'claude-haiku-4-5')),

@@ -21,5 +21,12 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="DB_CONNECTION" value="testing"/>
+        <!-- Keep the AWS SDK fully offline in tests: never probe the EC2
+             instance-metadata endpoint (which hangs where there is no route)
+             and use dummy static credentials. Tests mock the S3 client. -->
+        <env name="AWS_EC2_METADATA_DISABLED" value="true"/>
+        <env name="AWS_ACCESS_KEY_ID" value="testing"/>
+        <env name="AWS_SECRET_ACCESS_KEY" value="testing"/>
+        <env name="AWS_DEFAULT_REGION" value="auto"/>
     </php>
 </phpunit>

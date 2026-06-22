@@ -11,7 +11,7 @@ use EduLazaro\Laracrate\Events\FileProcessingFailed;
 use EduLazaro\Laracrate\Events\FileProcessingStarted;
 use EduLazaro\Laracrate\Events\VariantGenerated;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Support\ProcessingPipelineRegistry;
+use EduLazaro\Laracrate\Support\FileActionRegistry;
 use EduLazaro\Laracrate\Tests\Support\ExplodingStep;
 use EduLazaro\Laracrate\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,8 +25,8 @@ class DomainEventsTest extends TestCase
     {
         Event::fake([FileProcessingStarted::class, FileProcessed::class, FileProcessingFailed::class]);
 
-        $registry = new ProcessingPipelineRegistry();
-        $this->app->instance(ProcessingPipelineRegistry::class, $registry); // pipeline vacío
+        $registry = new FileActionRegistry();
+        $this->app->instance(FileActionRegistry::class, $registry); // pipeline vacío
 
         $file = $this->makeFile(FileType::IMAGE);
 
@@ -41,8 +41,8 @@ class DomainEventsTest extends TestCase
     {
         Event::fake([FileProcessingStarted::class, FileProcessed::class, FileProcessingFailed::class]);
 
-        $registry = new ProcessingPipelineRegistry();
-        $this->app->instance(ProcessingPipelineRegistry::class, $registry);
+        $registry = new FileActionRegistry();
+        $this->app->instance(FileActionRegistry::class, $registry);
         $registry->add(new ExplodingStep('boom', 10));
 
         $file = $this->makeFile(FileType::IMAGE);
@@ -99,8 +99,8 @@ class DomainEventsTest extends TestCase
 
     public function test_processing_status_is_cast_to_enum(): void
     {
-        $registry = new ProcessingPipelineRegistry();
-        $this->app->instance(ProcessingPipelineRegistry::class, $registry);
+        $registry = new FileActionRegistry();
+        $this->app->instance(FileActionRegistry::class, $registry);
 
         $file = $this->makeFile(FileType::IMAGE);
 

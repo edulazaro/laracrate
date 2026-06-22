@@ -47,14 +47,16 @@ class StorageManagerTest extends TestCase
         $manager = app(StorageManager::class);
         $this->assertTrue($manager->acceptsType('mixed', 'image'));
         $this->assertTrue($manager->acceptsType('mixed', 'video'));
-        $this->assertSame([], $manager->getTypeConfig('mixed', 'image'));
+        // A bare-string type inherits the global type defaults (not an empty array).
+        $this->assertArrayHasKey('accepted_mime_types', $manager->getTypeConfig('mixed', 'image'));
         $this->assertSame('00:00:01', $manager->getTypeConfig('mixed', 'video')['preview']['frame_at']);
     }
 
-    public function test_key_of_builds_full_path(): void
+    public function test_key_accessor_returns_full_object_key(): void
     {
-        $file = new File(['path' => 'horse/42/gallery', 'name' => 'photo.webp']);
-        $this->assertSame('horse/42/gallery/photo.webp', app(StorageManager::class)->keyOf($file));
+        // `path` stores the full object key; `$file->key` only trims a leading slash.
+        $file = new File(['path' => 'horse/42/gallery/photo.webp', 'name' => 'photo.webp']);
+        $this->assertSame('horse/42/gallery/photo.webp', $file->key);
     }
 
     public function test_read_write_and_delete_via_storage_fake(): void

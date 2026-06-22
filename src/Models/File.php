@@ -78,6 +78,18 @@ class File extends Model
         return 'slug';
     }
 
+    protected static function booted(): void
+    {
+        // A File is routed and referenced by its slug, so it must always have
+        // one. CreateFileAction sets it explicitly; this is a safety net for any
+        // other creation path (and keeps strict-mode databases happy).
+        static::creating(function (File $file): void {
+            if (empty($file->slug)) {
+                $file->slug = (string) Str::ulid();
+            }
+        });
+    }
+
     /* ------------------------------------------------------------------
      | Relations
      * ------------------------------------------------------------------ */

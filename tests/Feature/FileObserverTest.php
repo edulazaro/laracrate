@@ -25,7 +25,7 @@ class FileObserverTest extends TestCase
         $upload = \Illuminate\Http\UploadedFile::fake()->image('a.jpg');
         $file = $owner->addFile($upload, 'gallery');
 
-        $key = $file->path . '/' . $file->name;
+        $key = $file->key;
         Storage::disk('media')->assertExists($key);
 
         $file->forceDelete();
@@ -42,7 +42,7 @@ class FileObserverTest extends TestCase
         $parent = File::create([
             'slug' => (string) Str::ulid(),
             'fileable_type' => 'test_owner', 'fileable_id' => $owner->id,
-            'disk' => 'media', 'path' => 'p', 'name' => 'parent.jpg', 'original_name' => 'parent.jpg',
+            'disk' => 'media', 'path' => 'p/parent.jpg', 'name' => 'parent.jpg', 'original_name' => 'parent.jpg',
             'extension' => 'jpg', 'mime_type' => 'image/jpeg', 'size' => 100,
             'context' => 'media', 'collection' => 'gallery', 'type' => FileType::IMAGE, 'access' => 'public',
         ]);
@@ -51,7 +51,7 @@ class FileObserverTest extends TestCase
         $child = File::create([
             'slug' => (string) Str::ulid(), 'parent_id' => $parent->id, 'variant' => 'thumbnail',
             'fileable_type' => 'test_owner', 'fileable_id' => $owner->id,
-            'disk' => 'media', 'path' => 'p/variants', 'name' => 'thumb.webp', 'original_name' => 'thumb.webp',
+            'disk' => 'media', 'path' => 'p/variants/thumb.webp', 'name' => 'thumb.webp', 'original_name' => 'thumb.webp',
             'extension' => 'webp', 'mime_type' => 'image/webp', 'size' => 50,
             'context' => 'media', 'collection' => 'gallery', 'type' => FileType::IMAGE, 'access' => 'public',
         ]);
@@ -61,7 +61,7 @@ class FileObserverTest extends TestCase
 
         Storage::disk('media')->assertMissing('p/parent.jpg');
         Storage::disk('media')->assertMissing('p/variants/thumb.webp');
-        $this->assertDatabaseMissing('files', ['id' => $child->id]);
+        $this->assertDatabaseMissing('laracrate_files', ['id' => $child->id]);
     }
 
     public function test_soft_delete_does_not_remove_asset(): void
@@ -72,12 +72,12 @@ class FileObserverTest extends TestCase
         $owner = HasFilesTestModel::create();
         $file = $owner->addFile(\Illuminate\Http\UploadedFile::fake()->image('a.jpg'), 'gallery');
 
-        $key = $file->path . '/' . $file->name;
+        $key = $file->key;
         Storage::disk('media')->assertExists($key);
 
         $file->delete(); // soft delete
 
         Storage::disk('media')->assertExists($key); // sigue ahí
-        $this->assertSoftDeleted('files', ['id' => $file->id]);
+        $this->assertSoftDeleted('laracrate_files', ['id' => $file->id]);
     }
 }
