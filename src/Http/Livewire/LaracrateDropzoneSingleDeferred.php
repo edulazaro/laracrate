@@ -48,6 +48,17 @@ class LaracrateDropzoneSingleDeferred extends Component
     #[Locked]
     public bool $hideActions = false;
 
+    /**
+     * Polymorphic owner ("semantic owner / recipient of the file"). Differs from the
+     * creator when someone uploads on behalf of another (e.g. a lawyer uploads a
+     * document that belongs to a client). If not passed, the file has no explicit
+     * owner and effectiveOwner() falls back to the creator.
+     */
+    #[Locked]
+    public ?string $ownerType = null;
+    #[Locked]
+    public ?int $ownerId = null;
+
     /** Livewire mount: initialize the component props. */
     public function mount(
         Model $model,
@@ -56,6 +67,9 @@ class LaracrateDropzoneSingleDeferred extends Component
         ?string $contextKey = null,
         bool $hideExisting = false,
         bool $hideActions = false,
+        mixed $owner = null,
+        ?string $ownerType = null,
+        ?int $ownerId = null,
     ): void {
         $this->model        = $model;
         $this->collection   = $collection;
@@ -63,6 +77,15 @@ class LaracrateDropzoneSingleDeferred extends Component
         $this->contextKey   = $contextKey;
         $this->hideExisting = $hideExisting;
         $this->hideActions  = $hideActions;
+
+        // Resolve owner: explicit ownerType/ownerId wins over a Model.
+        if ($ownerType && $ownerId) {
+            $this->ownerType = $ownerType;
+            $this->ownerId   = (int) $ownerId;
+        } elseif ($owner instanceof Model) {
+            $this->ownerType = $owner->getMorphClass();
+            $this->ownerId   = (int) $owner->getKey();
+        }
     }
 
     /** Register an uploaded file, replacing the current File of the collection. */
@@ -76,7 +99,17 @@ class LaracrateDropzoneSingleDeferred extends Component
             'size'          => $size,
         ]);
 
-        $file = $this->model->setFile($this->collection, $upload);
+        // Resolve owner override if passed via prop.
+        $owner = null;
+        if ($this->ownerType && $this->ownerId) {
+            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->ownerType)
+                ?? $this->ownerType;
+            if (class_exists($class)) {
+                $owner = $class::find($this->ownerId);
+            }
+        }
+
+        $file = $this->model->setFile($this->collection, $upload, owner: $owner);
 
         if (! $file) {
             return null;

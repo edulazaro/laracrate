@@ -48,6 +48,17 @@ class LaracrateUploaderDeferred extends Component
     public ?string $rounded = null;
 
     /**
+     * Polymorphic owner ("semantic owner / recipient of the file"). Differs from the
+     * creator when someone uploads on behalf of another (e.g. a lawyer uploads a
+     * document that belongs to a client). If not passed, the file has no explicit
+     * owner and effectiveOwner() falls back to the creator.
+     */
+    #[Locked]
+    public ?string $ownerType = null;
+    #[Locked]
+    public ?int $ownerId = null;
+
+    /**
      * Buffer for the Livewire temporary upload. NOT persisted until `submit()`.
      */
     public $pending = null;
@@ -66,6 +77,9 @@ class LaracrateUploaderDeferred extends Component
         ?string $theme = null,
         string $layout = 'row',
         ?string $rounded = null,
+        mixed $owner = null,
+        ?string $ownerType = null,
+        ?int $ownerId = null,
     ): void {
         $this->model      = $model;
         $this->collection = $collection;
@@ -73,6 +87,15 @@ class LaracrateUploaderDeferred extends Component
         $this->theme      = $theme;
         $this->layout     = $layout;
         $this->rounded    = $rounded;
+
+        // Resolve owner: explicit ownerType/ownerId wins over a Model.
+        if ($ownerType && $ownerId) {
+            $this->ownerType = $ownerType;
+            $this->ownerId   = (int) $ownerId;
+        } elseif ($owner instanceof Model) {
+            $this->ownerType = $owner->getMorphClass();
+            $this->ownerId   = (int) $owner->getKey();
+        }
     }
 
     /** Tailwind rounding class for the `rounded` prop, or empty string if unset. */
@@ -121,7 +144,17 @@ class LaracrateUploaderDeferred extends Component
 
         $this->validate(['pending' => $this->validationRules()]);
 
-        $file = $this->model->setFile($this->collection, $this->pending);
+        // Resolve owner override if passed via prop.
+        $owner = null;
+        if ($this->ownerType && $this->ownerId) {
+            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->ownerType)
+                ?? $this->ownerType;
+            if (class_exists($class)) {
+                $owner = $class::find($this->ownerId);
+            }
+        }
+
+        $file = $this->model->setFile($this->collection, $this->pending, owner: $owner);
 
         $this->reset('pending');
 

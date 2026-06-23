@@ -87,6 +87,17 @@ class LaracrateDropzoneDeferred extends Component
     public ?int $creatorId = null;
 
     /**
+     * Polymorphic owner ("semantic owner / recipient of the file"). Differs from the
+     * creator when someone uploads on behalf of another (e.g. a lawyer uploads a
+     * document that belongs to a client). If not passed, the file has no explicit
+     * owner and effectiveOwner() falls back to the creator.
+     */
+    #[Locked]
+    public ?string $ownerType = null;
+    #[Locked]
+    public ?int $ownerId = null;
+
+    /**
      * Opaque identifier the caller associates with the widget. It is included
      * in the `laracrate-file-uploaded` event so the caller can route the File
      * to the right target when there are several widgets on the same page
@@ -156,6 +167,9 @@ class LaracrateDropzoneDeferred extends Component
         mixed $creator = null,
         ?string $creatorType = null,
         ?int $creatorId = null,
+        mixed $owner = null,
+        ?string $ownerType = null,
+        ?int $ownerId = null,
         array $slotOptions = [],
         ?string $slotLabel = null,
         ?string $slotPlaceholder = null,
@@ -184,6 +198,15 @@ class LaracrateDropzoneDeferred extends Component
         } elseif ($creator instanceof Model) {
             $this->creatorType = $creator->getMorphClass();
             $this->creatorId   = (int) $creator->getKey();
+        }
+
+        // Resolve owner the same way: explicit ownerType/ownerId wins over a Model.
+        if ($ownerType && $ownerId) {
+            $this->ownerType = $ownerType;
+            $this->ownerId   = (int) $ownerId;
+        } elseif ($owner instanceof Model) {
+            $this->ownerType = $owner->getMorphClass();
+            $this->ownerId   = (int) $owner->getKey();
         }
 
         // Integrated slot picker
@@ -289,6 +312,16 @@ class LaracrateDropzoneDeferred extends Component
             }
         }
 
+        // Resolve owner override if passed via prop (same scheme as creator).
+        $owner = null;
+        if ($this->ownerType && $this->ownerId) {
+            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->ownerType)
+                ?? $this->ownerType;
+            if (class_exists($class)) {
+                $owner = $class::find($this->ownerId);
+            }
+        }
+
         // CreateFileAction may throw InvalidArgumentException for:
         //   - MIME/extension not accepted by the collection or the slot
         //   - Slot quota exhausted (per_creator or global)
@@ -301,6 +334,7 @@ class LaracrateDropzoneDeferred extends Component
                 $this->collection,
                 slots: $this->slots,
                 creator: $creator,
+                owner: $owner,
                 folder: $this->folder(),
             );
         } catch (\InvalidArgumentException $e) {
