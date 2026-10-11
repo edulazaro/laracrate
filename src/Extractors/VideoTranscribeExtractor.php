@@ -48,9 +48,7 @@ class VideoTranscribeExtractor implements TextExtractor
         }
         // Needs ffmpeg + OpenAI API key (Whisper).
         $hasKey = ! empty(
-            config('laracrate.openai.api_key')
-            ?? env('LARACRATE_OPENAI_API_KEY')
-            ?? env('OPENAI_API_KEY')
+            config('laracrate.audio.api_key')
         );
         return $this->ffmpegAvailable() && $hasKey;
     }
@@ -168,15 +166,13 @@ class VideoTranscribeExtractor implements TextExtractor
      */
     protected function transcribeLocalFile(string $audioPath): string
     {
-        $apiKey = config('laracrate.openai.api_key')
-            ?: env('LARACRATE_OPENAI_API_KEY')
-            ?: env('OPENAI_API_KEY');
+        $apiKey = config('laracrate.audio.api_key');
 
         if (! $apiKey) {
             return '';
         }
 
-        $model = env('LARACRATE_AUDIO_MODEL', 'whisper-1');
+        $model = config('laracrate.audio.model', 'whisper-1');
 
         $response = \Illuminate\Support\Facades\Http::withToken($apiKey)
             ->timeout(300)
@@ -202,7 +198,7 @@ class VideoTranscribeExtractor implements TextExtractor
      */
     protected function describeFrames(File $file, string $videoPath): string
     {
-        $interval = (int) env('LARACRATE_VIDEO_FRAME_INTERVAL', 30);
+        $interval = (int) config('laracrate.video.frame_interval', 30);
         if ($interval < 5) $interval = 5;
 
         $duration = $this->ffprobeDuration($videoPath);
@@ -270,16 +266,14 @@ class VideoTranscribeExtractor implements TextExtractor
         if ($bytes === false) return '';
 
         $base64 = base64_encode($bytes);
-        $apiKey = config('laracrate.openai.api_key')
-            ?: env('LARACRATE_OPENAI_API_KEY')
-            ?: env('OPENAI_API_KEY');
+        $apiKey = config('laracrate.ocr.openai.api_key');
 
         if (! $apiKey) return '';
 
         $response = \Illuminate\Support\Facades\Http::withToken($apiKey)
             ->timeout(60)
             ->post('https://api.openai.com/v1/chat/completions', [
-                'model'    => env('LARACRATE_OCR_MODEL', 'gpt-4o-mini'),
+                'model'    => config('laracrate.ocr.openai.model', 'gpt-4o-mini'),
                 'messages' => [[
                     'role'    => 'user',
                     'content' => [

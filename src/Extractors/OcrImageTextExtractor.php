@@ -64,8 +64,6 @@ class OcrImageTextExtractor implements TextExtractor
             return ! empty(
                 $this->apiKey
                 ?? config('laracrate.ocr.openai.api_key')
-                ?? env('LARACRATE_OPENAI_API_KEY')
-                ?? env('OPENAI_API_KEY')
             );
         }
 
@@ -73,8 +71,6 @@ class OcrImageTextExtractor implements TextExtractor
         return ! empty(
             $this->apiKey
             ?? config('laracrate.ocr.anthropic.api_key')
-            ?? env('LARACRATE_ANTHROPIC_API_KEY')
-            ?? env('ANTHROPIC_API_KEY')
         );
     }
 
@@ -214,17 +210,14 @@ class OcrImageTextExtractor implements TextExtractor
     protected function extractWithAnthropic(string $base64, string $mime): string
     {
         $apiKey = $this->apiKey
-            ?? config('laracrate.ocr.anthropic.api_key')
-            ?: env('LARACRATE_ANTHROPIC_API_KEY')
-            ?: env('ANTHROPIC_API_KEY');
+            ?? config('laracrate.ocr.anthropic.api_key');
 
         if (! $apiKey) {
             throw new RuntimeException('Anthropic API key not configured.');
         }
 
         $model = $this->model
-            ?? config('laracrate.ocr.anthropic.model')
-            ?: env('LARACRATE_OCR_MODEL', 'claude-haiku-4-5');
+            ?? config('laracrate.ocr.anthropic.model', 'claude-haiku-4-5');
 
         $lang = $this->descriptionLanguage();
 
@@ -288,17 +281,14 @@ class OcrImageTextExtractor implements TextExtractor
     protected function extractWithOpenAi(string $base64, string $mime): string
     {
         $apiKey = $this->apiKey
-            ?? config('laracrate.ocr.openai.api_key')
-            ?: env('LARACRATE_OPENAI_API_KEY')
-            ?: env('OPENAI_API_KEY');
+            ?? config('laracrate.ocr.openai.api_key');
 
         if (! $apiKey) {
             throw new RuntimeException('OpenAI API key not configured.');
         }
 
         $model = $this->model
-            ?? config('laracrate.ocr.openai.model')
-            ?: env('LARACRATE_OCR_MODEL', 'gpt-4o-mini');
+            ?? config('laracrate.ocr.openai.model', 'gpt-4o-mini');
 
         $dataUrl = "data:{$mime};base64,{$base64}";
 

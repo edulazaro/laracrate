@@ -376,6 +376,25 @@ return [
         'max_width'    => 1920,
         'max_height'   => 1920,
         'bitrate_kbps' => 2500,
+
+        // Seconds between the frames sampled for the visual description of a
+        // video (opt-in via the 'video.visual' pseudo-type on the collection).
+        'frame_interval' => env('LARACRATE_VIDEO_FRAME_INTERVAL', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Audio transcription (Whisper)
+    |--------------------------------------------------------------------------
+    | Used by AudioTranscribeExtractor and by the audio track of
+    | VideoTranscribeExtractor. OpenAI only.
+    */
+
+    'audio' => [
+        // Same resolution the extractor already applied: the package-specific key
+        // first, then the generic OpenAI one.
+        'api_key' => env('LARACRATE_OPENAI_API_KEY') ?: env('OPENAI_API_KEY'),
+        'model'   => env('LARACRATE_AUDIO_MODEL', 'whisper-1'),
     ],
 
     /*
@@ -464,7 +483,7 @@ return [
         'provider' => 'openai',
 
         // Provider API key (for OpenAI). If null, reads OPENAI_API_KEY from env.
-        'api_key' => env('LARACRATE_EMBEDDINGS_API_KEY'),
+        'api_key' => env('LARACRATE_EMBEDDINGS_API_KEY') ?: env('OPENAI_API_KEY'),
 
         // Provider model. Can vary per environment (dev/prod), hence it allows
         // an override from env.

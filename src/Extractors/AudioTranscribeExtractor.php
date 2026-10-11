@@ -42,9 +42,7 @@ class AudioTranscribeExtractor implements TextExtractor
         // Without an OpenAI API key, skip silently (no throw).
         return ! empty(
             $this->apiKey
-            ?? config('laracrate.openai.api_key')
-            ?? env('LARACRATE_OPENAI_API_KEY')
-            ?? env('OPENAI_API_KEY')
+            ?? config('laracrate.audio.api_key')
         );
     }
 
@@ -54,17 +52,14 @@ class AudioTranscribeExtractor implements TextExtractor
     public function extract(File $file): ExtractedContent
     {
         $apiKey = $this->apiKey
-            ?? config('laracrate.openai.api_key')
-            ?: env('LARACRATE_OPENAI_API_KEY')
-            ?: env('OPENAI_API_KEY');
+            ?? config('laracrate.audio.api_key');
 
         if (! $apiKey) {
             throw new RuntimeException('OpenAI API key not configured for AudioTranscribeExtractor.');
         }
 
         $model = $this->model
-            ?? config('laracrate.audio.model')
-            ?: env('LARACRATE_AUDIO_MODEL', 'whisper-1');
+            ?? config('laracrate.audio.model', 'whisper-1');
 
         // Whisper requires the file as multipart. Download it to a tmp file so
         // it can be sent with `attach()`.

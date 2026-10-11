@@ -21,7 +21,7 @@ class OpenAiEmbeddingProvider implements EmbeddingProvider
         protected string $endpoint = 'https://api.openai.com/v1/embeddings',
         protected int $timeout = 60,
     ) {
-        $this->apiKey ??= config('laracrate.embeddings.api_key') ?: env('OPENAI_API_KEY');
+        $this->apiKey ??= config('laracrate.embeddings.api_key');
     }
 
     /**
