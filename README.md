@@ -2,6 +2,14 @@
 
 # Laracrate
 
+<p align="center">
+    <a href="https://github.com/edulazaro/laracrate/actions/workflows/tests.yml"><img src="https://github.com/edulazaro/laracrate/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+    <a href="https://packagist.org/packages/edulazaro/laracrate"><img src="https://img.shields.io/packagist/v/edulazaro/laracrate" alt="Latest Stable Version"></a>
+    <a href="https://packagist.org/packages/edulazaro/laracrate"><img src="https://img.shields.io/packagist/dt/edulazaro/laracrate" alt="Total Downloads"></a>
+    <a href="https://packagist.org/packages/edulazaro/laracrate"><img src="https://img.shields.io/packagist/php-v/edulazaro/laracrate" alt="PHP Version"></a>
+    <a href="https://github.com/edulazaro/laracrate/blob/main/LICENSE.md"><img src="https://img.shields.io/packagist/l/edulazaro/laracrate" alt="License"></a>
+</p>
+
 Polymorphic file storage for Laravel: direct uploads to R2/S3, granular access control, sensitive-content streaming, automatic image variants, video and PDF previews, per-variant watermarks, multipart uploads, text extraction, vector embeddings, and hybrid (keyword plus semantic) search.
 
 ## Table of contents
