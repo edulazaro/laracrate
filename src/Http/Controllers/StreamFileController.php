@@ -5,6 +5,7 @@ namespace EduLazaro\Laracrate\Http\Controllers;
 use EduLazaro\Laracrate\Actions\Files\DecryptFileAction;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\RangeResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -130,7 +131,10 @@ class StreamFileController extends Controller
      | Serve the binary (with decryption if applicable)
      * ------------------------------------------------------------------ */
 
-    /** Stream the binary to the client, decrypting and auditing as needed. */
+    /**
+     * Stream the binary to the client, decrypting and auditing as needed. Honours
+     * `Range`, so players can seek and start before the whole file has arrived.
+     */
     protected function sendFile(Request $request, File $file, bool $increment, bool $attachment): StreamedResponse
     {
         $manager = app(StorageManager::class);
@@ -141,29 +145,33 @@ class StreamFileController extends Controller
             abort(404);
         }
 
-        $this->audit($request, $file, $increment, $attachment);
+        // A player asks for many ranges of the same file: only the first one is an access.
+        if (! $this->isRangeContinuation($request)) {
+            $this->audit($request, $file, $increment, $attachment);
+        }
 
-        // Read the binary (decrypted if is_encrypted).
+        // An encrypted binary has to be decrypted whole; anything else is read by range.
         $content = $file->is_encrypted
             ? DecryptFileAction::create()->run(['file' => $file])
-            : (string) $disk->get($key);
+            : null;
 
         $disposition = $attachment ? 'attachment' : 'inline';
         $filename    = $file->original_name ?: $file->name;
 
-        return response()->stream(
-            function () use ($content) {
-                echo $content;
-            },
-            200,
-            [
-                'Content-Type'        => $file->mime_type,
-                'Content-Length'      => (string) strlen($content),
-                'Content-Disposition' => sprintf('%s; filename="%s"', $disposition, addslashes($filename)),
-                'Cache-Control'       => 'private, no-store, no-cache, must-revalidate, max-age=0',
-                'Pragma'              => 'no-cache',
-            ]
-        );
+        return RangeResponse::make($request, $disk, $key, [
+            'Content-Type'        => $file->mime_type,
+            'Content-Disposition' => sprintf('%s; filename="%s"', $disposition, addslashes($filename)),
+            'Cache-Control'       => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma'              => 'no-cache',
+        ], $content);
+    }
+
+    /** Whether the request asks for a range that does not start at the first byte. */
+    protected function isRangeContinuation(Request $request): bool
+    {
+        $range = (string) $request->header('Range');
+
+        return $range !== '' && ! str_starts_with($range, 'bytes=0-');
     }
 
     /** Increment download counters and optionally log the access. */

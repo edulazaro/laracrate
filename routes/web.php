@@ -23,7 +23,8 @@ Route::middleware($middleware)
     });
 
 // Endpoints internos del Local driver — equivalentes a presigned PUT y GET.
-Route::middleware('signed')
+// SubstituteBindings resolves {file:slug}: without it the controller got an empty File.
+Route::middleware(['signed', \Illuminate\Routing\Middleware\SubstituteBindings::class])
     ->prefix('_laracrate/local')
     ->name('laracrate.local.')
     ->group(function () {

@@ -31,9 +31,14 @@ class TranscodeVideoStep implements FileActionInterface
         return 25;
     }
 
-    /** Runs the video transcoding for the file. */
+    /** Runs the video transcoding for the file: in place, or as a variant with 'variant'. */
     public function handle(File $file): void
     {
-        TranscodeVideoAction::create()->run(['file' => $file]);
+        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video', $file->fileable_type);
+
+        TranscodeVideoAction::create()->run([
+            'file'         => $file,
+            'keepOriginal' => ($config['transcode'] ?? null) === 'variant',
+        ]);
     }
 }

@@ -679,6 +679,15 @@ class File extends Model
     }
 
     /**
+     * The copy to play in a browser: the `playback` variant when the collection keeps
+     * the original (`'transcode' => 'variant'`), otherwise the file itself.
+     */
+    public function playback(): self
+    {
+        return $this->variant(\EduLazaro\Laracrate\Actions\Files\Video\TranscodeVideoAction::PLAYBACK);
+    }
+
+    /**
      * Request the on-demand processing of this file (its type has `extract`,
      * `embed` or `visual` set to 'on_demand'). Returns false when there is
      * nothing to request.

@@ -1962,7 +1962,24 @@ Video handling has two independent steps. Dimensions and duration are read with 
 
 `frame_at` defaults to `00:00:01` when not set. The extracted frame becomes a `preview` child of type image, and the `variants` you list under `preview` are generated from it (each one is in turn a child of the preview), so a video ends up with a preview frame plus its own thumbnail and medium.
 
-**Transcoding** is separate and costly, so enable it only on collections that need it. `TranscodeVideoAction` re-encodes the original to H.264 / AAC MP4 with `ffmpeg`, scaling it down to fit a bounding box, and replaces the original binary in place (then re-reads dimensions). It runs when the collection declares `transcode => true`.
+**Transcoding** is separate and costly, so enable it only on collections that need it. `TranscodeVideoAction` re-encodes to H.264 / AAC MP4 with `ffmpeg` (8-bit 4:2:0, HDR tone-mapped to SDR, index at the start), scaling it down to fit a bounding box. Set it on the video type, in one of two modes:
+
+| Value | What happens to the original |
+| --- | --- |
+| `'transcode' => true` | Replaced in place by the MP4 (then dimensions are re-read). The cheapest option when nobody needs the upload as it was. |
+| `'transcode' => 'variant'` | Kept untouched. The MP4 is stored as a `playback` child, and only when the original would not play in every browser (an H.264 8-bit MP4 or MOV is left alone). For evidence, or anything whose original, quality and metadata must survive. |
+
+Play `$file->playback()`: it returns the `playback` variant when there is one, otherwise the file itself, so it is safe to call in every mode. Downloads keep serving the original.
+
+```php
+'types' => [
+    'video' => ['transcode' => 'variant', 'preview' => ['frame_at' => '00:00:01']],
+],
+```
+
+```blade
+<video src="{{ $file->playback()->url() }}" controls></video>
+```
 
 ```php
 // config/laracrate.php
@@ -2331,9 +2348,11 @@ When `access` is `stream`, `$file->url()` returns a temporary signed route built
 
 Only after all three pass does the controller serve the file. The signed route in your HTML is what makes sensitive links safe to render: even if the page is cached, the link expires on its own and is bound to the viewer.
 
+Files are served with **range support** (`Accept-Ranges: bytes`, `206 Partial Content`), by the stream controller and by the local-disk route alike. Audio and video players depend on it: without ranges a browser cannot seek, cannot start a video whose index sits at the end until the whole file has arrived, and Safari does not play video at all. Only the requested bytes are read, with a ranged GET on S3/R2 or a seek on local disks. An encrypted file is decrypted whole and then sliced.
+
 ### Audit and download tracking
 
-`sendFile()` audits before streaming. When the request is a `stream` or `download` (not `preview`) and `laracrate.stream.increment_downloads` is on (default `true`), the file's `downloads_count` is incremented and `last_downloaded_at` is stamped with a quiet save (no events fired). When `laracrate.stream.log_access` is on (default `true`), an info log records the file id, collection, user id, IP, and method. Streamed responses are sent with `Cache-Control: private, no-store, no-cache, must-revalidate` so sensitive bytes are never cached downstream.
+`sendFile()` audits before streaming, once per playback: range requests that do not start at the first byte are not counted again. When the request is a `stream` or `download` (not `preview`) and `laracrate.stream.increment_downloads` is on (default `true`), the file's `downloads_count` is incremented and `last_downloaded_at` is stamped with a quiet save (no events fired). When `laracrate.stream.log_access` is on (default `true`), an info log records the file id, collection, user id, IP, and method. Streamed responses are sent with `Cache-Control: private, no-store, no-cache, must-revalidate` so sensitive bytes are never cached downstream.
 
 ### Encryption at rest
 
