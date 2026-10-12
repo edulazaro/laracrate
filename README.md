@@ -613,8 +613,8 @@ The package ships four example collections (`avatar`, `gallery`, `documents`, `i
 | `types` | array | Per-type processing config (`image`, `document`, `audio`, `video`), keyed by type. Each type block can carry `accepted_mime_types`, `accepted_extensions`, `max_file_size`, `variants`, `preview`, and so on, overriding the global `defaults`. |
 | `variants` | array | Image variant definitions: `['name' => ['width' => ..., 'height' => ..., 'fit' => bool, 'watermark' => bool]]`. See the Images, variants and watermarks section. |
 | `preview` | array | Rasterized preview config for documents and videos. Documents accept `page`, `width`, `engine`, and nested `variants`. Videos accept `frame_at` and nested `variants`. See the Video and PDF previews section. |
-| `extract` / `extract_text` | bool or array | Whether to extract text from the file (`extract_text` is a legacy alias for `extract`). See the per-type extraction note below and the Text extraction section. |
-| `embed` | bool or array | Whether to generate embeddings. See the Text extraction, embeddings and search section. |
+| `extract` / `extract_text` | bool, string or array | When to extract text from the file: `'always'` (`true`), `'on_demand'` or `'never'` (`false`), or a list of types. Can also be set per type inside `types` (`extract_text` is a legacy alias for `extract`). See the per-type extraction note below and the Text extraction section. |
+| `embed` | bool, string or array | Whether to generate embeddings, with the same values as `extract`. See the Text extraction, embeddings and search section. |
 | `actions` | array | Custom actions to attach to the collection. |
 | `models` | array | Per-model scoping (covered next). |
 
@@ -647,15 +647,51 @@ You can check whether a collection is scoped with `CollectionConfig::isRestricte
 
 #### Per-type `extract` and `embed`
 
-The `extract` and `embed` keys accept either a boolean or an array, resolved by `EduLazaro\Laracrate\Support\ExtractionResolver`:
+`extract`, `embed` and, for videos, `visual` resolve to one of three modes through `EduLazaro\Laracrate\Support\ExtractionResolver`:
+
+| Value | Mode | Meaning |
+| --- | --- | --- |
+| `'always'` or `true` | always | Runs when the file is uploaded. |
+| `'on_demand'` | on demand | Runs only once someone requests it with `$file->requestExtraction()`. |
+| `'never'` or `false` | never | Never runs. |
+
+Declare them for the whole collection or per type inside `types`. The type wins:
 
 ```php
-'extract' => true,                 // all types in the collection
-'extract' => ['document', 'image'] // only these file types
-'extract' => ['video.visual']      // an opt-in extra, matched by prefix
+'documents' => [
+    'extract' => 'always',             // default for every type
+    'embed'   => true,
+    'types'   => [
+        'document' => ['max_file_size' => 51200],
+        'audio'    => ['max_file_size' => 51200, 'extract' => 'on_demand'],
+        'video'    => ['max_file_size' => 204800, 'extract' => 'on_demand', 'visual' => 'never'],
+    ],
+],
 ```
 
-When the value is an array, it matches the file's type by exact value or by the `type.` prefix (so `video` matches `video.visual` and vice versa). The legacy boolean key `extract_text` is still honored for backward compatibility. Apps can register a per-file override with `ExtractionResolver::setOverrideResolver(callable)`, where the callable receives the `File` and returns an override array (or null). See the Text extraction section.
+The collection-level value also accepts a list of types, which means `'always'` for those types and `'never'` for the rest. It matches the file's type by exact value or by the `type.` prefix:
+
+```php
+'extract' => ['document', 'image']        // only these file types
+'extract' => ['document', 'video.visual'] // videos too, with frame description
+```
+
+`extract` decides whether the text pipeline runs for a file and `embed` whether its text is embedded, so `embed` never extracts a type that `extract` excludes. When `extract` is not declared at all, the pipeline follows `embed`. `visual` describes video frames on top of the transcript and only applies when the video is extracted. The legacy boolean key `extract_text` is still honored. An unknown value throws an `InvalidArgumentException`.
+
+Apps can register a per-file override with `ExtractionResolver::setOverrideResolver(callable)`. The callable receives the `File` and returns an array in the same shape as the collection config (or null), for example per organization or per case. Whatever the override declares wins over the collection config, and its `types` blocks are merged type by type. See the Text extraction section.
+
+#### On-demand extraction
+
+On-demand types are skipped when the file is uploaded: the file ends up `completed`, with no text. Request the processing when it is needed, from a menu action or from an agent tool:
+
+```php
+if ($file->canRequestExtraction()) {
+    $file->requestExtraction(auth()->user());            // queued
+    $file->requestExtraction(auth()->user(), sync: true); // inline, e.g. inside a tool
+}
+```
+
+`requestExtraction()` records who asked and when in the file's `metadata` (`extraction_requested_at`, `extraction_requested_by_type`, `extraction_requested_by_id`), which turns the on-demand modes on for that file, and processes it again from the semantic extraction band (priority 60). The original is not transcoded again and its variants are not regenerated. It returns `false` when there is nothing on demand for the file. `canRequestExtraction()` is true until the file has been requested, and again if that processing failed.
 
 ### Placeholders
 
@@ -2041,7 +2077,7 @@ The bundled extractors:
 
 All class names live under `EduLazaro\Laracrate\Extractors\`. The OCR, audio and video extractors call paid third-party APIs and incur per-file cost (the source documents rough estimates, for example a 10-page PDF OCR is around 0.004 USD on Claude Haiku, audio transcription is around 0.006 USD per minute). They also fail safe: if no API key is configured for the selected provider, `supports()` returns false and the chain moves to the next extractor instead of erroring out.
 
-`OcrImageTextExtractor` and `VideoTranscribeExtractor` emit two segments with distinct `context` values, `text` (verbatim OCR or transcript) and `description` (a visual summary), so the chunker produces a separate embedding for each. Video visual frame description is opt-in: add the pseudo-type `'video.visual'` to the collection's `extract` array to enable it (`LARACRATE_VIDEO_FRAME_INTERVAL` controls the seconds between frames, default 30).
+`OcrImageTextExtractor` and `VideoTranscribeExtractor` emit two segments with distinct `context` values, `text` (verbatim OCR or transcript) and `description` (a visual summary), so the chunker produces a separate embedding for each. Video visual frame description is opt-in: set `visual` on the video type (`'always'` or `'on_demand'`), or add the legacy `'video.visual'` extra to the collection's `extract` list (`video.frame_interval` in the config, `LARACRATE_VIDEO_FRAME_INTERVAL`, controls the seconds between frames, default 30).
 
 #### Registering extractors
 

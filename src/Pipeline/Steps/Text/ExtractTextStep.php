@@ -20,9 +20,9 @@ class ExtractTextStep implements FileActionInterface
             return false;
         }
 
-        // `extract` and `embed` accept a bool or an array of FileTypes in the
-        // collection config. ExtractionResolver also consults app-level overrides
-        // (org, case) if the app registered one via setOverrideResolver().
+        // `extract` and `embed` resolve to always / on_demand / never per type,
+        // on_demand being active once the file was requested. ExtractionResolver
+        // also consults app-level overrides (org, case) via setOverrideResolver().
         if (!ExtractionResolver::shouldExtract($file) && !ExtractionResolver::shouldEmbed($file)) {
             return false;
         }

@@ -295,7 +295,7 @@ class File extends Model
         $total = $this->chunks()->count();
         if ($total === 0) return false;
 
-        $embedded = $this->chunks()->whereHas('data', fn ($q) => $q->whereNotNull('embedding'))->count();
+        $embedded = $this->chunks()->whereNotNull('embedding')->count();
         return $embedded === $total;
     }
 
@@ -676,6 +676,28 @@ class File extends Model
     {
         return $this->mime_type === 'application/pdf'
             || strtolower($this->extension ?? '') === 'pdf';
+    }
+
+    /**
+     * Request the on-demand processing of this file (its type has `extract`,
+     * `embed` or `visual` set to 'on_demand'). Returns false when there is
+     * nothing to request.
+     */
+    public function requestExtraction(?Model $requester = null, bool $sync = false): bool
+    {
+        return \EduLazaro\Laracrate\Actions\Files\RequestExtractionAction::create()->run([
+            'file'      => $this,
+            'requester' => $requester,
+            'sync'      => $sync,
+        ]);
+    }
+
+    /**
+     * Whether the on-demand processing of this file can be requested now.
+     */
+    public function canRequestExtraction(): bool
+    {
+        return \EduLazaro\Laracrate\Support\ExtractionResolver::canRequest($this);
     }
 
     /**

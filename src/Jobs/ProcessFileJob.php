@@ -30,13 +30,22 @@ class ProcessFileJob implements ShouldQueue
      */
     public bool $deleteWhenMissingModels = true;
 
+    /**
+     * Skip the steps below this priority (0 runs them all). Declared with a
+     * default, not promoted, so jobs queued before it existed still unserialize.
+     */
+    public int $fromPriority = 0;
+
     /** @param File $file The file to process. */
-    public function __construct(public File $file) {}
+    public function __construct(public File $file, int $fromPriority = 0)
+    {
+        $this->fromPriority = $fromPriority;
+    }
 
     /** Run the processing pipeline for the file. */
     public function handle(): void
     {
-        ProcessFileAction::create()->run(['file' => $this->file]);
+        ProcessFileAction::create()->run(['file' => $this->file, 'fromPriority' => $this->fromPriority]);
     }
 
     /** Queue name this job runs on. */

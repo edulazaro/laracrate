@@ -4,15 +4,15 @@ namespace EduLazaro\Laracrate\Extractors;
 
 use EduLazaro\Laracrate\Contracts\TextExtractor;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Support\CollectionConfig;
+use EduLazaro\Laracrate\Support\ExtractionResolver;
 use EduLazaro\Laracrate\Support\ExtractedContent;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
  * Transcribes video: extracts audio with ffmpeg, then Whisper. Optionally adds
- * a visual description of frames if the collection declares `extract` including
- * `video.visual` (pseudo-type).
+ * a visual description of frames if the video type declares `visual` (or the
+ * collection's `extract` list includes the legacy `video.visual` extra).
  *
  * Requires ffmpeg installed on the system. If absent, `supports()` returns
  * false and the step skips it cleanly.
@@ -119,20 +119,12 @@ class VideoTranscribeExtractor implements TextExtractor
     }
 
     /**
-     * Determine whether the collection opted into visual frame description.
+     * Determine whether the frames should be described: `visual` on the video
+     * type, or the legacy `video.visual` extra, including app overrides.
      */
     protected function wantsVisualFrames(File $file): bool
     {
-        $config = CollectionConfig::resolve($file->collection, $file->fileable_type);
-        $extract = $config['extract'] ?? null;
-
-        // We only support visual frames if the collection declares `video.visual`
-        // (explicit opt-in pseudo-type).
-        if (! is_array($extract)) {
-            return false;
-        }
-
-        return in_array('video.visual', $extract, true);
+        return ExtractionResolver::shouldDescribeVisual($file);
     }
 
     /**

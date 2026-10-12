@@ -53,8 +53,12 @@ use Throwable;
  */
 class ProcessFileAction extends Action
 {
-    /** Run the ordered pipeline steps for a top-level file. */
-    public function handle(File $file): File
+    /**
+     * Run the ordered pipeline steps for a top-level file. With `$fromPriority`
+     * only the steps from that priority on run, e.g. 60 to redo the text
+     * pipeline without transcoding or regenerating variants again.
+     */
+    public function handle(File $file, int $fromPriority = 0): File
     {
         if ($file->isVariant()) {
             return $file;
@@ -69,6 +73,10 @@ class ProcessFileAction extends Action
 
         try {
             foreach ($this->resolveSteps($file) as $step) {
+                if ($step->priority() < $fromPriority) {
+                    continue;
+                }
+
                 // `supports()` is optional. If the action declares it, we
                 // respect it; otherwise `handle()` is invoked directly.
                 if (method_exists($step, 'supports') && ! $step->supports($file)) {

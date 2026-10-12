@@ -418,11 +418,18 @@ return [
     | To enable it on a collection:
     |   'collections' => [
     |       'documents' => [
-    |           'extract_text' => true,    // extracts text from the PDF/text
-    |           'embed'        => true,    // generates an embedding of the text
-    |           ...
+    |           'extract' => true,         // extracts text from every type
+    |           'embed'   => true,         // generates an embedding of the text
+    |           'types'   => [
+    |               // Paid extractors only when someone asks: $file->requestExtraction().
+    |               'audio' => ['extract' => 'on_demand'],
+    |               'video' => ['extract' => 'on_demand', 'visual' => 'never'],
+    |           ],
     |       ],
     |   ]
+    |
+    | `extract`, `embed` and `visual` (video frames) take 'always' (true),
+    | 'on_demand' or 'never' (false), for the collection or per type.
     |
     | Apps register their own EmbeddingProvider in their ServiceProvider:
     |   $this->app->bind(
