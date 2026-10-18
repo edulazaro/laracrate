@@ -273,6 +273,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Handoff
+    |--------------------------------------------------------------------------
+    |
+    | Open a file in an editor of another site and take its result back as a
+    | copy next to it, with the handoff protocol (Auditius, src/lib/handoff/
+    | SPEC.md). Each editor, by name:
+    |
+    |   'auditius' => [
+    |       'name'    => 'Auditius',
+    |       'url'     => 'https://auditius.com/?editor&handoff=1',  // its handoff URL
+    |       'types'   => ['audio'],                                 // file types it opens
+    |       'formats' => ['audio/mpeg'],                            // what the copy comes back as
+    |   ],
+    |
+    | The editor answers from the origin of its url. Pages that offer it include
+    | laracrate::handoff once.
+    |
+    */
+
+    'handoff' => [
+        'editors' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Status polling
     |--------------------------------------------------------------------------
     |

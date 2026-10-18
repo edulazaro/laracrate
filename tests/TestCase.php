@@ -38,6 +38,8 @@ abstract class TestCase extends BaseTestCase
             }
         }
         $app->useStoragePath($storage);
+        // The compiled views path was read from the old storage path when the config loaded.
+        $app['config']->set('view.compiled', $storage . '/framework/views');
 
         // MySQL test database (the package migrations use MySQL-specific DDL:
         // FULLTEXT indexes, information_schema lookups, ALTER ... MODIFY). Point

@@ -1,6 +1,7 @@
 <?php
 
 use EduLazaro\Laracrate\Http\Controllers\FileStatusController;
+use EduLazaro\Laracrate\Http\Controllers\HandoffController;
 use EduLazaro\Laracrate\Http\Controllers\Local\LocalServeController;
 use EduLazaro\Laracrate\Http\Controllers\Local\LocalUploadController;
 use EduLazaro\Laracrate\Http\Controllers\MultipartUploadController;
@@ -24,6 +25,9 @@ Route::middleware($middleware)
         Route::get('{file:slug}/download', [StreamFileController::class, 'download'])->name('download');
         // What the viewer shows, with a link made at request time. See ViewerController.
         Route::get('{file:slug}/view', ViewerController::class)->name('view');
+        // Handoff: open in an editor of another site, and the page it saves the copy into.
+        Route::get('{file:slug}/handoff/{editor}', [HandoffController::class, 'open'])->name('handoff');
+        Route::get('{file:slug}/handoff/{editor}/save', [HandoffController::class, 'save'])->name('handoff.save');
     });
 
 // Endpoints internos del Local driver — equivalentes a presigned PUT y GET.

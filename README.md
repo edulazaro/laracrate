@@ -2643,6 +2643,37 @@ The page never holds a link to the file. The viewer asks `GET /laracrate/files/{
 
 Pass `['position' => '...']` to move it; the colours are the `--lc-viewer-*` variables. Next to the upload tray, stack both in one container of your layout.
 
+### Handoff: editing a file in another site
+
+A file can be opened in an editor of another site and come back as a copy next to the original, with the handoff protocol (windows and `postMessage`, version 1; Auditius publishes it in `src/lib/handoff/SPEC.md`). Declare the editors in config:
+
+```php
+'handoff' => [
+    'editors' => [
+        'auditius' => [
+            'name'    => 'Auditius',
+            'url'     => 'https://auditius.com/?editor&handoff=1', // its handoff URL; the editor answers from this origin
+            'types'   => ['audio'],                                 // file types it opens
+            'formats' => ['audio/mpeg'],                            // what the copy may come back as
+        ],
+    ],
+],
+```
+
+Include `laracrate::handoff` once in the layout, with the name the editor shows on its "Save to ..." command, and call `Laracrate.handoff.open()` from a click:
+
+```blade
+@include('laracrate::handoff', ['appName' => 'Inis Legal'])
+
+<button @click="Laracrate.handoff.open('auditius', '{{ $file->slug }}').catch((e) => e.code !== 'closed' && alert(e.message))">
+    Edit in Auditius
+</button>
+```
+
+`open()` opens the editor window inside the click, reads the file from your site (`GET /laracrate/files/{slug}/handoff/{editor}`, counted as a download) and hands it over once the editor says it is ready. Whoever may see the file may open it; only whoever may edit it gets somewhere to save. The editor saves into `GET /laracrate/files/{slug}/handoff/{editor}/save`, a page of its own that takes the file only from that editor's origin, lets the person name the copy and uploads it with the upload queue under a grant for the original's model, collection and folder, so the collection's rules apply as to any upload. Other tabs of your app get a `laracrate:uploaded` event when the copy is saved.
+
+An editor only saves to `https` (or `localhost` while developing). On any other address, `open()` still works but offers nowhere to save.
+
 ### Themes and layouts
 
 There are **11 themes**: `default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`, `chatgpt`, `claude`, and `studio`. Each card-uploader theme ships in **2 layouts**, `row` and `portrait`, as `resources/views/uploader/themes/{theme}/{row,portrait}.blade.php`. The dropzone families resolve a single Blade per theme (for example `dropzone/themes/{theme}.blade.php`) and fall back to `default` when a theme has no matching view.
@@ -2680,7 +2711,7 @@ Reference a string with the namespaced key:
 {{ __('laracrate::uploader.upload') }}
 ```
 
-The strings live in the `uploader` group. A sample of the keys (see the source files for the full list):
+The strings live in the `uploader` group (the viewer's in `viewer`, the handoff pieces' in `handoff`). A sample of the `uploader` keys (see the source files for the full list):
 
 | Key | English | Spanish |
 |-----|---------|---------|
