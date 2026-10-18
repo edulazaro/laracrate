@@ -79,6 +79,18 @@ class FileObserver
     }
 
     /**
+     * What processing left behind for a file deleted while it ran: the variants, binary
+     * sidecars and chunks written after the delete purged everything. Usage is not
+     * touched, the delete already discounted it.
+     */
+    public function purgeLeftovers(File $file): void
+    {
+        File::withTrashed()->where('parent_id', $file->getKey())->get()->each->forceDelete();
+        $this->purgeFromBackend($file);
+        $this->purgeChunksFromStore($file);
+    }
+
+    /**
      * If the file's collection has `track_usage = true` and is top-level
      * (not a variant), adds its size + count to the corresponding Folderable
      * row. Atomic upsert: if the row does not exist, it creates it.

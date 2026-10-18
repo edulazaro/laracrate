@@ -8,6 +8,7 @@ use EduLazaro\Laracrate\Events\FileProcessed;
 use EduLazaro\Laracrate\Events\FileProcessingFailed;
 use EduLazaro\Laracrate\Events\FileProcessingStarted;
 use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Observers\FileObserver;
 use EduLazaro\Laracrate\Support\CollectionConfig;
 use EduLazaro\Laracrate\Support\FileActionRegistry;
 use EduLazaro\Laractions\Action;
@@ -82,7 +83,16 @@ class ProcessFileAction extends Action
                 if (method_exists($step, 'supports') && ! $step->supports($file)) {
                     continue;
                 }
+
+                if ($this->deletedMeanwhile($file)) {
+                    return $this->sweep($file);
+                }
+
                 $step->handle($file);
+            }
+
+            if ($this->deletedMeanwhile($file)) {
+                return $this->sweep($file);
             }
 
             $file->forceFill([
@@ -92,6 +102,11 @@ class ProcessFileAction extends Action
 
             FileProcessed::dispatch($file);
         } catch (Throwable $e) {
+            // A step that failed because the file is gone is not a failure to report.
+            if ($this->deletedMeanwhile($file)) {
+                return $this->sweep($file);
+            }
+
             $file->forceFill([
                 'processing_status' => ProcessingStatus::FAILED,
                 'processing_error'  => $e->getMessage(),
@@ -109,6 +124,24 @@ class ProcessFileAction extends Action
         }
 
         return $file->refresh();
+    }
+
+    /**
+     * Whether the file was deleted for good while its pipeline ran (a soft delete keeps
+     * the row and does not count). Its delete purged what existed then; what the steps
+     * write afterwards would be left with no file to purge it.
+     */
+    protected function deletedMeanwhile(File $file): bool
+    {
+        return ! File::withTrashed()->whereKey($file->getKey())->exists();
+    }
+
+    /** Stops the pipeline of a deleted file, clearing what its steps had written. */
+    protected function sweep(File $file): File
+    {
+        app(FileObserver::class)->purgeLeftovers($file);
+
+        return $file;
     }
 
     /**

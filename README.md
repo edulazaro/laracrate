@@ -1731,6 +1731,8 @@ The text steps write two **sidecar artifacts** next to the binary on the same di
 
 The pipeline is **fail-fast**. If any step throws, `ProcessFileAction` marks the file `failed`, stores the exception message in `processing_error`, fires `FileProcessingFailed`, and rethrows. Later steps do not run.
 
+A file deleted for good while its pipeline runs (someone removes an attachment that is still being processed) is not a failure. Its delete purged what existed then; the pipeline notices before the next step, stops, and clears what the steps wrote afterwards (variants, the extraction sidecars, chunks) through `FileObserver::purgeLeftovers()`. A soft deleted file keeps its row and is processed as usual.
+
 The rethrow lets the queue retry. `ProcessFileJob` declares:
 
 - `public int $tries = 3;`
