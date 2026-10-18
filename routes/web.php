@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Http\Controllers\MultipartUploadController;
 use EduLazaro\Laracrate\Http\Controllers\PresignedUploadController;
 use EduLazaro\Laracrate\Http\Controllers\StreamFileController;
 use EduLazaro\Laracrate\Http\Controllers\UploadController;
+use EduLazaro\Laracrate\Http\Controllers\ViewerController;
 use Illuminate\Support\Facades\Route;
 
 $prefix     = config('laracrate.stream.route_prefix', 'laracrate/files');
@@ -21,6 +22,8 @@ Route::middleware($middleware)
         Route::get('{file:slug}/stream',   [StreamFileController::class, 'stream'])->name('stream');
         Route::get('{file:slug}/preview',  [StreamFileController::class, 'preview'])->name('preview');
         Route::get('{file:slug}/download', [StreamFileController::class, 'download'])->name('download');
+        // What the viewer shows, with a link made at request time. See ViewerController.
+        Route::get('{file:slug}/view', ViewerController::class)->name('view');
     });
 
 // Endpoints internos del Local driver — equivalentes a presigned PUT y GET.

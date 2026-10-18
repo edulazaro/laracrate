@@ -258,6 +258,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Viewer
+    |--------------------------------------------------------------------------
+    |
+    | laracrate::viewer shows images, audio and video in a card at the bottom of
+    | the page. image_variant: the variant an image is shown with (the file itself
+    | when it has none). Videos play their `playback` copy when there is one.
+    |
+    */
+
+    'viewer' => [
+        'image_variant' => 'display',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Status polling
     |--------------------------------------------------------------------------
     |

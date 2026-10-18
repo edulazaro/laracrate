@@ -2623,6 +2623,26 @@ A page that shows its uploads itself (a chat composer with its attachments) pass
 
 A direct upload that is cancelled or never confirmed leaves its object under `temp/`. Add a lifecycle rule on that prefix in your bucket (R2 and S3 both have one) to delete what is older than a day.
 
+### The viewer
+
+`laracrate::viewer` shows one image, audio or video at a time in a card at the bottom of the page. Images and videos open to full size from there (the same element grows, so a video keeps playing). Put it in your layout inside `@persist`, so what is playing keeps playing across `wire:navigate`:
+
+```blade
+@auth
+    @persist('laracrate-viewer')
+        @include('laracrate::viewer')
+    @endpersist
+@endauth
+```
+
+Open a file with `Laracrate.viewer.open(slug)`, or give any element `data-laracrate-view="{{ $file->slug }}"`: a plain click on it opens the viewer, while Ctrl, Cmd, Shift or the middle button leave a link to do what it does. Opening the file that is already open leaves it as it is (a paused one plays on).
+
+Elements that share a `data-laracrate-gallery="name"` form a gallery: the viewer shows "2 of 5" and moves through them in page order with its arrows and the arrow keys (not while the person types in a field). Hidden elements count too, so a grid that draws four images with "+N" can still reach the rest. From JavaScript: `Laracrate.viewer.open(slug, { gallery: [slug, ...] })`.
+
+The page never holds a link to the file. The viewer asks `GET /laracrate/files/{slug}/view` when it opens, which answers with the name, the type and a link made at that moment, after the file's own view policy. A signed link may run out while a long recording plays; the viewer then asks again, once, and carries on at the same second. Images show the `display` variant (`laracrate.viewer.image_variant`) and videos their `playback` copy, each falling back to the file itself. Other types answer 422.
+
+Pass `['position' => '...']` to move it; the colours are the `--lc-viewer-*` variables. Next to the upload tray, stack both in one container of your layout.
+
 ### Themes and layouts
 
 There are **11 themes**: `default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`, `chatgpt`, `claude`, and `studio`. Each card-uploader theme ships in **2 layouts**, `row` and `portrait`, as `resources/views/uploader/themes/{theme}/{row,portrait}.blade.php`. The dropzone families resolve a single Blade per theme (for example `dropzone/themes/{theme}.blade.php`) and fall back to `default` when a theme has no matching view.
