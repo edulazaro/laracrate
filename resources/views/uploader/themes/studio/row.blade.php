@@ -50,9 +50,9 @@
             <span class="shrink-0 inline-flex items-center px-3 h-8 rounded-sm bg-gray-900 text-white text-xs font-medium hover:bg-gray-800 transition-colors">
                 {{ __('laracrate::uploader.choose') }}
             </span>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
-        <div wire:loading wire:target="upload" class="mt-2 text-[11px] font-mono text-gray-500 inline-flex items-center gap-1">
+        <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-2 text-[11px] font-mono text-gray-500 inline-flex items-center gap-1">
             <span class="inline-block w-1 h-1 bg-gray-700 rounded-full animate-pulse"></span>{{ str(__('laracrate::uploader.uploading'))->lower() }}
         </div>
         @error('upload') <p class="mt-2 text-xs text-red-600">{{ $message }}</p> @enderror

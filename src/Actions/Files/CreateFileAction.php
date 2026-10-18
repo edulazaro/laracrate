@@ -3,6 +3,7 @@
 namespace EduLazaro\Laracrate\Actions\Files;
 
 use EduLazaro\Laracrate\Enums\FileType;
+use EduLazaro\Laracrate\Exceptions\UploadRejected;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\Binary;
@@ -167,6 +168,44 @@ class CreateFileAction extends Action
     }
 
     /**
+     * Checks a file against the collection and slot rules before any byte is sent,
+     * with what the browser declares (name, mime, size). The same rules run again
+     * when the file is created, so this only saves a useless upload; it is not the
+     * check that protects anything.
+     *
+     * @throws UploadRejected
+     */
+    public function preflight(
+        ?Model $fileable,
+        string $collection,
+        string $mime,
+        int $size,
+        string $originalName,
+        array $slots = [],
+        ?Model $creator = null,
+    ): void {
+        $slotModels = collect($slots)
+            ->map(fn ($s) => $s instanceof \EduLazaro\Laracrate\Models\FileSlot ? $s : \EduLazaro\Laracrate\Models\FileSlot::find($s))
+            ->filter()
+            ->values();
+
+        $this->validateAgainstCollection(
+            $collection,
+            FileType::fromMime($mime),
+            [
+                'mime_type' => $mime,
+                'size'      => $size,
+                'extension' => strtolower(pathinfo($originalName, PATHINFO_EXTENSION) ?: 'bin'),
+            ],
+            $fileable,
+            null,
+            app(StorageManager::class),
+            $slotModels,
+            $creator,
+        );
+    }
+
+    /**
      * Extracts the declared metadata from the upload WITHOUT touching the
      * binary in the backend. Returns mime_type, size and extension. For
      * pre-move validation.
@@ -231,8 +270,9 @@ class CreateFileAction extends Action
             $morphAlias = $fileable?->getMorphClass();
 
             if (!$manager->acceptsType($collection, $type->value, $morphAlias)) {
-                throw new \InvalidArgumentException(
-                    "Collection '{$collection}' does not accept files of type '{$type->value}'."
+                throw new UploadRejected(
+                    "Collection '{$collection}' does not accept files of type '{$type->value}'.",
+                    'type',
                 );
             }
 
@@ -240,15 +280,18 @@ class CreateFileAction extends Action
 
             $acceptedMimes = $typeConfig['accepted_mime_types'] ?? [];
             if (!empty($acceptedMimes) && !in_array($declared['mime_type'], $acceptedMimes, true)) {
-                throw new \InvalidArgumentException(
-                    "MIME '{$declared['mime_type']}' not accepted by collection '{$collection}'. Allowed: " . implode(', ', $acceptedMimes)
+                throw new UploadRejected(
+                    "MIME '{$declared['mime_type']}' not accepted by collection '{$collection}'. Allowed: " . implode(', ', $acceptedMimes),
+                    'type',
                 );
             }
 
             $maxSizeKb = $typeConfig['max_file_size'] ?? null;
             if ($maxSizeKb && $declared['size'] > $maxSizeKb * 1024) {
-                throw new \InvalidArgumentException(
-                    "The file exceeds the maximum size of {$maxSizeKb} KB for collection '{$collection}'."
+                throw new UploadRejected(
+                    "The file exceeds the maximum size of {$maxSizeKb} KB for collection '{$collection}'.",
+                    'size',
+                    ['size' => round($maxSizeKb / 1024, 1)],
                 );
             }
         }
@@ -261,8 +304,10 @@ class CreateFileAction extends Action
             foreach ($slotModels as $slot) {
                 if (!$slot->acceptsExtension($extension)) {
                     $allowed = implode(', ', array_map('strtoupper', $slot->allowed_extensions ?? []));
-                    throw new \InvalidArgumentException(
-                        "Slot '{$slot->name}' does not accept .{$extension} files. Allowed: {$allowed}"
+                    throw new UploadRejected(
+                        "Slot '{$slot->name}' does not accept .{$extension} files. Allowed: {$allowed}",
+                        'slot_extension',
+                        ['slot' => $slot->name, 'allowed' => $allowed],
                     );
                 }
 
@@ -271,8 +316,10 @@ class CreateFileAction extends Action
                     $reason = $check['reason'] === 'global'
                         ? "the global limit of {$check['limit']} files"
                         : "your limit of {$check['limit']} files";
-                    throw new \InvalidArgumentException(
-                        "Slot '{$slot->name}' has reached {$reason}."
+                    throw new UploadRejected(
+                        "Slot '{$slot->name}' has reached {$reason}.",
+                        'slot_full',
+                        ['slot' => $slot->name, 'limit' => $check['limit']],
                     );
                 }
             }
@@ -298,6 +345,16 @@ class CreateFileAction extends Action
         // Case A: presigned upload completed by the client.
         if ($upload instanceof FileUpload) {
             $key = ltrim($upload->key, '/');
+
+            // The key usually comes from the browser. Only an object it just uploaded
+            // (temp/) or one already under this fileable's own path may become a File
+            // of it: any other key would let someone claim an object of another
+            // model or tenant just by knowing its key.
+            if (!$this->keyBelongsTo($key, $collection, $fileable, $tenant)) {
+                throw new \InvalidArgumentException(
+                    "The key '{$key}' is not an upload of this fileable."
+                );
+            }
 
             // If the key lives in temp/ and we know the fileable, move it
             // server-side to the canonical path (zero download to PHP).
@@ -382,6 +439,31 @@ class CreateFileAction extends Action
             'original_name' => $originalName,
             'extension'     => pathinfo($originalName, PATHINFO_EXTENSION) ?: 'bin',
         ], $extras);
+    }
+
+    /**
+     * Whether a presigned key may be registered for this fileable: a fresh upload
+     * under temp/, or a key under the fileable's own collection path, with or
+     * without the tenant prefix (presigned canonical keys never carry it).
+     */
+    protected function keyBelongsTo(string $key, string $collection, ?Model $fileable, ?Model $tenant): bool
+    {
+        if (str_contains($key, '..')) {
+            return false;
+        }
+
+        if (str_starts_with($key, 'temp/')) {
+            return true;
+        }
+
+        if (!$fileable) {
+            return false;
+        }
+
+        $base = $this->buildPath($collection, $fileable) . '/';
+        $tenantBase = $tenant ? $this->buildPath($collection, $fileable, $tenant) . '/' : null;
+
+        return str_starts_with($key, $base) || ($tenantBase && str_starts_with($key, $tenantBase));
     }
 
     /**

@@ -41,8 +41,8 @@
             <svg class="w-8 h-8 text-fuchsia-400 mb-2 drop-shadow-[0_0_8px_rgba(217,70,239,0.6)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 4v12m0-12 4 4m-4-4-4 4M4 18h16"/></svg>
             <p class="text-sm font-bold text-white">{{ __('laracrate::uploader.drag_or_click_long') }}</p>
             <p class="mt-1 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300">{{ __('laracrate::uploader.max_size_capital', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
-            <div wire:loading wire:target="upload" class="mt-2 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300">{{ __('laracrate::uploader.uploading') }}</div>
+            @include('laracrate::uploader._input')
+            <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-2 text-[10px] font-mono uppercase tracking-[0.2em] text-cyan-300">{{ __('laracrate::uploader.uploading') }}</div>
         </div>
         @error('upload') <p class="mt-2 text-xs text-red-400 font-mono">{{ $message }}</p> @enderror
     @endif

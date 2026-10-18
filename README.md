@@ -844,9 +844,11 @@ Routing and a disk allowlist for the direct presigned upload endpoints. The mult
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `route_prefix` | `laracrate/uploads` | URL prefix for the presign and cancel endpoints. |
+| `route_prefix` | `laracrate/uploads` | URL prefix for the upload endpoints (presign, cancel, and the grant based sign, confirm and receive). |
 | `middleware` | `['web', 'auth']` | Middleware for the upload route group. Authorization is your app's responsibility. |
-| `allowed_disks` | `[]` | Allowlist of disks a client may upload to directly, enforced in the presign and multipart init endpoints. Empty means no restriction. |
+| `allowed_disks` | `[]` | Allowlist of disks the plain `presign` and `cancel` endpoints accept. Empty means the disks your configured collections use, never any other disk (`public`, `local`...). The grant based endpoints do not read it: their disk always comes from the grant's collection. |
+
+A collection may also say how the components send its bytes with `'upload' => 'direct'` (presigned PUT to the bucket) or `'upload' => 'server'` (through PHP). Without it each component uses its own default: the dropzones go direct, the single file uploader goes through the server. A collection with `'encrypt' => true` always goes through the server, the only place it can be encrypted.
 
 These are the defaults; override them in your published config to restrict `allowed_disks` or change the prefix or middleware. See the HTTP endpoints and Upload modes sections.
 
@@ -1445,6 +1447,9 @@ You rarely call these routes by name from PHP. The JS helper and your upload flo
 | --- | --- | --- | --- |
 | POST | `laracrate/uploads/presign` | `laracrate.uploads.presign` | Mint a presigned PUT URL (or local signed-route fallback) for a direct upload |
 | DELETE | `laracrate/uploads/{disk}/{encodedKey}` | `laracrate.uploads.cancel` | Delete an abandoned `temp/` object (`encodedKey` is base64 then URL-encoded) |
+| POST | `laracrate/uploads/sign` | `laracrate.uploads.sign` | Grant based: check a file against the rules, then a presigned PUT and a receipt, or the address to post it to |
+| POST | `laracrate/uploads/confirm` | `laracrate.uploads.confirm` | Grant based: create the File of a direct upload (the receipt proves the key was issued to this grant) |
+| POST | `laracrate/uploads/receive` | `laracrate.uploads.receive` | Grant based: take a file through PHP and create the File at once (encrypted collections) |
 | POST | `laracrate/multipart/init` | `laracrate.multipart.init` | Start a multipart session, returns `upload_id`, `total_parts`, and part URLs |
 | POST | `laracrate/multipart/{multipart}/parts` | `laracrate.multipart.parts` | Reissue presigned URLs for specific parts |
 | POST | `laracrate/multipart/{multipart}/complete` | `laracrate.multipart.complete` | Assemble the final object from uploaded part ETags |
@@ -2538,7 +2543,7 @@ All six are registered in `LaracrateServiceProvider` with the tag names below. T
 | `laracrate-dropzone-single` | `LaracrateDropzoneSingle` | single | Instant direct upload, one file, in-place preview | One large file (a video, a PDF) too big for the card uploader |
 | `laracrate-dropzone-single-deferred` | `LaracrateDropzoneSingleDeferred` | single | Deferred single direct upload, in-place preview | Same, with an explicit confirm step |
 
-The card uploaders (`laracrate-uploader`, `laracrate-uploader-deferred`) push the file through Livewire's temporary upload, so the binary passes through PHP. The dropzones upload straight to your disk with a presigned PUT and the binary never touches PHP. Pick the dropzone variants for large files.
+The dropzones upload straight to your disk with a presigned PUT and the binary never touches PHP. `laracrate-uploader` sends the file through PHP (no CORS needed on the bucket, and the only way an `encrypt` collection can be uploaded). Both go through the shared upload queue, so they keep uploading after a `wire:navigate`: see "Upload grants and the upload tray". `laracrate-uploader-deferred` still stages the file with Livewire's temporary upload and saves it on `submit()`; leaving before submitting saves nothing, by design. Pick the dropzone variants for large files.
 
 ### Props
 
@@ -2580,7 +2585,43 @@ A deferred multi-file dropzone, queue then batch upload:
 <livewire:laracrate-dropzone-deferred :model="$organization" collection="gallery" theme="studio" />
 ```
 
-All components dispatch browser events you can listen for: `laracrate-file-uploaded` (per file, with `collection`, `fileId`, and `contextKey`), `laracrate-file-deleted` or `laracrate-file-removed`, and on the dropzones `laracrate-batch-completed` (with `ok` and `error` counts). The deferred dropzone also dispatches `laracrate-file-rejected` when a file is refused by the collection or a slot quota. See the "Events" section for the server-side events fired during processing.
+All components dispatch browser events you can listen for: `laracrate-file-uploaded` (per file, with `collection`, `fileId`, and `contextKey`), `laracrate-file-deleted` or `laracrate-file-removed`, and on the dropzones `laracrate-batch-completed` (with `ok` and `error` counts) and `laracrate-file-rejected` (with `collection`, `reason` and `fileName`) when a file is refused by the collection or a slot quota. The upload ones are sent only while the page that started the upload is still open: the page reached after a `wire:navigate` may listen for the same collection with another meaning. See "Upload grants and the upload tray" for the events that always fire, and the "Events" section for the server-side events fired during processing.
+
+### Upload grants and the upload tray
+
+Every upload component builds an **upload grant** when it mounts: its target (model, collection, slots, creator, owner, folder, context key, whether it replaces the current file) and how the bytes travel, bound to the signed in user and valid for 24 hours. The browser only gets an encrypted token (`$wire.uploadGrant`) it can neither read nor alter, and the upload endpoints (`sign`, `confirm`, `receive`) take nothing else: the disk, the model and the object key never come from the request. A direct upload gets a receipt for the `temp/` key it was signed, and only that grant can confirm it; the size checked is the one the bucket holds, not the one the browser declared.
+
+The uploads themselves live in one queue for the whole page, `window.Laracrate.uploads` (an Alpine store when Alpine is there), not in the component. That is what lets them survive a `wire:navigate`: the queue keeps going, and a component mounted again for the same target (`$wire.uploadScope`) shows its uploads where they are. Put the tray in your layout to show them all, inside `@persist` so it is not re-created on each navigation:
+
+```blade
+@auth
+    @persist('laracrate-uploads')
+        @include('laracrate::upload-tray')
+    @endpersist
+@endauth
+```
+
+Pass `['position' => 'bottom: 3rem; right: 1rem;']` to move it. It uses its own CSS (your Tailwind build does not scan the package views); the colours are the `--lc-tray-*` variables on `.lc-tray`. A reload, closing the tab or a link without `wire:navigate` still ends the uploads; while any is running the browser asks first.
+
+Your own front end can use the same queue with a grant built on the server:
+
+```php
+use EduLazaro\Laracrate\Uploads\UploadGrant;
+
+$grant = UploadGrant::for($organization, 'drive', folderId: $folder?->id);
+// To the view: $grant->token() and $grant->scope()
+```
+
+```js
+Laracrate.uploads.add(input.files, { grant, scope })
+window.addEventListener('laracrate:uploaded', (e) => { /* e.detail: scope, fileId, slug, collection, contextKey, name */ })
+```
+
+A page that shows its uploads itself (a chat composer with its attachments) passes `tray: false` to `add()`, and the tray leaves them out.
+
+`laracrate:upload` fires on every change of every upload (`{ type, item }`), and `laracrate:uploaded` once per saved file, whatever page the user is on by then. Logic that must run after an upload no matter what (attach the file somewhere, start a job) belongs on the server, in an observer or a listener of the File, not in a browser listener.
+
+A direct upload that is cancelled or never confirmed leaves its object under `temp/`. Add a lifecycle rule on that prefix in your bucket (R2 and S3 both have one) to delete what is older than a day.
 
 ### Themes and layouts
 

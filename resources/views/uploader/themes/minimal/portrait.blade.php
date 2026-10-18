@@ -27,7 +27,7 @@
                     <button type="button" wire:click="delete" wire:confirm="{{ __('laracrate::uploader.delete_confirm') }}" class="text-gray-500 hover:text-red-600 hover:underline">{{ str(__('laracrate::uploader.delete_short'))->lower() }}</button>
                 </div>
             </div>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
         @error('upload') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
     @else
@@ -39,9 +39,9 @@
             class="aspect-square flex flex-col items-center justify-center border-l-2 cursor-pointer transition-colors">
             <p class="text-sm text-gray-700">{{ __('laracrate::uploader.drag_or_click') }}</p>
             <p class="mt-1 text-xs text-gray-400">{{ __('laracrate::uploader.max_size_capital', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
-        <div wire:loading wire:target="upload" class="mt-1 text-xs text-blue-600">{{ str(__('laracrate::uploader.uploading'))->lower() }}</div>
+        <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-1 text-xs text-blue-600">{{ str(__('laracrate::uploader.uploading'))->lower() }}</div>
         @error('upload') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
     @endif
 </div>

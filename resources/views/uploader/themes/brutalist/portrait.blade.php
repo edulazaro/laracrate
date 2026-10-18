@@ -45,9 +45,9 @@
                     </button>
                 </div>
             </div>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
-        <div wire:loading wire:target="upload" class="mt-2 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-700">{{ __('laracrate::uploader.uploading') }}</div>
+        <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-2 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-700">{{ __('laracrate::uploader.uploading') }}</div>
         @error('upload') <p class="mt-2 text-xs text-red-600 font-mono">{{ $message }}</p> @enderror
     @else
         <div
@@ -60,8 +60,8 @@
             <p class="text-[11px] font-mono font-semibold uppercase tracking-[0.25em] text-neutral-500">{{ __('laracrate::uploader.submit') }}</p>
             <p class="mt-1 text-sm text-neutral-950 font-bold">{{ __('laracrate::uploader.drag_or_click') }}</p>
             <p class="mt-1 text-xs text-neutral-500 font-mono">{{ __('laracrate::uploader.max_size_capital', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
-            <div wire:loading wire:target="upload" class="mt-2 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-700">{{ __('laracrate::uploader.uploading') }}</div>
+            @include('laracrate::uploader._input')
+            <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-2 text-[10px] font-mono uppercase tracking-[0.2em] text-neutral-700">{{ __('laracrate::uploader.uploading') }}</div>
         </div>
         @error('upload') <p class="mt-2 text-xs text-red-600 font-mono">{{ $message }}</p> @enderror
     @endif

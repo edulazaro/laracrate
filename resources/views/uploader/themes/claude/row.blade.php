@@ -48,9 +48,9 @@
             <span class="shrink-0 inline-flex items-center px-3 h-9 rounded-md bg-[#C15F3C] text-white text-[13px] font-semibold hover:bg-[#A84D2C] transition-colors">
                 Elegir
             </span>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
-        <div wire:loading wire:target="upload" class="mt-2 text-[13px] text-[#6B6560] inline-flex items-center gap-1">
+        <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-2 text-[13px] text-[#6B6560] inline-flex items-center gap-1">
             <span class="inline-block w-1 h-1 bg-[#C15F3C] rounded-full animate-pulse"></span>subiendo...
         </div>
         @error('upload') <p class="mt-2 text-[13px] text-red-700">{{ $message }}</p> @enderror

@@ -32,9 +32,9 @@
                 <p class="text-xs text-gray-400">{{ __('laracrate::uploader.max_size_capital', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
             </div>
             <span class="text-xs text-gray-500 underline">{{ str(__('laracrate::uploader.choose'))->lower() }}</span>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
-        <div wire:loading wire:target="upload" class="mt-1 text-xs text-blue-600">{{ str(__('laracrate::uploader.uploading'))->lower() }}</div>
+        <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-1 text-xs text-blue-600">{{ str(__('laracrate::uploader.uploading'))->lower() }}</div>
         @error('upload') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
     @endif
 </div>

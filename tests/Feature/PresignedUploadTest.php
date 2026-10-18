@@ -80,4 +80,31 @@ class PresignedUploadTest extends TestCase
         $response->assertStatus(422);
         Storage::disk('media')->assertExists('property/42/gallery/img.jpg');
     }
+
+    public function test_without_an_allowed_list_only_the_collection_disks_can_be_signed(): void
+    {
+        config()->set('laracrate.uploads.allowed_disks', []);
+        Storage::fake('media');
+
+        $this->postJson('/laracrate/uploads/presign', [
+            'disk' => 'public', 'mime' => 'image/png', 'file_name' => 'a.png',
+        ])->assertStatus(403);
+
+        $this->postJson('/laracrate/uploads/presign', [
+            'disk' => 'media', 'mime' => 'image/png', 'file_name' => 'a.png',
+        ])->assertOk();
+    }
+
+    public function test_runnable_content_cannot_be_signed(): void
+    {
+        Storage::fake('media');
+
+        $this->postJson('/laracrate/uploads/presign', [
+            'disk' => 'media', 'mime' => 'text/html', 'file_name' => 'page.html',
+        ])->assertStatus(422);
+
+        $this->postJson('/laracrate/uploads/presign', [
+            'disk' => 'media', 'mime' => 'image/png', 'file_name' => 'trick.svg',
+        ])->assertStatus(422);
+    }
 }

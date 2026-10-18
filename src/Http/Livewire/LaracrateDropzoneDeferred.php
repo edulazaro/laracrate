@@ -8,6 +8,7 @@ use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\FileUpload;
 use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\Locked;
+use EduLazaro\Laracrate\Http\Livewire\Concerns\IssuesUploadGrants;
 use Livewire\Component;
 
 /**
@@ -25,6 +26,7 @@ use Livewire\Component;
  */
 class LaracrateDropzoneDeferred extends Component
 {
+    use IssuesUploadGrants;
     use UploaderHasFolderTarget;
 
     #[Locked]
@@ -224,6 +226,8 @@ class LaracrateDropzoneDeferred extends Component
             $this->selectedSlotId = $this->slotOptions[0]['id'];
             $this->slots = [$this->selectedSlotId];
         }
+
+        $this->refreshUploadGrant();
     }
 
     /**
@@ -242,13 +246,18 @@ class LaracrateDropzoneDeferred extends Component
      */
     public function updatedSelectedSlotId($value): void
     {
-        if ($value === null || $value === '' || $value === '0') {
+        // The value comes from the browser: only one of the offered slots, or none.
+        $offered = array_column($this->slotOptions, 'id');
+
+        if ($value === null || $value === '' || $value === '0' || ! in_array((int) $value, $offered, true)) {
             $this->selectedSlotId = null;
             $this->slots = [];
         } else {
             $this->selectedSlotId = (int) $value;
             $this->slots = [$this->selectedSlotId];
         }
+
+        $this->refreshUploadGrant();
     }
 
     /**
@@ -258,7 +267,11 @@ class LaracrateDropzoneDeferred extends Component
      */
     public function setSlots(array $slots): void
     {
-        $this->slots = array_values(array_filter(array_map('intval', $slots)));
+        // Callable from the browser: limited to the slots this component offers.
+        $offered = array_column($this->slotOptions, 'id');
+
+        $this->slots = array_values(array_intersect(array_filter(array_map('intval', $slots)), $offered));
+        $this->refreshUploadGrant();
     }
 
     /**

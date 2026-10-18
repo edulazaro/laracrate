@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\FileUpload;
 use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\Locked;
+use EduLazaro\Laracrate\Http\Livewire\Concerns\IssuesUploadGrants;
 use Livewire\Component;
 
 /**
@@ -26,6 +27,7 @@ use Livewire\Component;
  */
 class LaracrateDropzoneSingleDeferred extends Component
 {
+    use IssuesUploadGrants;
     #[Locked]
     public Model $model;
 
@@ -60,6 +62,12 @@ class LaracrateDropzoneSingleDeferred extends Component
     public ?int $ownerId = null;
 
     /** Livewire mount: initialize the component props. */
+    /** Single file: an upload replaces the current one, as the old setFile() call did. */
+    protected function uploadReplaces(): bool
+    {
+        return true;
+    }
+
     public function mount(
         Model $model,
         string $collection,
@@ -86,6 +94,8 @@ class LaracrateDropzoneSingleDeferred extends Component
             $this->ownerType = $owner->getMorphClass();
             $this->ownerId   = (int) $owner->getKey();
         }
+
+        $this->refreshUploadGrant();
     }
 
     /** Register an uploaded file, replacing the current File of the collection. */

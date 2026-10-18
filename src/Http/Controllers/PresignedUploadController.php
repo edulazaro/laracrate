@@ -3,6 +3,7 @@
 namespace EduLazaro\Laracrate\Http\Controllers;
 
 use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\ActiveContent;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
@@ -21,7 +22,13 @@ use Illuminate\Support\Str;
  *
  * The routes are protected by the middleware configurable in
  * config('laracrate.uploads.middleware'). The app is responsible for
- * authorization (auth, throttle, validation of the allowed disk).
+ * authorization (auth, throttle).
+ *
+ * Only the disks of `uploads.allowed_disks`, or, when that list is empty, the disks
+ * the configured collections use: any other disk (`public`, `local`…) would let any
+ * signed in user write there. Runnable content (HTML, SVG, scripts) is refused.
+ * The Laracrate components no longer use this endpoint but the grant based ones in
+ * UploadController; it stays for apps that call it directly.
  */
 class PresignedUploadController extends Controller
 {
@@ -49,9 +56,12 @@ class PresignedUploadController extends Controller
         $minutes  = $data['minutes']   ?? 15;
         $maxBytes = isset($data['max_size_kb']) ? $data['max_size_kb'] * 1024 : null;
 
-        $allowedDisks = config('laracrate.uploads.allowed_disks', []);
-        if (!empty($allowedDisks) && !in_array($disk, $allowedDisks, true)) {
+        if (!in_array($disk, $this->allowedDisks(), true)) {
             abort(403, "Disk '{$disk}' is not allowed for direct uploads.");
+        }
+
+        if (ActiveContent::is($mime, $fileName)) {
+            abort(422, 'This type of file cannot be uploaded.');
         }
 
         $safeName = preg_replace('/[^a-zA-Z0-9_\-.]/', '_', $fileName);
@@ -79,8 +89,7 @@ class PresignedUploadController extends Controller
             return response()->json(['error' => 'Only temp/ files can be cancelled.'], 422);
         }
 
-        $allowedDisks = config('laracrate.uploads.allowed_disks', []);
-        if (!empty($allowedDisks) && !in_array($disk, $allowedDisks, true)) {
+        if (!in_array($disk, $this->allowedDisks(), true)) {
             abort(403);
         }
 
@@ -90,5 +99,21 @@ class PresignedUploadController extends Controller
         }
 
         return response()->json(['deleted' => false, 'message' => 'Not found'], 404);
+    }
+
+    /** `uploads.allowed_disks`, or the disks of the configured collections when it is empty. */
+    protected function allowedDisks(): array
+    {
+        $configured = config('laracrate.uploads.allowed_disks', []);
+        if (!empty($configured)) {
+            return $configured;
+        }
+
+        return collect(config('laracrate.collections', []))
+            ->pluck('disk')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 }

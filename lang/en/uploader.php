@@ -56,4 +56,31 @@ return [
     // Errors
     'failed'              => 'Error',
     'failed_long'         => 'Processing failed',
+
+    // Uploads: refusals and tray
+    'grant_invalid'       => 'This page has expired. Reload it to keep uploading.',
+    'not_received'        => 'The file did not reach the storage. Try again.',
+    'rejected' => [
+        'type'            => 'This type of file is not accepted here.',
+        'size'            => 'It exceeds the maximum size (:size MB).',
+        'slot_extension'  => '":slot" only accepts :allowed.',
+        'slot_full'       => '":slot" already has the maximum number of files (:limit).',
+        'active'          => 'This type of file cannot be uploaded.',
+        'generic'         => 'The file could not be saved.',
+    ],
+    'network'             => 'The connection was lost.',
+    'stalled'             => 'The upload stalled.',
+    'tray' => [
+        'uploading'       => 'Uploading :count file|Uploading :count files',
+        'saving'          => 'Saving…',
+        'done'            => ':count uploaded|:count uploaded',
+        'failed'          => ':count could not be uploaded|:count could not be uploaded',
+        'retry'           => 'Retry',
+        'dismiss'         => 'Dismiss',
+        'cancel'          => 'Cancel',
+        'collapse'        => 'Collapse',
+        'expand'          => 'Expand',
+        'close'           => 'Close',
+        'leave_warning'   => 'Uploads are in progress. Leaving now will cancel them.',
+    ],
 ];

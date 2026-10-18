@@ -6,6 +6,7 @@ use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\Locked;
+use EduLazaro\Laracrate\Http\Livewire\Concerns\IssuesUploadGrants;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -23,6 +24,7 @@ use Livewire\WithFileUploads;
  */
 class LaracrateUploader extends Component
 {
+    use IssuesUploadGrants;
     use WithFileUploads;
 
     #[Locked]
@@ -72,6 +74,30 @@ class LaracrateUploader extends Component
     public int $pollMs = 1500;
 
     /** Livewire mount: initialize the component props. */
+    /** Single file: an upload replaces the current one. */
+    protected function uploadReplaces(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Through PHP, as with wire:model before: no CORS needed on the bucket, and the
+     * collections that encrypt (identity documents) can only be uploaded this way.
+     */
+    protected function uploadTransport(): string
+    {
+        return 'server';
+    }
+
+    /**
+     * Called by the upload engine when the server refuses the file, so the themes'
+     * @error('upload') shows the reason as it did with wire:model.
+     */
+    public function reportUploadError(string $message): void
+    {
+        $this->addError('upload', mb_substr($message, 0, 300));
+    }
+
     public function mount(
         Model $model,
         string $collection,
@@ -98,6 +124,8 @@ class LaracrateUploader extends Component
             $this->ownerType = $owner->getMorphClass();
             $this->ownerId   = (int) $owner->getKey();
         }
+
+        $this->refreshUploadGrant();
     }
 
     /**

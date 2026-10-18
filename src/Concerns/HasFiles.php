@@ -79,10 +79,11 @@ trait HasFiles
         $config = $this->getCollectionConfig($collection);
         $tenant = $this->resolveFileTenant();
 
-        // Override the disk if the tenant has a dedicated bucket for the
-        // base_disk used by this collection. Granularity is per config disk
-        // (document/media/attachment), not per individual collection.
-        $config['disk'] = $this->resolveTenantBucketDisk($tenant, $config['disk']) ?? $config['disk'];
+        // The tenant's dedicated bucket when it has one. A collection without a disk
+        // keeps reaching CreateFileAction as it always did.
+        if (!empty($config['disk'])) {
+            $config['disk'] = $this->uploadDiskFor($collection);
+        }
 
         // Defense: the target folder must belong to the same fileable.
         // Attaching files to another owner's folders is not allowed.
@@ -107,6 +108,20 @@ trait HasFiles
             'slots'      => $slots,
             'folder'     => $folder,
         ]);
+    }
+
+    /**
+     * The disk a new file of this collection is written to: the collection disk, or
+     * the tenant's dedicated bucket for it when there is one. Granularity is per
+     * config disk (document/media/attachment), not per individual collection.
+     * A direct upload must be signed for this same disk, or the server side move
+     * of the confirm step would look for the object in the wrong bucket.
+     */
+    public function uploadDiskFor(string $collection): string
+    {
+        $disk = $this->getDiskFor($collection);
+
+        return $this->resolveTenantBucketDisk($this->resolveFileTenant(), $disk) ?? $disk;
     }
 
     /**

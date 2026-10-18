@@ -45,7 +45,7 @@
                     </button>
                 </div>
             </div>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
+            @include('laracrate::uploader._input')
         </div>
         @error('upload') <p class="mt-2 text-xs text-red-600">{{ $message }}</p> @enderror
     @else
@@ -61,8 +61,8 @@
             <p class="text-sm text-gray-900 font-medium">{{ __('laracrate::uploader.upload') }}</p>
             <p class="mt-1 text-[11px] font-mono text-gray-500 tabular-nums">{{ str(__('laracrate::uploader.drag_or_click'))->lower() }}</p>
             <p class="mt-3 text-[10px] font-mono uppercase tracking-wide text-gray-400">{{ __('laracrate::uploader.max_size', ['size' => number_format($maxSizeKb / 1024, 1)]) }}</p>
-            <input type="file" x-ref="input" wire:model="upload" accept="{{ $acceptAttr }}" class="hidden" />
-            <div wire:loading wire:target="upload" class="mt-2 text-[11px] font-mono text-gray-500 inline-flex items-center gap-1">
+            @include('laracrate::uploader._input')
+            <div x-cloak x-show="window.Laracrate.uploads.busyFor($wire.uploadScope)" class="mt-2 text-[11px] font-mono text-gray-500 inline-flex items-center gap-1">
                 <span class="inline-block w-1 h-1 bg-gray-700 rounded-full animate-pulse"></span>{{ str(__('laracrate::uploader.uploading'))->lower() }}
             </div>
         </div>

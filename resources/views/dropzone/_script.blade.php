@@ -1,6 +1,8 @@
 @once
 @script
 <script>
+    {!! \EduLazaro\Laracrate\Support\UploaderScript::source() !!}
+
     /**
      * Factory Alpine compartida por todos los temas de
      * laracrate-dropzone y laracrate-dropzone-deferred.
@@ -15,8 +17,8 @@
         batchProgress: 0,
         dragOver: false,
         cfg: cfg,
-        nextId: 0,
         uploadedTotal: 0,
+        batch: [],
 
         /**
          * Disparo externo del lote (deferred): un caller fuera del componente
@@ -48,16 +50,37 @@
                 const m = d.maxFiles;
                 this.cfg.maxFiles = (m === null || m === undefined) ? null : parseInt(m, 10);
                 if (this.cfg.maxFiles !== null && this.queue.length > this.cfg.maxFiles) {
+                    this.queue.slice(this.cfg.maxFiles).forEach((item) => this.release(item));
                     this.queue = this.queue.slice(0, this.cfg.maxFiles);
                 }
             };
             window.addEventListener('laracrate-start-batch', this._onStartBatch);
             window.addEventListener('laracrate-deferred-config', this._onDeferredConfig);
+
+            // Every change of an upload this dropzone handed over: the batch bar, and
+            // the count that maxFiles is checked against.
+            this._offUploads = window.Laracrate.uploads.on(null, (type, item) => {
+                if (!item || !this.queue.some(q => q.id === item.id)) return;
+                if (type === 'done') this.uploadedTotal++;
+                this.updateBatchProgress();
+            });
+
+            // Mounted again for a target whose uploads are still going (or failed)
+            // after a navigation: show them again and finish the batch here.
+            const scope = this.$wire.uploadScope;
+            const carried = window.Laracrate.uploads.itemsFor(scope)
+                .filter(i => ['pending', 'uploading', 'error'].includes(i.status));
+            if (carried.length) {
+                this.queue.push(...carried);
+                const running = carried.filter(i => ['pending', 'uploading'].includes(i.status));
+                if (running.length) this.watchBatch(running, this.$wire.collection);
+            }
         },
 
         destroy() {
             window.removeEventListener('laracrate-start-batch', this._onStartBatch);
             window.removeEventListener('laracrate-deferred-config', this._onDeferredConfig);
+            this._offUploads?.();
         },
 
         get pendingCount() { return this.queue.filter(i => i.status === 'pending').length; },
@@ -71,8 +94,11 @@
             return (this.uploadedTotal + this.queue.filter(i => ['pending', 'uploading'].includes(i.status)).length) >= this.cfg.maxFiles;
         },
 
-        getCsrf() {
-            return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+        updateBatchProgress() {
+            const total = this.batch.reduce((sum, i) => sum + (i.size || 0), 0);
+            if (!total) return;
+            const sent = this.batch.reduce((sum, i) => sum + (['done', 'error', 'canceled'].includes(i.status) ? i.size : (i.loaded || 0)), 0);
+            this.batchProgress = Math.round((sent / total) * 100);
         },
 
         handleFiles(fileList) {
@@ -96,59 +122,93 @@
                 }
             }
 
-            const wasIdle = this.queue.length === 0
-                || this.queue.every(i => i.status !== 'pending' && i.status !== 'uploading');
+            const wasIdle = this.queue.every(i => i.status !== 'pending' && i.status !== 'uploading');
 
+            // Staged here; they reach the shared upload queue when the batch starts.
             for (const f of files) {
                 this.queue.push({
-                    id: ++this.nextId,
+                    id: null,
                     file: f,
                     name: f.name,
                     mime: f.type || 'application/octet-stream',
                     size: f.size,
                     preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : null,
                     status: 'pending',
-                    key: null,
+                    loaded: 0,
+                    progress: 0,
                     error: null,
+                    retryable: true,
+                    queued: false,
                 });
             }
 
-            if (this.cfg.autoStart && wasIdle) {
+            if (!this.cfg.autoStart) return;
+
+            if (wasIdle) {
                 this.startBatch();
+            } else {
+                // Dropped while a batch runs: it joins that batch.
+                this.batch.push(...this.handOver());
             }
         },
 
+        /**
+         * Gives the staged files to the shared upload queue (window.Laracrate.uploads)
+         * with this component's grant. From here they no longer depend on the page:
+         * a wire:navigate does not stop them.
+         */
+        handOver() {
+            const grant = this.$wire.uploadGrant;
+            const scope = this.$wire.uploadScope;
+            const collection = this.$wire.collection;
+
+            return this.queue
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => item.status === 'pending' && !item.queued)
+                .map(({ item, index }) => {
+                    const tracked = window.Laracrate.uploads.enqueue(item, { grant, scope, origin: this.$el, collection });
+                    this.queue[index] = tracked;
+                    return tracked;
+                });
+        },
+
         async startBatch() {
-            const pending = this.queue.filter(i => i.status === 'pending');
-            if (!pending.length) return;
+            if (!this.queue.some(i => i.status === 'pending' && !i.queued)) return;
+            await this.watchBatch(this.handOver(), this.$wire.collection);
+        },
 
+        /** Waits for a batch, then does what finishing it always did. */
+        async watchBatch(items, collection) {
             this.uploading = true;
+            this.batch = items;
             this.batchProgress = 0;
+            this.updateBatchProgress();
 
-            const total = pending.length;
-            let completed = 0;
-            let okCount   = 0;
-            let errCount  = 0;
+            await window.Laracrate.uploads.waitFor(items);
 
-            for (const item of pending) {
-                if (item.status !== 'pending') continue;
+            // Left the page meanwhile: the upload queue and the tray finished the job,
+            // and this dropzone has nothing left to show or announce.
+            if (!this.$el.isConnected) return;
 
-                const ok = await this.uploadOne(item);
-                if (ok) okCount++; else errCount++;
-                completed++;
-                this.batchProgress = Math.round((completed / total) * 100);
-            }
+            const okCount  = this.batch.filter(i => i.status === 'done').length;
+            const errCount = this.batch.filter(i => i.status === 'error').length;
+            this.batch = [];
 
             this.uploading = false;
             this.batchProgress = 0;
 
-            try { await this.$wire.batchCompleted(okCount, errCount); } catch (e) {}
+            // Announced in the browser now (it used to go through the server).
+            if (window.Livewire) {
+                window.Livewire.dispatch('laracrate-batch-completed', { collection, ok: okCount, error: errCount });
+            }
 
             if (!this.cfg.persistQueue) {
                 setTimeout(() => {
-                    for (const item of this.queue) {
-                        if (item.status === 'done') item.status = 'fade';
-                    }
+                    // The fade-out works on local copies: the items themselves belong to
+                    // the shared upload queue, where they stay 'done' for the tray.
+                    this.queue = this.queue.map(i => i.status === 'done'
+                        ? { ...Alpine.raw(i), status: 'fade', queued: false }
+                        : i);
                     setTimeout(() => {
                         this.queue = this.queue.filter(i => i.status !== 'fade');
                     }, 300);
@@ -156,74 +216,26 @@
             }
         },
 
-        async uploadOne(item) {
-            try {
-                item.status = 'uploading';
-                item.error  = null;
-
-                const presignRes = await fetch(this.cfg.presignUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': this.getCsrf(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        disk: this.cfg.disk,
-                        mime: item.mime,
-                        file_name: item.name,
-                        max_size_kb: this.cfg.maxSizeKb,
-                        fileable_type: this.cfg.fileableType,
-                        fileable_id: this.cfg.fileableId,
-                        collection: this.cfg.collection,
-                    }),
-                });
-
-                if (!presignRes.ok) throw new Error(`presign ${presignRes.status}`);
-                const presign = await presignRes.json();
-
-                const putRes = await fetch(presign.url, {
-                    method: presign.method || 'PUT',
-                    headers: presign.headers || { 'Content-Type': item.mime },
-                    body: item.file,
-                });
-                if (!putRes.ok) throw new Error(`put ${putRes.status}`);
-
-                item.key = presign.key;
-                const fileId = await this.$wire.registerUploaded(item.key, item.name, item.mime, item.size);
-                if (!fileId) throw new Error('register');
-
-                item.status = 'done';
-                this.uploadedTotal++;
-                return true;
-            } catch (e) {
-                console.error('Laracrate dropzone:', e, item);
-                item.status = 'error';
-                item.error  = (e && e.message) ? e.message : 'error';
-                return false;
-            }
+        retryItem(i) {
+            const item = this.queue[i];
+            if (item && item.queued) window.Laracrate.uploads.retry(item);
         },
 
-        async retryItem(i) {
-            const item = this.queue[i];
-            if (!item) return;
-            item.status = 'pending';
-            await this.uploadOne(item);
+        /** Out of this dropzone, and out of the shared queue if it was handed over. */
+        release(item) {
+            if (item.preview) URL.revokeObjectURL(item.preview);
+            if (item.queued) window.Laracrate.uploads.dismiss(item);
         },
 
         removeItem(i) {
             const item = this.queue[i];
             if (!item) return;
-            if (item.preview) URL.revokeObjectURL(item.preview);
+            this.release(item);
             this.queue.splice(i, 1);
         },
 
         clearQueue() {
-            for (const item of this.queue) {
-                if (item.preview) URL.revokeObjectURL(item.preview);
-            }
+            this.queue.forEach(item => this.release(item));
             this.queue = [];
         },
     });

@@ -6,6 +6,7 @@ use EduLazaro\Laracrate\Http\Controllers\Local\LocalUploadController;
 use EduLazaro\Laracrate\Http\Controllers\MultipartUploadController;
 use EduLazaro\Laracrate\Http\Controllers\PresignedUploadController;
 use EduLazaro\Laracrate\Http\Controllers\StreamFileController;
+use EduLazaro\Laracrate\Http\Controllers\UploadController;
 use Illuminate\Support\Facades\Route;
 
 $prefix     = config('laracrate.stream.route_prefix', 'laracrate/files');
@@ -39,6 +40,11 @@ Route::middleware(config('laracrate.uploads.middleware', ['web', 'auth']))
     ->group(function () {
         Route::post('presign', [PresignedUploadController::class, 'presign'])->name('presign');
         Route::delete('{disk}/{encodedKey}', [PresignedUploadController::class, 'cancel'])->name('cancel');
+
+        // Grant based: the components and the upload tray. See UploadController.
+        Route::post('sign', [UploadController::class, 'sign'])->name('sign');
+        Route::post('confirm', [UploadController::class, 'confirm'])->name('confirm');
+        Route::post('receive', [UploadController::class, 'receive'])->name('receive');
     });
 
 // Multipart upload (archivos > 100 MB) directos a S3/R2.
