@@ -137,6 +137,10 @@ Laracrate installs like any Laravel package. You pull it in with Composer, publi
 
 See the Requirements section for the full list. In short you need PHP 8.2 or higher and Laravel 12 or higher.
 
+### Upgrading from 1.x
+
+2.0 changes the upload components, the themes, how files are served and how variants are declared. [UPGRADE.md](UPGRADE.md) lists each change and what to do; the 1.x documentation is the [README of 1.3.0](https://github.com/edulazaro/laracrate/blob/1.3.0/README.md).
+
 ### Install with Composer
 
 ```bash
