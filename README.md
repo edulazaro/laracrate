@@ -2866,6 +2866,13 @@ Every part has a stable class (`.laracrate-drop`, `.laracrate-title`, `.laracrat
 
 The three upload components also come for React (18 or later) and Svelte 5: `Dropzone`, `DropzoneSingle` and `Uploader`. They render the same markup as the Livewire ones, so `laracrate.css`, the themes and the appearance props apply as they are, and they put the files in the same page queue (`window.Laracrate.uploads`), so an upload keeps going when the component unmounts on an Inertia or SPA navigation.
 
+```jsx
+<Uploader target="avatar" layout="portrait" rounded="full" />
+<Dropzone target="venue.gallery" params={{ venue: venue.id }} />
+```
+
+### Setup
+
 They ship as source in `resources/js` and your app's Vite builds them, with the React or Svelte plugin it already has. There is no npm package. An alias keeps the imports short:
 
 ```js
@@ -2889,40 +2896,46 @@ import { Dropzone, DropzoneSingle, Uploader } from '@laracrate/react/index.js'; 
 import { Dropzone, DropzoneSingle, Uploader } from '@laracrate/svelte/index.js';  // Svelte
 ```
 
-The upload endpoints take the CSRF token from `<meta name="csrf-token">`, as the Livewire components do. If you changed `laracrate.uploads.route_prefix`, tell the queue once with `configure({ signUrl, confirmUrl, registerUrl })`, exported from the same `index.js`.
+The endpoints take the CSRF token from `<meta name="csrf-token">`, as the Livewire components do. If you changed a route prefix, tell the components once with `configure({ signUrl, confirmUrl, registerUrl, targetUrl, removeUrl, statusUrl })`, exported from the same `index.js`.
 
-### The grant comes from your app
+### Upload targets
 
-A Livewire component builds its own [upload grant](#upload-modes-grants-and-the-upload-tray). These components cannot: your app issues it, in a controller that decides who may upload what, and hands the component the token and the scope. Either in the page's props:
+A Livewire component builds its own [upload grant](#upload-modes-grants-and-the-upload-tray) on the server. These run in the browser, so the app declares where they may upload, and who may, once, in `routes/uploads.php`, the way it declares its broadcast channels:
 
 ```php
+// routes/uploads.php
+use App\Models\User;
+use App\Models\Venue;
 use EduLazaro\Laracrate\Uploads\UploadGrant;
+use EduLazaro\Laracrate\Uploads\UploadTargets;
 
-$grant = UploadGrant::for($venue, 'gallery');
+UploadTargets::define('avatar', fn (User $user) => UploadGrant::for($user, 'avatar', replace: true));
 
-return Inertia::render('Venues/Edit', [
-    'galleryGrant' => ['grant' => $grant->token(), 'scope' => $grant->scope()],
-]);
+UploadTargets::define('venue.gallery', fn (User $user, Venue $venue) =>
+    $user->can('update', $venue) ? UploadGrant::for($venue, 'gallery') : null);
+
+UploadTargets::define('venue.cover', fn (User $user, Venue $venue) =>
+    $user->can('update', $venue) ? UploadGrant::for($venue, 'cover', replace: true) : null);
 ```
 
-```jsx
-<Dropzone grant={galleryGrant} onUploaded={() => router.reload({ only: ['gallery'] })} />
-```
+The callback gets the signed in user, then the component's `params` by name: a model by its route key (a slug if the model routes by slug), a scalar cast to its type. It returns a grant, or `null` to refuse. **The params come from the browser**: the callback is where the app checks that this user may upload there, as a channel checks who may listen. A param that does not resolve, a guest when the first argument is not nullable (`?User $user`), or a user of another class refuses the target too.
 
-Or from a route the component calls when files are picked, with the files in hand (to issue the grant with `maxFiles: count($files)`, say):
+The file is read the first time a component asks for a target (`laracrate.uploads.targets`); a service provider can call `UploadTargets::define()` too. The endpoint lives in the uploads route group, so it takes its middleware (`auth` by default).
 
-```jsx
-<Dropzone grant={(files) => axios.post(`/venues/${venue.slug}/gallery/grant`, { count: files.length }).then((r) => r.data)} />
-```
+When it mounts, a component asks `POST /laracrate/uploads/targets/{target}` with its params, and gets:
 
-A grant passed as an object also lets a component mounted again for the same target show the uploads still running for it. The single file components replace the current file, so their grant is issued with `replace: true`.
+- a fresh **grant**, asked for again after half an hour, so a page left open still uploads;
+- the collection's **rules**: the mime types for the file picker, the extensions and the largest size for the hint, and the kind of file (`image`, `video`, `audio`, `document` or `mixed`) for the icon. The server checks them again on every upload;
+- for a target that replaces its file (`replace: true`), the **current file**.
+
+From there it does the rest: it shows the file just uploaded (the upload endpoints answer it whole, as `File::toComponentArray()`), polls `GET /laracrate/files/{slug}/status` while it is processed, and its delete button removes it with `POST /laracrate/uploads/remove`. Only a grant that replaces can remove, and only the current file of its target: that grant deletes it anyway with its next upload.
 
 ### `Dropzone`
 
 Several files, as a grid of tiles or a list of rows.
 
 ```jsx
-<Dropzone grant={grant} layout="list" maxFiles={10} maxSizeKb={20480} accept="image/*,application/pdf"
+<Dropzone target="case.documents" params={{ case: caseId }} layout="list" maxFiles={10}
     onUploaded={(file) => ...} onBatchCompleted={({ ok, error }) => ...} />
 ```
 
@@ -2931,8 +2944,7 @@ Several files, as a grid of tiles or a list of rows.
 One file in a card: the drop area, or the current file to replace, view or remove.
 
 ```jsx
-<DropzoneSingle grant={coverGrant} file={cover} kind="image" maxSizeKb={5120} extensions={['jpg', 'png']}
-    onUploaded={reloadCover} onRemove={() => router.delete(`/venues/${venue.slug}/cover`)} />
+<DropzoneSingle target="venue.cover" params={{ venue: venue.id }} />
 ```
 
 ### `Uploader`
@@ -2940,7 +2952,7 @@ One file in a card: the drop area, or the current file to replace, view or remov
 One file shown big, an avatar or a logo, in a `row` or `portrait` layout. `rounded` rounds the preview, not the card.
 
 ```svelte
-<Uploader grant={avatarGrant} file={avatar} layout="portrait" rounded="full" onuploaded={reloadAvatar} onremove={deleteAvatar} />
+<Uploader target="avatar" layout="portrait" rounded="full" onuploaded={(file) => (me.avatar = file.preview)} />
 ```
 
 ### Props
@@ -2949,60 +2961,52 @@ Svelte takes the same props, with the callbacks in lower case (`onuploaded`, `on
 
 | Prop | Components | Default | |
 |---|---|---|---|
-| `grant` | all | | `{ grant, scope }`, or a function that takes the files picked and returns them (or a promise of them) |
+| `target`, `params` | all | | the upload target and its params |
 | `deferred` | all | `false` | stage the files until the Upload button, or `startBatch()` |
 | `hideActions` | `Dropzone`, `DropzoneSingle` | `false` | no Upload and Cancel buttons: the page calls `startBatch()` |
-| `accept` | all | `*/*` | the file input's `accept` |
-| `maxSizeKb` | all | | shown as the hint; the limit itself is the collection's, checked on the server |
 | `multiple` | `Dropzone` | `true` | |
 | `maxFiles` | `Dropzone` | | how many files it takes; it closes once it holds them |
 | `layout` | `Dropzone`, `Uploader` | `grid`, `row` | `grid` or `list`; `row` or `portrait` |
 | `persistQueue` | `Dropzone` | `false` | keep the uploaded files listed |
+| `removable` | `DropzoneSingle`, `Uploader` | `true` | the delete button |
+| `pollMs` | `DropzoneSingle`, `Uploader` | `1500` | how often a file being processed is asked about |
+| `accept`, `maxSizeKb` | all | the target's | to show other rules than the collection's |
+| `extensions` | `DropzoneSingle` | the target's | shown in the hint |
+| `kind` | `DropzoneSingle`, `Uploader` | the target's | what the collection takes, for the icon and the preview |
 | `icon` | `Dropzone`, `DropzoneSingle` | | the drop area's icon: `upload`, `image`, `video`, `audio`, `document`, `file` |
-| `file` | `DropzoneSingle`, `Uploader` | | the current file, below |
-| `kind` | `DropzoneSingle`, `Uploader` | `mixed`, `image` | what the collection takes, for the icon and the preview |
-| `extensions` | `DropzoneSingle` | `[]` | shown in the hint |
 | `locale`, `labels` | all | `en` | `en` or `es`, and any text of your own: `labels={{ upload: 'Add photos' }}` |
 | `theme`, `rounded`, `bordered`, `shadow`, `size`, `className`, `style` | all | | as in [Themes and customising](#themes-and-customising) |
 
 | Callback | |
 |---|---|
-| `onUploaded(file, item)` | once per saved file: `{ id, slug, name, collection, contextKey, scope }` |
+| `onUploaded(file, item)` | once per saved file, as `File::toComponentArray()` plus `collection`, `contextKey` and `scope` |
 | `onRejected(item)` | a file the server refused, with its reason in `item.error` |
 | `onBatchCompleted({ ok, error })` | when a batch ends |
 | `onMaxFiles({ max, rejected })` | `Dropzone`: files left out for `maxFiles` |
-| `onRemove(file)` | `DropzoneSingle`, `Uploader`: the delete button, after a confirm. Without it there is no button |
+| `onRemoved(file)` | `DropzoneSingle`, `Uploader`: the current file, once removed |
 
 A ref in React, or `bind:this` in Svelte, gives `startBatch()` and `clear()`.
 
-### The current file
+What runs after an upload no matter what (attach the file, start a job) belongs on the server, as with the Livewire components, not in `onUploaded`.
 
-`DropzoneSingle` and `Uploader` show the file your app passes as `file`, in its own JSON. The upload response does not carry it: `onUploaded` gives its id and slug, and your app passes the new one once it has it (an Inertia reload is enough).
+### Without a target
+
+An app can also issue the grant itself and pass it as `grant`: `{ grant, scope }`, or a function that takes the files picked and returns them (or a promise of them). Then it also passes the current file as `file`, `File::toComponentArray()` or its own JSON with `url`, `name` and `size` (and `preview`, `type`, `processing_status`, `slug` to be polled):
 
 ```php
-$avatar = $user->file('avatar');
+$grant = UploadGrant::for($user, 'avatar', replace: true);
 
 return Inertia::render('Profile/Edit', [
-    'avatar' => $avatar ? [
-        'url' => $avatar->streamUrl(),
-        'preview' => $user->fileLink('avatar', 'thumbnail'),
-        'original_name' => $avatar->original_name,
-        'size' => $avatar->size,
-        'processing_status' => $avatar->processing_status?->value,
-    ] : null,
+    'avatarGrant' => ['grant' => $grant->token(), 'scope' => $grant->scope()],
+    'avatar' => $user->file('avatar')?->toComponentArray(),
 ]);
 ```
 
-| Key | |
-|---|---|
-| `url` | to open it, and to show it when it is an image with no `preview` |
-| `preview` | the image shown for it, a variant say |
-| `name`, `title` or `original_name` | its name |
-| `size` | in bytes |
-| `type` | `image`, `video`, `audio` or `document`, when it is not `kind` |
-| `processing_status` | `pending` or `processing` show "processing", `failed` shows "error"; pass the file again when it changes |
+```jsx
+<Uploader grant={avatarGrant} file={avatar} />
+```
 
-What runs after an upload no matter what (attach the file, start a job) belongs on the server, as with the Livewire components, not in `onUploaded`.
+Such a grant lives 24 hours. `file` also works with a target, to show another file than the target's (`null` for none).
 
 ## Localization
 
