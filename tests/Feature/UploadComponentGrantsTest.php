@@ -3,8 +3,7 @@
 namespace EduLazaro\Laracrate\Tests\Feature;
 
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzone;
-use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneDeferred;
-use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingleDeferred;
+use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingle;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateUploader;
 use EduLazaro\Laracrate\Tests\Support\HasFilesTestModel;
 use EduLazaro\Laracrate\Tests\Support\TestUser;
@@ -31,6 +30,9 @@ class UploadComponentGrantsTest extends TestCase
             $this->markTestSkipped('livewire/livewire is not installed in this package (it is not a dev dependency).');
         }
 
+        // These read the grant a component hands the browser, which only 'grant' mode does.
+        config()->set('laracrate.uploads.mode', 'grant');
+
         Relation::morphMap(['test_user' => TestUser::class]);
         $this->actingAs(TestUser::create(['name' => 'uploader']));
         $this->owner = HasFilesTestModel::create(['name' => 'owner']);
@@ -52,8 +54,8 @@ class UploadComponentGrantsTest extends TestCase
 
     public function test_single_file_components_replace_and_the_uploader_goes_through_the_server(): void
     {
-        $single = new LaracrateDropzoneSingleDeferred();
-        $single->mount(model: $this->owner, collection: 'avatar');
+        $single = new LaracrateDropzoneSingle();
+        $single->mount(model: $this->owner, collection: 'avatar', deferred: true);
         $this->assertTrue(UploadGrant::fromToken($single->uploadGrant)->replace);
 
         $uploader = new LaracrateUploader();
@@ -65,8 +67,8 @@ class UploadComponentGrantsTest extends TestCase
 
     public function test_the_deferred_dropzone_only_takes_the_slots_it_offers(): void
     {
-        $component = new LaracrateDropzoneDeferred();
-        $component->mount(model: $this->owner, collection: 'gallery', slotOptions: [
+        $component = new LaracrateDropzone();
+        $component->mount(model: $this->owner, collection: 'gallery', deferred: true, slotOptions: [
             ['id' => 11, 'name' => 'Front'],
             ['id' => 12, 'name' => 'Back'],
         ]);
@@ -80,8 +82,18 @@ class UploadComponentGrantsTest extends TestCase
         $component->updatedSelectedSlotId(999);
         $this->assertSame([], $component->slots);
         $this->assertSame([], UploadGrant::fromToken($component->uploadGrant)->slots);
+    }
 
-        $component->setSlots([11, 500]);
-        $this->assertSame([11], $component->slots);
+    public function test_deferred_is_an_option(): void
+    {
+        foreach ([LaracrateUploader::class, LaracrateDropzone::class, LaracrateDropzoneSingle::class] as $class) {
+            $instant = new $class();
+            $instant->mount(model: $this->owner, collection: 'avatar');
+            $this->assertFalse($instant->deferred, $class);
+
+            $deferred = new $class();
+            $deferred->mount(model: $this->owner, collection: 'avatar', deferred: true);
+            $this->assertTrue($deferred->deferred, $class);
+        }
     }
 }

@@ -4,8 +4,10 @@ namespace EduLazaro\Laracrate\Http\Controllers;
 
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\ActiveContent;
+use EduLazaro\Laracrate\Uploads\UploadGrant;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -13,12 +15,13 @@ use Illuminate\Support\Str;
  * Generic package endpoints for direct upload to R2/S3.
  *
  * Flow:
- *   1. Client POST /laracrate/uploads/presign  -> receives { url, key, ... }
+ *   1. Client POST /laracrate/uploads/presign  -> receives { url, key, ... }, always under temp/
  *   2. Client PUT directly to `url` with the binary.
  *   3. Client POST to its own app endpoint, which calls
  *      $model->addFile($collection, $key): the action moves the binary
  *      from temp/ to the canonical path.
- *   4. If the user cancels: DELETE /laracrate/uploads/{disk}/{key}.
+ *   4. If the user cancels: DELETE /laracrate/uploads/{disk}/{key}. Only the browser
+ *      session the key was signed for can cancel it, as with an upload grant.
  *
  * The routes are protected by the middleware configurable in
  * config('laracrate.uploads.middleware'). The app is responsible for
@@ -41,13 +44,6 @@ class PresignedUploadController extends Controller
             'file_name'      => 'nullable|string|max:255',
             'max_size_kb'    => 'nullable|integer|min:1',
             'minutes'        => 'nullable|integer|min:1|max:60',
-
-            // Optional for a direct canonical key (no move afterwards).
-            // If present, the file is uploaded DIRECTLY to the final path.
-            // If absent, it goes to temp/ and is moved on confirm.
-            'fileable_type'  => 'nullable|string',
-            'fileable_id'    => 'nullable',
-            'collection'     => 'nullable|string',
         ]);
 
         $disk     = $data['disk'];
@@ -65,17 +61,18 @@ class PresignedUploadController extends Controller
         }
 
         $safeName = preg_replace('/[^a-zA-Z0-9_\-.]/', '_', $fileName);
-        $name     = Str::ulid() . '_' . $safeName;
 
-        // Canonical key if the model + collection are known (preferred).
-        // Otherwise, fall back to temp/ (typical case: a creation form without a model yet).
-        if (!empty($data['fileable_type']) && !empty($data['fileable_id']) && !empty($data['collection'])) {
-            $key = trim("{$data['fileable_type']}/{$data['fileable_id']}/{$data['collection']}/{$name}", '/');
-        } else {
-            $key = "temp/{$name}";
-        }
+        // Always temp/: addFile() moves it to the model's path once the app registers it.
+        // A model path taken from the request let anyone write into another model's folder.
+        $key = 'temp/' . Str::ulid() . '_' . $safeName;
 
         $presigned = app(StorageManager::class)->presignedUpload($disk, $key, $mime, $maxBytes, $minutes);
+
+        // Whose key it is, for cancel(): the browser session, or the user without one.
+        Cache::put(self::signedKey($disk, $key), [
+            'session' => UploadGrant::currentSession(),
+            'user'    => UploadGrant::currentUser(),
+        ], now()->addMinutes($minutes + 60));
 
         return response()->json($presigned);
     }
@@ -83,9 +80,10 @@ class PresignedUploadController extends Controller
     /** Delete a temporary upload object when the user cancels. */
     public function cancel(string $disk, string $encodedKey)
     {
-        $key = base64_decode(urldecode($encodedKey));
+        $key = (string) base64_decode(urldecode($encodedKey));
 
-        if (!str_starts_with($key, 'temp/')) {
+        // Only a key as presign makes them: temp/ and one plain name, no other segment.
+        if (!preg_match('#^temp/[A-Za-z0-9_\-.]+$#', $key)) {
             return response()->json(['error' => 'Only temp/ files can be cancelled.'], 422);
         }
 
@@ -93,12 +91,34 @@ class PresignedUploadController extends Controller
             abort(403);
         }
 
+        $signed = Cache::get(self::signedKey($disk, $key));
+        if (!$signed || !$this->signedForThisBrowser($signed)) {
+            abort(403);
+        }
+
+        Cache::forget(self::signedKey($disk, $key));
+
         if (Storage::disk($disk)->exists($key)) {
             Storage::disk($disk)->delete($key);
             return response()->json(['deleted' => true]);
         }
 
         return response()->json(['deleted' => false, 'message' => 'Not found'], 404);
+    }
+
+    /** The browser session it was signed in, or the same user when there was no session. */
+    protected function signedForThisBrowser(array $signed): bool
+    {
+        if ($signed['session'] !== null) {
+            return $signed['session'] === UploadGrant::currentSession();
+        }
+
+        return $signed['user'] !== null && $signed['user'] === UploadGrant::currentUser();
+    }
+
+    protected static function signedKey(string $disk, string $key): string
+    {
+        return 'laracrate:presign:' . hash('sha256', $disk . '|' . $key);
     }
 
     /** `uploads.allowed_disks`, or the disks of the configured collections when it is empty. */

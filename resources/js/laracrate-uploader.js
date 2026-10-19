@@ -2,10 +2,14 @@
  * Laracrate upload engine: window.Laracrate.uploads.
  *
  * One queue for the whole page, shared by every upload component and the upload
- * tray. Each upload carries an UploadGrant token from the server (where the file
- * goes, decided by the component that issued it) and a scope (a stable name of that
- * target). The engine asks the server to sign the upload, sends the bytes the way
- * the grant says (straight to the bucket, or through PHP) and gets the File back.
+ * tray. Each upload carries a scope (a stable name of its target) and either:
+ *   - an UploadGrant token from the server (where the file goes, decided by the
+ *     component that issued it): the engine asks the server to sign the upload, sends
+ *     the bytes the way the grant says (straight to the bucket, or through PHP) and
+ *     gets the File back; or
+ *   - an upload the component already signed ('presign' mode): the engine puts the
+ *     bytes and registers the object by its key, and the server, which kept where
+ *     that key goes, creates the File.
  *
  * Nothing here depends on the page that started an upload. The queue lives in an
  * Alpine store, so after a wire:navigate the uploads keep going, the tray keeps
@@ -14,6 +18,7 @@
  * defines itself once per page.
  *
  *   Laracrate.uploads.add(input.files, { grant: $wire.uploadGrant, scope: $wire.uploadScope, origin: $el })
+ *   Laracrate.uploads.forComponent($wire, input.files, { origin: $el })   // a Laracrate component, either mode
  *
  * `tray: false` keeps an upload out of the upload tray, for a page that shows it
  * itself (a chat composer with its attachments).
@@ -36,6 +41,7 @@
     const defaults = {
         signUrl: '/laracrate/uploads/sign',
         confirmUrl: '/laracrate/uploads/confirm',
+        registerUrl: '/laracrate/uploads/register',
         concurrency: 3,
         // Without a single progress event for this long, the upload is given up: a
         // connection that hangs halfway would otherwise spin forever.
@@ -103,7 +109,7 @@
 
     function pump() {
         while (active < config.concurrency) {
-            const next = store().items.find((i) => i.status === 'pending' && i.grant && i.queued);
+            const next = store().items.find((i) => i.status === 'pending' && (i.grant || i.presigned) && i.queued);
             if (!next) break;
             run(next);
         }
@@ -185,8 +191,19 @@
         emit('started', item);
 
         try {
+            if (item.presigned) {
+                const result = await runPresigned(item, ctl);
+                Object.assign(item, { status: 'done', phase: null, progress: 100, loaded: item.size, result });
+                emit('done', item);
+                announce(item);
+                return;
+            }
+
+            // `upload` tells this file apart, so a retry does not count against the
+            // grant's maxFiles as another one.
             const signed = await postJson(config.signUrl, {
                 grant: item.grant,
+                upload: String(item.id),
                 file_name: item.name,
                 mime: item.mime,
                 size: item.size,
@@ -197,6 +214,7 @@
             if (signed.transport === 'server') {
                 const form = new FormData();
                 form.append('grant', item.grant);
+                form.append('upload', String(item.id));
                 form.append('file', item.file, item.name);
                 result = await send(item, ctl, {
                     method: 'POST',
@@ -248,6 +266,23 @@
             active--;
             pump();
         }
+    }
+
+    /** A 'presign' upload: the bytes to the URL the component signed, then the File by key. */
+    async function runPresigned(item, ctl) {
+        const signed = item.presigned;
+        item.key = signed.key;
+        await send(item, ctl, {
+            method: signed.method || 'PUT',
+            url: signed.url,
+            headers: signed.headers || { 'Content-Type': item.mime },
+            body: item.file,
+        });
+        item.phase = 'saving';
+        item.retryable = false;
+        emit('saving', item);
+
+        return postJson(config.registerUrl, { key: signed.key });
     }
 
     function announce(item) {
@@ -305,6 +340,7 @@
             disk: null,
             queued: false,
             grant: null,
+            presigned: null,
             scope: null,
             ...extra,
         };
@@ -337,13 +373,55 @@
          * Starts an item built elsewhere (a deferred dropzone stages its files and
          * only hands them over when the user confirms). Returns the reactive item.
          */
-        enqueue(item, { grant, scope, origin = null, collection = null } = {}) {
+        enqueue(item, { grant = null, presigned = null, scope, origin = null, collection = null } = {}) {
             if (!item.id) item.id = ++nextId;
             const tracked = track(item);
-            Object.assign(tracked, { grant, scope, collection: collection ?? tracked.collection ?? null, queued: true, status: 'pending', error: null });
+            Object.assign(tracked, { grant, presigned, scope, collection: collection ?? tracked.collection ?? null, queued: true, status: 'pending', error: null });
             if (origin) origins.set(tracked.id, origin);
             emit('added', tracked);
             pump();
+            return tracked;
+        },
+
+        /**
+         * Hands files (or items a component staged) to the queue for a Laracrate upload
+         * component, in its mode: with its grant, or signed by the component right now
+         * ('presign'), while it is still on the page. Either way they keep going after a
+         * wire:navigate. A file the target refuses comes back as an item in error.
+         */
+        async forComponent($wire, files, { origin = null, collection = null, ...extra } = {}) {
+            const items = Array.from(files || []).map((f) => (f instanceof Blob ? make(f, extra) : f));
+            const scope = $wire.uploadScope;
+
+            if ($wire.uploadMode !== 'presign') {
+                return items.map((item) => this.enqueue(item, { grant: $wire.uploadGrant, scope, origin, collection }));
+            }
+
+            let signed = [];
+            try {
+                signed = await $wire.presignUploads(items.map((i) => ({ name: i.name, mime: i.mime, size: i.size })));
+            } catch (e) {
+                signed = [];
+            }
+
+            return items.map((item, index) => {
+                const upload = signed[index];
+                if (!upload || upload.error) {
+                    return this.reject(item, (upload && upload.error) || config.messages.failed, { scope, origin, collection });
+                }
+                return this.enqueue(item, { presigned: upload, scope, origin, collection });
+            });
+        },
+
+        /** Lists an item the server refused before it was sent, with the reason. */
+        reject(item, message, { scope, origin = null, collection = null } = {}) {
+            if (!item.id) item.id = ++nextId;
+            const tracked = track(item);
+            Object.assign(tracked, { scope, collection, queued: true, status: 'error', phase: null, retryable: false, error: message });
+            if (origin) origins.set(tracked.id, origin);
+            emit('error', tracked);
+            announceRejection(tracked);
+            settle();
             return tracked;
         },
 

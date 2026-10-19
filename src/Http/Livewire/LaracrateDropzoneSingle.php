@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Http\Livewire;
 
+use EduLazaro\Laracrate\Http\Livewire\Concerns\HasAppearance;
 use EduLazaro\Laracrate\Concerns\UploaderHasFolderTarget;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
@@ -12,16 +13,20 @@ use EduLazaro\Laracrate\Http\Livewire\Concerns\IssuesUploadGrants;
 use Livewire\Component;
 
 /**
- * Single-file dropzone. Identical to `laracrate-dropzone` in logic
- * (same registerUploaded via addFile, same batchCompleted), but:
- *   - maxFiles forced to 1
- *   - multiple=false
- *   - uses views in `dropzone-single/themes/*` (in-place preview vs queue)
- *   - `hideExisting` prop for cases where the caller renders its own preview
+ * Single-file dropzone, straight to the bucket: an upload replaces the current file.
+ * Same upload queue as `laracrate-dropzone`, but one file shown in place.
+ *
+ *   <livewire:laracrate-dropzone-single :model="$user" collection="cover" />
+ *   <livewire:laracrate-dropzone-single :model="$user" collection="cover" :deferred="true" />
+ *
+ * `deferred` stages the file until the user presses Upload (or the page sends a
+ * `laracrate-start-batch` event with a matching `{ contextKey }`). `hideExisting` is for
+ * a page that shows the current file itself.
  */
 class LaracrateDropzoneSingle extends Component
 {
     use IssuesUploadGrants;
+    use HasAppearance;
     use UploaderHasFolderTarget;
 
     #[Locked]
@@ -31,13 +36,21 @@ class LaracrateDropzoneSingle extends Component
     public string $collection;
 
     #[Locked]
-    public ?string $theme = null;
-
-    #[Locked]
     public ?string $contextKey = null;
 
     #[Locked]
     public bool $hideExisting = false;
+
+    /** Stage the file and upload it when the user confirms, instead of at once. */
+    #[Locked]
+    public bool $deferred = false;
+
+    /**
+     * Hides the Upload/Cancel buttons of the staged file: the page starts it with
+     * `dispatch('laracrate-start-batch', { contextKey })`.
+     */
+    #[Locked]
+    public bool $hideActions = false;
 
     /**
      * Polymorphic owner ("semantic owner / recipient of the file"). Differs from the
@@ -55,8 +68,10 @@ class LaracrateDropzoneSingle extends Component
         Model $model,
         string $collection,
         ?string $theme = null,
+        bool $deferred = false,
         ?string $contextKey = null,
         bool $hideExisting = false,
+        bool $hideActions = false,
         ?int $folderId = null,
         mixed $owner = null,
         ?string $ownerType = null,
@@ -67,6 +82,8 @@ class LaracrateDropzoneSingle extends Component
         $this->theme        = $theme;
         $this->contextKey   = $contextKey;
         $this->hideExisting = $hideExisting;
+        $this->deferred     = $deferred;
+        $this->hideActions  = $hideActions;
         $this->folderId     = $folderId;
 
         // Resolve owner: explicit ownerType/ownerId wins over a Model.
@@ -81,43 +98,6 @@ class LaracrateDropzoneSingle extends Component
         $this->refreshUploadGrant();
     }
 
-    /** Register an uploaded file as a File of the model. */
-    public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
-    {
-        $upload = FileUpload::fromArray([
-            'disk'          => $this->disk(),
-            'key'           => $key,
-            'mime_type'     => $mime,
-            'original_name' => $name,
-            'size'          => $size,
-        ]);
-
-        // Resolve owner override if passed via prop.
-        $owner = null;
-        if ($this->ownerType && $this->ownerId) {
-            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->ownerType)
-                ?? $this->ownerType;
-            if (class_exists($class)) {
-                $owner = $class::find($this->ownerId);
-            }
-        }
-
-        $file = $this->model->addFile($upload, $this->collection, owner: $owner, folder: $this->folder());
-
-        if (! $file) {
-            return null;
-        }
-
-        $this->dispatch(
-            'laracrate-file-uploaded',
-            collection: $this->collection,
-            fileId: $file->id,
-            contextKey: $this->contextKey,
-        );
-
-        return $file->id;
-    }
-
     /** Notify that the batch finished (all files processed). */
     public function batchCompleted(int $ok, int $error): void
     {
@@ -127,6 +107,12 @@ class LaracrateDropzoneSingle extends Component
             ok: $ok,
             error: $error,
         );
+    }
+
+    /** Single file: an upload replaces the current one, not adds a second. */
+    protected function uploadReplaces(): bool
+    {
+        return true;
     }
 
     /** Remove the current file of the collection and notify the caller. */
@@ -237,19 +223,15 @@ class LaracrateDropzoneSingle extends Component
         return 'mixed';
     }
 
-    /** Render the single dropzone theme view. */
     public function render()
     {
-        $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');
-
-        $view = view()->exists("laracrate::dropzone-single.themes.{$theme}")
-            ? "laracrate::dropzone-single.themes.{$theme}"
-            : 'laracrate::dropzone-single.themes.default';
-
         $extensions = $this->acceptedExtensions();
         $existing   = $this->hideExisting ? null : $this->model->files($this->collection)->first();
 
-        return view($view, [
+        return view('laracrate::dropzone-single', [
+            'deferred'     => $this->deferred,
+            'hideActions'  => $this->hideActions,
+            'appearance'   => $this->appearance(),
             'config'       => $this->model->getCollectionConfig($this->collection),
             'collection'   => $this->collection,
             'disk'         => $this->disk(),

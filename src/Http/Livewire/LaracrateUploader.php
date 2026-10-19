@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Http\Livewire;
 
+use EduLazaro\Laracrate\Http\Livewire\Concerns\HasAppearance;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 use Illuminate\Database\Eloquent\Model;
@@ -12,19 +13,21 @@ use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
 
 /**
- * General-purpose single-file uploader.
- *
- * Reads the package's collection config (accepted mimes, max size, placeholder,
- * component...) and delegates to the model's HasFiles trait `setFile()`. The
- * visual layer is chosen with the `theme` prop (8 built-in themes, publishable
- * and overridable by the app).
+ * General-purpose single-file uploader: an avatar, a logo. An upload replaces the
+ * current file of the collection, whose rules (mimes, max size) it reads.
  *
  *   <livewire:laracrate-uploader :model="$user" collection="avatar" />
  *   <livewire:laracrate-uploader :model="$user" collection="avatar" theme="ios" variant="medium" />
+ *   <livewire:laracrate-uploader :model="$user" collection="avatar" :deferred="true" layout="portrait" />
+ *
+ * By default the file goes to the page's upload queue as soon as it is picked, so it
+ * finishes after a wire:navigate. `deferred` stages it with Livewire's temporary
+ * upload instead, shows its preview and only saves it on submit(); cancel() drops it.
  */
 class LaracrateUploader extends Component
 {
     use IssuesUploadGrants;
+    use HasAppearance;
     use WithFileUploads;
 
     #[Locked]
@@ -37,18 +40,11 @@ class LaracrateUploader extends Component
     public ?string $variant = null;
 
     #[Locked]
-    public ?string $theme = null;
-
-    #[Locked]
     public string $layout = 'row';
 
-    /**
-     * Override for the image preview rounding. Standard Tailwind values:
-     * 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | 'full'.
-     * If null, each theme uses its own default.
-     */
+    /** Stage the file with a preview and save it on submit(), instead of at once. */
     #[Locked]
-    public ?string $rounded = null;
+    public bool $deferred = false;
 
     /**
      * Polymorphic owner ("semantic owner / recipient of the file"). Differs from the
@@ -62,18 +58,18 @@ class LaracrateUploader extends Component
     public ?int $ownerId = null;
 
     /**
-     * Buffer for the Livewire temporary upload. When assigned, `updatedUpload`
-     * triggers the validation and persistence via `setFile()`.
+     * Deferred only: the file staged with Livewire's temporary upload, not saved until
+     * submit(). It is the file input's wire:model, so the browser sets it.
      */
-    public $upload = null;
+    public $pending = null;
 
     /**
      * When the File stays in `pending`/`processing`, the view activates
      * `wire:poll.{ms}ms="$refresh"` to refresh until `completed`/`failed`.
      */
+    #[Locked]
     public int $pollMs = 1500;
 
-    /** Livewire mount: initialize the component props. */
     /** Single file: an upload replaces the current one. */
     protected function uploadReplaces(): bool
     {
@@ -103,6 +99,7 @@ class LaracrateUploader extends Component
         string $collection,
         ?string $variant = null,
         ?string $theme = null,
+        bool $deferred = false,
         string $layout = 'row',
         ?string $rounded = null,
         mixed $owner = null,
@@ -113,6 +110,7 @@ class LaracrateUploader extends Component
         $this->collection = $collection;
         $this->variant    = $variant;
         $this->theme      = $theme;
+        $this->deferred   = $deferred;
         $this->layout     = $layout;
         $this->rounded    = $rounded;
 
@@ -128,36 +126,32 @@ class LaracrateUploader extends Component
         $this->refreshUploadGrant();
     }
 
-    /**
-     * Returns the Tailwind class matching the `rounded` prop value, or an empty
-     * string if not passed (each theme falls back to its own default).
-     *
-     * The classes appear literal in the match() so Tailwind detects them when
-     * scanning the package's PHP files.
-     */
-    public function roundedClass(): string
+    /** Deferred: checks the staged file as soon as Livewire has it, and drops it if refused. */
+    public function updatedPending(): void
     {
-        return match ($this->rounded) {
-            'none'  => 'rounded-none',
-            'sm'    => 'rounded-sm',
-            'md'    => 'rounded-md',
-            'lg'    => 'rounded-lg',
-            'xl'    => 'rounded-xl',
-            '2xl'   => 'rounded-2xl',
-            '3xl'   => 'rounded-3xl',
-            'full'  => 'rounded-full',
-            default => '',
-        };
-    }
+        if (! $this->deferred || ! $this->pending instanceof TemporaryUploadedFile) {
+            $this->reset('pending');
 
-    /** Lifecycle hook: validate and persist the file when the temp upload completes. */
-    public function updatedUpload(): void
-    {
-        if (! $this->upload instanceof TemporaryUploadedFile) {
             return;
         }
 
-        $this->validate(['upload' => $this->validationRules()]);
+        try {
+            $this->validate(['pending' => $this->validationRules()]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->reset('pending');
+
+            throw $e;
+        }
+    }
+
+    /** Deferred: saves the staged file, replacing the current one. */
+    public function submit(): void
+    {
+        if (! $this->deferred || ! $this->pending instanceof TemporaryUploadedFile) {
+            return;
+        }
+
+        $this->validate(['pending' => $this->validationRules()]);
 
         // Resolve owner override if passed via prop.
         $owner = null;
@@ -169,9 +163,9 @@ class LaracrateUploader extends Component
             }
         }
 
-        $file = $this->model->setFile($this->collection, $this->upload, owner: $owner);
+        $file = $this->model->setFile($this->collection, $this->pending, owner: $owner);
 
-        $this->reset('upload');
+        $this->reset('pending');
 
         if ($file) {
             $this->dispatch(
@@ -180,6 +174,13 @@ class LaracrateUploader extends Component
                 fileId: $file->id,
             );
         }
+    }
+
+    /** Deferred: drops the staged file without touching the current one. */
+    public function cancel(): void
+    {
+        $this->reset('pending');
+        $this->resetErrorBag('pending');
     }
 
     /** Delete the current file of the collection. */
@@ -204,11 +205,15 @@ class LaracrateUploader extends Component
     }
 
     /**
-     * 'idle' (no file) | 'pending' | 'processing' | 'completed' | 'failed'.
-     * Drives the polling and the status badge in the themes.
+     * 'staged' (deferred, waiting for submit) | 'idle' (no file) | 'pending' |
+     * 'processing' | 'completed' | 'failed'. Drives the polling and the status badge.
      */
     public function processingState(): string
     {
+        if ($this->pending instanceof TemporaryUploadedFile) {
+            return 'staged';
+        }
+
         $file = $this->currentFile();
         if (! $file) {
             return 'idle';
@@ -226,8 +231,22 @@ class LaracrateUploader extends Component
         return $this->model->fileLink($this->collection, $this->variant);
     }
 
+    /** Deferred: the staged file's temporary URL, for its preview. */
+    public function pendingPreviewUrl(): ?string
+    {
+        if (! $this->pending instanceof TemporaryUploadedFile) {
+            return null;
+        }
+
+        try {
+            return $this->pending->temporaryUrl();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     /**
-     * Livewire rules for `upload`. Built from the collection config: mimes
+     * Livewire rules for the staged file. Built from the collection config: mimes
      * (mapped to extensions), max size in KB.
      */
     protected function validationRules(): array
@@ -316,27 +335,25 @@ class LaracrateUploader extends Component
         return $out;
     }
 
-    /** Render the uploader theme view. */
+    /** `rounded` rounds the preview (an avatar in a circle), not the card around it. */
+    protected function roundedVariable(): string
+    {
+        return '--wire-laracrate-preview-radius';
+    }
+
     public function render()
     {
-        $theme  = $this->theme ?? config('laracrate.ui.default_theme', 'default');
-        $layout = $this->layout;
-
-        // Resolution: themes/{theme}/{layout}.blade.php -> themes/{theme}.blade.php
-        // (back-compat with single-file themes).
-        $view = view()->exists("laracrate::uploader.themes.{$theme}.{$layout}")
-            ? "laracrate::uploader.themes.{$theme}.{$layout}"
-            : "laracrate::uploader.themes.{$theme}";
-
-        return view($view, [
-            'config'       => $this->model->getCollectionConfig($this->collection),
-            'file'         => $this->currentFile(),
-            'state'        => $this->processingState(),
-            'previewUrl'   => $this->previewUrl(),
-            'acceptAttr'   => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
-            'maxSizeKb'    => $this->maxSizeKb(),
-            'pollMs'       => $this->pollMs,
-            'roundedClass' => $this->roundedClass(),
+        return view('laracrate::uploader', [
+            'deferred'          => $this->deferred,
+            'appearance'        => $this->appearance(),
+            'config'            => $this->model->getCollectionConfig($this->collection),
+            'file'              => $this->currentFile(),
+            'state'             => $this->processingState(),
+            'previewUrl'        => $this->previewUrl(),
+            'pendingPreviewUrl' => $this->pendingPreviewUrl(),
+            'acceptAttr'        => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
+            'maxSizeKb'         => $this->maxSizeKb(),
+            'pollMs'            => $this->pollMs,
         ]);
     }
 }

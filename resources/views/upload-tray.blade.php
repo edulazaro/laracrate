@@ -8,7 +8,7 @@
         @endpersist
 
     Optional: ['position' => 'bottom: 3rem; right: 1rem;'] to move it. Colours come
-    from the --lc-tray-* variables below, which the app can override.
+    from the --wire-laracrate-tray-* variables below, which the app can override.
 
     Own CSS on purpose: the host app's Tailwind does not scan the package views.
 --}}
@@ -26,40 +26,40 @@
 @endphp
 
 <style>
-    .lc-tray {
-        --lc-tray-bg: #f3f4f6;
-        --lc-tray-border: #e5e7eb;
-        --lc-tray-text: #111827;
-        --lc-tray-muted: #6b7280;
-        --lc-tray-error: #b91c1c;
-        --lc-tray-ok: #15803d;
+    .laracrate-tray {
+        --wire-laracrate-tray-bg: #f3f4f6;
+        --wire-laracrate-tray-border: #e5e7eb;
+        --wire-laracrate-tray-text: #111827;
+        --wire-laracrate-tray-muted: #6b7280;
+        --wire-laracrate-tray-error: #b91c1c;
+        --wire-laracrate-tray-ok: #15803d;
         position: fixed; z-index: 60; width: 24rem; max-width: calc(100vw - 2rem);
-        background: var(--lc-tray-bg); color: var(--lc-tray-text);
-        border: 1px solid var(--lc-tray-border); border-radius: .5rem;
+        background: var(--wire-laracrate-tray-bg); color: var(--wire-laracrate-tray-text);
+        border: 1px solid var(--wire-laracrate-tray-border); border-radius: .5rem;
         box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
         font-size: .875rem; line-height: 1.25rem; overflow: hidden;
     }
-    .lc-tray__head { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; }
-    .lc-tray__title { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lc-tray__pct { color: var(--lc-tray-muted); font-variant-numeric: tabular-nums; }
-    .lc-tray__btn { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem;
-        border-radius: .375rem; color: var(--lc-tray-muted); background: transparent; border: 0; cursor: pointer; }
-    .lc-tray__btn:hover { color: var(--lc-tray-text); background: rgba(0,0,0,.06); }
-    .lc-tray__list { max-height: 16rem; overflow-y: auto; border-top: 1px solid var(--lc-tray-border); }
-    .lc-tray__item { display: flex; align-items: flex-start; gap: .625rem; padding: .5rem 1rem; }
-    .lc-tray__item + .lc-tray__item { border-top: 1px solid var(--lc-tray-border); }
-    .lc-tray__icon { width: 1rem; height: 1rem; flex-shrink: 0; margin-top: .125rem; }
-    .lc-tray__body { flex: 1; min-width: 0; }
-    .lc-tray__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lc-tray__meta { color: var(--lc-tray-muted); font-size: .75rem; }
-    .lc-tray__error { color: var(--lc-tray-error); font-size: .75rem; }
-    .lc-tray__actions { display: flex; gap: .75rem; margin-top: .25rem; font-size: .75rem; }
-    .lc-tray__link { background: none; border: 0; padding: 0; cursor: pointer; color: var(--lc-tray-text); font-weight: 500; }
-    .lc-tray__link:hover { text-decoration: underline; }
-    .lc-tray__link--muted { color: var(--lc-tray-muted); font-weight: 400; }
-    .lc-tray__spin { animation: lc-tray-spin 1s linear infinite; }
-    @keyframes lc-tray-spin { to { transform: rotate(360deg); } }
-    [x-cloak].lc-tray { display: none; }
+    .laracrate-tray__head { display: flex; align-items: center; gap: .5rem; padding: .75rem 1rem; }
+    .laracrate-tray__title { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .laracrate-tray__pct { color: var(--wire-laracrate-tray-muted); font-variant-numeric: tabular-nums; }
+    .laracrate-tray__btn { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem;
+        border-radius: .375rem; color: var(--wire-laracrate-tray-muted); background: transparent; border: 0; cursor: pointer; }
+    .laracrate-tray__btn:hover { color: var(--wire-laracrate-tray-text); background: rgba(0,0,0,.06); }
+    .laracrate-tray__list { max-height: 16rem; overflow-y: auto; border-top: 1px solid var(--wire-laracrate-tray-border); }
+    .laracrate-tray__item { display: flex; align-items: flex-start; gap: .625rem; padding: .5rem 1rem; }
+    .laracrate-tray__item + .laracrate-tray__item { border-top: 1px solid var(--wire-laracrate-tray-border); }
+    .laracrate-tray__icon { width: 1rem; height: 1rem; flex-shrink: 0; margin-top: .125rem; }
+    .laracrate-tray__body { flex: 1; min-width: 0; }
+    .laracrate-tray__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .laracrate-tray__meta { color: var(--wire-laracrate-tray-muted); font-size: .75rem; }
+    .laracrate-tray__error { color: var(--wire-laracrate-tray-error); font-size: .75rem; }
+    .laracrate-tray__actions { display: flex; gap: .75rem; margin-top: .25rem; font-size: .75rem; }
+    .laracrate-tray__link { background: none; border: 0; padding: 0; cursor: pointer; color: var(--wire-laracrate-tray-text); font-weight: 500; }
+    .laracrate-tray__link:hover { text-decoration: underline; }
+    .laracrate-tray__link--muted { color: var(--wire-laracrate-tray-muted); font-weight: 400; }
+    .laracrate-tray__spin { animation: laracrate-tray-spin 1s linear infinite; }
+    @keyframes laracrate-tray-spin { to { transform: rotate(360deg); } }
+    [x-cloak].laracrate-tray { display: none; }
 </style>
 
 <script>
@@ -114,36 +114,36 @@
 </script>
 
 <div x-data="laracrateUploadTray(@js($texts))" x-show="items.length" x-cloak x-effect="settle()"
-     class="lc-tray" style="{{ $position }}" role="status" aria-live="polite">
-    <div class="lc-tray__head">
-        <svg x-show="active.length" class="lc-tray__icon lc-tray__spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-        <span class="lc-tray__title" x-text="title"></span>
-        <span class="lc-tray__pct" x-show="active.length && ! active.every(i => i.phase === 'saving')" x-text="percent + ' %'"></span>
-        <button type="button" class="lc-tray__btn" @click="open = ! open"
+     class="laracrate-tray" style="{{ $position }}" role="status" aria-live="polite">
+    <div class="laracrate-tray__head">
+        <svg x-show="active.length" class="laracrate-tray__icon laracrate-tray__spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        <span class="laracrate-tray__title" x-text="title"></span>
+        <span class="laracrate-tray__pct" x-show="active.length && ! active.every(i => i.phase === 'saving')" x-text="percent + ' %'"></span>
+        <button type="button" class="laracrate-tray__btn" @click="open = ! open"
                 :title="open ? @js(__('laracrate::uploader.tray.collapse')) : @js(__('laracrate::uploader.tray.expand'))">
-            <svg class="lc-tray__icon" :style="open ? '' : 'transform: rotate(180deg)'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            <svg class="laracrate-tray__icon" :style="open ? '' : 'transform: rotate(180deg)'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
         </button>
-        <button type="button" class="lc-tray__btn" x-show="! active.length" @click="close()" title="{{ __('laracrate::uploader.tray.close') }}">
-            <svg class="lc-tray__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg>
+        <button type="button" class="laracrate-tray__btn" x-show="! active.length" @click="close()" title="{{ __('laracrate::uploader.tray.close') }}">
+            <svg class="laracrate-tray__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg>
         </button>
     </div>
 
-    <div class="lc-tray__list" x-show="open">
+    <div class="laracrate-tray__list" x-show="open">
         <template x-for="item in items" :key="item.id">
-            <div class="lc-tray__item">
-                <svg x-show="['pending', 'uploading'].includes(item.status)" class="lc-tray__icon lc-tray__spin" style="color: var(--lc-tray-muted)" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-                <svg x-show="item.status === 'done'" class="lc-tray__icon" style="color: var(--lc-tray-ok)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                <svg x-show="['error', 'canceled'].includes(item.status)" class="lc-tray__icon" style="color: var(--lc-tray-error)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v5M12 16h.01"/></svg>
+            <div class="laracrate-tray__item">
+                <svg x-show="['pending', 'uploading'].includes(item.status)" class="laracrate-tray__icon laracrate-tray__spin" style="color: var(--wire-laracrate-tray-muted)" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity=".25"/><path d="M22 12a10 10 0 0 0-10-10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+                <svg x-show="item.status === 'done'" class="laracrate-tray__icon" style="color: var(--wire-laracrate-tray-ok)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <svg x-show="['error', 'canceled'].includes(item.status)" class="laracrate-tray__icon" style="color: var(--wire-laracrate-tray-error)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M12 8v5M12 16h.01"/></svg>
 
-                <div class="lc-tray__body">
-                    <p class="lc-tray__name" x-text="item.name"></p>
-                    <p class="lc-tray__meta" x-show="item.status !== 'error'"
+                <div class="laracrate-tray__body">
+                    <p class="laracrate-tray__name" x-text="item.name"></p>
+                    <p class="laracrate-tray__meta" x-show="item.status !== 'error'"
                        x-text="item.status === 'uploading' && item.phase !== 'saving' ? item.progress + ' % · ' + size(item.size) : size(item.size)"></p>
-                    <p class="lc-tray__error" x-show="item.status === 'error'" x-text="item.error"></p>
-                    <div class="lc-tray__actions" x-show="item.status === 'error' || item.status === 'uploading'">
-                        <button type="button" class="lc-tray__link" x-show="item.status === 'error' && item.retryable" @click="retry(item)">{{ __('laracrate::uploader.tray.retry') }}</button>
-                        <button type="button" class="lc-tray__link lc-tray__link--muted" x-show="item.status === 'error'" @click="dismiss(item)">{{ __('laracrate::uploader.tray.dismiss') }}</button>
-                        <button type="button" class="lc-tray__link lc-tray__link--muted" x-show="item.status === 'uploading' && item.phase !== 'saving'" @click="cancel(item)">{{ __('laracrate::uploader.tray.cancel') }}</button>
+                    <p class="laracrate-tray__error" x-show="item.status === 'error'" x-text="item.error"></p>
+                    <div class="laracrate-tray__actions" x-show="item.status === 'error' || item.status === 'uploading'">
+                        <button type="button" class="laracrate-tray__link" x-show="item.status === 'error' && item.retryable" @click="retry(item)">{{ __('laracrate::uploader.tray.retry') }}</button>
+                        <button type="button" class="laracrate-tray__link laracrate-tray__link--muted" x-show="item.status === 'error'" @click="dismiss(item)">{{ __('laracrate::uploader.tray.dismiss') }}</button>
+                        <button type="button" class="laracrate-tray__link laracrate-tray__link--muted" x-show="item.status === 'uploading' && item.phase !== 'saving'" @click="cancel(item)">{{ __('laracrate::uploader.tray.cancel') }}</button>
                     </div>
                 </div>
             </div>

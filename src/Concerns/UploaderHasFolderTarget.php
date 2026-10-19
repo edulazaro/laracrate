@@ -2,7 +2,6 @@
 
 namespace EduLazaro\Laracrate\Concerns;
 
-use EduLazaro\Laracrate\Models\Folder;
 use Livewire\Attributes\Locked;
 
 /**
@@ -17,7 +16,7 @@ use Livewire\Attributes\Locked;
  *       $this->folderId = $folderId;
  *   }
  *
- *   // In registerUploaded(): $this->model->addFile($upload, $coll, folder: $this->folder())
+ *   // IssuesUploadGrants puts $this->folderId in the upload grant.
  */
 trait UploaderHasFolderTarget
 {
@@ -27,13 +26,4 @@ trait UploaderHasFolderTarget
      */
     #[Locked]
     public ?int $folderId = null;
-
-    /**
-     * Resolves the target Folder. Cross-fileable validation is done in
-     * HasFiles::addFile (defense in depth). Here we only load it.
-     */
-    protected function folder(): ?Folder
-    {
-        return $this->folderId ? Folder::find($this->folderId) : null;
-    }
 }

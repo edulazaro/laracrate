@@ -10,14 +10,16 @@
     Open a file with Laracrate.viewer.open(slug), or give any element a
     data-laracrate-view="{{ $file->slug }}": a plain click on it opens the viewer
     (a link keeps its href for a new tab). The link to the file is asked for when it
-    opens (ViewerController) and again if it runs out halfway.
+    opens (ViewerController) and again if it runs out halfway. Other files show as
+    HTML when the app registered a preview for them (ViewerRegistry), in a sandboxed
+    iframe, with an "edit" link when it gives one.
 
     Elements that share a data-laracrate-gallery="name" form a gallery: the viewer
     moves through them in page order (arrows, and the arrow keys). The same with
     Laracrate.viewer.open(slug, { gallery: [slug, ...] }).
 
     Optional: ['position' => 'bottom: 1rem; right: 1rem;'] to move it. Colours come
-    from the --lc-viewer-* variables below, which the app can override. Next to the
+    from the --wire-laracrate-viewer-* variables below, which the app can override. Next to the
     upload tray, stack both in one container of the app.
 
     Own CSS on purpose: the host app's Tailwind does not scan the package views.
@@ -25,7 +27,7 @@
 @php
     $position = $position ?? 'bottom: 1rem; right: 1rem;';
     $config = [
-        'url' => route('laracrate.files.view', ['file' => '__SLUG__'], absolute: false),
+        'url' => route('laracrate.files.viewer', ['file' => '__SLUG__'], absolute: false),
         'messages' => [
             'loading' => __('laracrate::viewer.loading'),
             'failed' => __('laracrate::viewer.failed'),
@@ -35,54 +37,56 @@
 @endphp
 
 <style>
-    .lc-viewer {
-        --lc-viewer-bg: #f3f4f6;
-        --lc-viewer-border: #e5e7eb;
-        --lc-viewer-text: #111827;
-        --lc-viewer-muted: #6b7280;
-        --lc-viewer-error: #b91c1c;
-        --lc-viewer-stage: #e5e7eb;
-        --lc-viewer-backdrop: rgba(17, 24, 39, .96);
+    .laracrate-viewer {
+        --wire-laracrate-viewer-bg: #f3f4f6;
+        --wire-laracrate-viewer-border: #e5e7eb;
+        --wire-laracrate-viewer-text: #111827;
+        --wire-laracrate-viewer-muted: #6b7280;
+        --wire-laracrate-viewer-error: #b91c1c;
+        --wire-laracrate-viewer-stage: #e5e7eb;
+        --wire-laracrate-viewer-backdrop: rgba(17, 24, 39, .96);
         position: fixed; z-index: 60; width: 24rem; max-width: calc(100vw - 2rem);
-        background: var(--lc-viewer-bg); color: var(--lc-viewer-text);
-        border: 1px solid var(--lc-viewer-border); border-radius: .5rem;
+        background: var(--wire-laracrate-viewer-bg); color: var(--wire-laracrate-viewer-text);
+        border: 1px solid var(--wire-laracrate-viewer-border); border-radius: .5rem;
         box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
         font-size: .875rem; line-height: 1.25rem; overflow: hidden;
     }
-    .lc-viewer__head { display: flex; align-items: center; gap: .25rem; padding: .5rem .5rem .5rem 1rem; }
-    .lc-viewer__title { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lc-viewer__btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 1.75rem; height: 1.75rem;
-        border-radius: .375rem; color: var(--lc-viewer-muted); background: transparent; border: 0; cursor: pointer; }
-    .lc-viewer__btn:hover { color: var(--lc-viewer-text); background: rgba(0,0,0,.06); }
-    .lc-viewer__icon { width: 1rem; height: 1rem; }
-    .lc-viewer__error { padding: 0 1rem .75rem; color: var(--lc-viewer-error); font-size: .75rem; }
-    .lc-viewer__stage { display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--lc-viewer-border); }
-    .lc-viewer__stage img, .lc-viewer__stage video { display: block; width: 100%; max-height: 14rem; object-fit: contain; background: var(--lc-viewer-stage); }
-    .lc-viewer__stage img { cursor: zoom-in; }
-    .lc-viewer__stage video { background: #000; }
-    .lc-viewer__stage audio { display: block; width: 100%; margin: .5rem .75rem .75rem; }
-    .lc-viewer__bar { display: none; }
+    .laracrate-viewer__head { display: flex; align-items: center; gap: .25rem; padding: .5rem .5rem .5rem 1rem; }
+    .laracrate-viewer__title { flex: 1; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .laracrate-viewer__btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 1.75rem; height: 1.75rem;
+        border-radius: .375rem; color: var(--wire-laracrate-viewer-muted); background: transparent; border: 0; cursor: pointer; }
+    .laracrate-viewer__btn:hover { color: var(--wire-laracrate-viewer-text); background: rgba(0,0,0,.06); }
+    .laracrate-viewer__icon { width: 1rem; height: 1rem; }
+    .laracrate-viewer__error { padding: 0 1rem .75rem; color: var(--wire-laracrate-viewer-error); font-size: .75rem; }
+    .laracrate-viewer__stage { display: flex; align-items: center; justify-content: center; border-top: 1px solid var(--wire-laracrate-viewer-border); }
+    .laracrate-viewer__stage img, .laracrate-viewer__stage video { display: block; width: 100%; max-height: 14rem; object-fit: contain; background: var(--wire-laracrate-viewer-stage); }
+    .laracrate-viewer__stage img { cursor: zoom-in; }
+    .laracrate-viewer__stage video { background: #000; }
+    .laracrate-viewer__stage audio { display: block; width: 100%; margin: .5rem .75rem .75rem; }
+    .laracrate-viewer__stage iframe { display: block; width: 100%; height: 16rem; border: 0; background: #fff; }
+    .laracrate-viewer__bar { display: none; }
 
     /* Full size: the same stage over the whole window, so a video keeps playing. */
-    .lc-viewer__stage--full { position: fixed; inset: 0; z-index: 1; flex-direction: column; padding: 3.5rem 1rem 1rem;
-        background: var(--lc-viewer-backdrop); border: 0; }
-    .lc-viewer__stage--full img, .lc-viewer__stage--full video { width: auto; height: auto; max-width: 100%; max-height: 100%; min-height: 0; background: transparent; }
-    .lc-viewer__stage--full img { cursor: default; }
-    .lc-viewer__stage--full .lc-viewer__bar { display: flex; align-items: center; gap: .25rem; position: absolute; top: 0; left: 0; right: 0;
+    .laracrate-viewer__stage--full { position: fixed; inset: 0; z-index: 1; flex-direction: column; padding: 3.5rem 1rem 1rem;
+        background: var(--wire-laracrate-viewer-backdrop); border: 0; }
+    .laracrate-viewer__stage--full img, .laracrate-viewer__stage--full video { width: auto; height: auto; max-width: 100%; max-height: 100%; min-height: 0; background: transparent; }
+    .laracrate-viewer__stage--full img { cursor: default; }
+    .laracrate-viewer__stage--full iframe { width: min(56rem, 100%); height: 100%; border-radius: .25rem; }
+    .laracrate-viewer__stage--full .laracrate-viewer__bar { display: flex; align-items: center; gap: .25rem; position: absolute; top: 0; left: 0; right: 0;
         padding: .75rem .75rem .75rem 1.25rem; color: #fff; }
-    .lc-viewer__stage--full .lc-viewer__btn { color: rgba(255,255,255,.75); }
-    .lc-viewer__stage--full .lc-viewer__btn:hover { color: #fff; background: rgba(255,255,255,.12); }
-    .lc-viewer__count { color: var(--lc-viewer-muted); font-size: .75rem; font-variant-numeric: tabular-nums; padding: 0 .125rem; }
-    .lc-viewer__btn:disabled { opacity: .35; cursor: default; background: transparent; }
-    .lc-viewer__nav { display: none; }
-    .lc-viewer__stage--full .lc-viewer__nav { display: inline-flex; position: absolute; top: 50%; transform: translateY(-50%);
+    .laracrate-viewer__stage--full .laracrate-viewer__btn { color: rgba(255,255,255,.75); }
+    .laracrate-viewer__stage--full .laracrate-viewer__btn:hover { color: #fff; background: rgba(255,255,255,.12); }
+    .laracrate-viewer__count { color: var(--wire-laracrate-viewer-muted); font-size: .75rem; font-variant-numeric: tabular-nums; padding: 0 .125rem; }
+    .laracrate-viewer__btn:disabled { opacity: .35; cursor: default; background: transparent; }
+    .laracrate-viewer__nav { display: none; }
+    .laracrate-viewer__stage--full .laracrate-viewer__nav { display: inline-flex; position: absolute; top: 50%; transform: translateY(-50%);
         width: 2.75rem; height: 2.75rem; border-radius: 999px; background: rgba(255,255,255,.12); }
-    .lc-viewer__stage--full .lc-viewer__nav:hover { background: rgba(255,255,255,.24); }
-    .lc-viewer__stage--full .lc-viewer__nav--prev { left: 1rem; }
-    .lc-viewer__stage--full .lc-viewer__nav--next { right: 1rem; }
-    .lc-viewer__stage--full .lc-viewer__count { color: rgba(255,255,255,.75); }
-    .lc-viewer-lock { overflow: hidden; }
-    [x-cloak].lc-viewer { display: none; }
+    .laracrate-viewer__stage--full .laracrate-viewer__nav:hover { background: rgba(255,255,255,.24); }
+    .laracrate-viewer__stage--full .laracrate-viewer__nav--prev { left: 1rem; }
+    .laracrate-viewer__stage--full .laracrate-viewer__nav--next { right: 1rem; }
+    .laracrate-viewer__stage--full .laracrate-viewer__count { color: rgba(255,255,255,.75); }
+    .laracrate-viewer-lock { overflow: hidden; }
+    [x-cloak].laracrate-viewer { display: none; }
 </style>
 
 <script>
@@ -141,7 +145,7 @@
                 credentials: 'same-origin',
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok || !data.url) throw new Error(data.message || config.messages.failed);
+            if (!response.ok || (!data.url && data.type !== 'html')) throw new Error(data.message || config.messages.failed);
             return data;
         },
 
@@ -216,6 +220,19 @@
             this.resume = null;
         },
 
+        /**
+         * The HTML of a registered preview, as a document of its own for the sandboxed
+         * iframe: small type in the card, larger at full size.
+         */
+        frame(html, full) {
+            const size = full ? 15 : 12;
+            return '<!doctype html><meta charset="utf-8"><style>'
+                + `body{margin:0;padding:${full ? '32px 40px' : '12px 14px'};font:${size}px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif;color:#111827;overflow-wrap:break-word}`
+                + 'h1{font-size:1.6em}h2{font-size:1.35em}h3{font-size:1.15em}h1,h2,h3{line-height:1.25;margin:.8em 0 .4em}'
+                + 'img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #e5e7eb;padding:2px 6px}'
+                + '</style>' + (html || '');
+        },
+
         /** With a fresh link: the one from opening may be old by now. */
         async download() {
             if (!this.item) return;
@@ -234,49 +251,58 @@
      @keydown.arrow-right.window="key($event, 1)"
      @laracrate:view-close.window="close()"
      @keydown.escape.window="full = false"
-     x-effect="document.documentElement.classList.toggle('lc-viewer-lock', full)"
-     class="lc-viewer" style="{{ $position }}" role="region" aria-label="{{ __('laracrate::viewer.label') }}">
-    <div class="lc-viewer__head">
-        <span class="lc-viewer__title" x-text="title"></span>
+     x-effect="document.documentElement.classList.toggle('laracrate-viewer-lock', full)"
+     class="laracrate-viewer" style="{{ $position }}" role="region" aria-label="{{ __('laracrate::viewer.label') }}">
+    <div class="laracrate-viewer__head">
+        <span class="laracrate-viewer__title" x-text="title"></span>
         <template x-if="gallery.length > 1">
             <span style="display: contents">
-                <button type="button" class="lc-viewer__btn" :disabled="place < 1" @click="step(-1)" title="{{ __('laracrate::viewer.previous') }}">
-                    <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                <button type="button" class="laracrate-viewer__btn" :disabled="place < 1" @click="step(-1)" title="{{ __('laracrate::viewer.previous') }}">
+                    <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
                 </button>
-                <span class="lc-viewer__count" x-text="count"></span>
-                <button type="button" class="lc-viewer__btn" :disabled="place >= gallery.length - 1" @click="step(1)" title="{{ __('laracrate::viewer.next') }}">
-                    <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                <span class="laracrate-viewer__count" x-text="count"></span>
+                <button type="button" class="laracrate-viewer__btn" :disabled="place >= gallery.length - 1" @click="step(1)" title="{{ __('laracrate::viewer.next') }}">
+                    <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                 </button>
             </span>
         </template>
-        <button type="button" class="lc-viewer__btn" x-show="item && item.type !== 'audio'" @click="full = true" title="{{ __('laracrate::viewer.expand') }}">
-            <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
+        <button type="button" class="laracrate-viewer__btn" x-show="item && item.type !== 'audio'" @click="full = true" title="{{ __('laracrate::viewer.expand') }}">
+            <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
         </button>
-        <button type="button" class="lc-viewer__btn" x-show="item" @click="download()" title="{{ __('laracrate::viewer.download') }}">
-            <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
+        <a class="laracrate-viewer__btn" x-show="item?.edit" :href="item?.edit" wire:navigate title="{{ __('laracrate::viewer.edit') }}">
+            <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        </a>
+        <button type="button" class="laracrate-viewer__btn" x-show="item?.download" @click="download()" title="{{ __('laracrate::viewer.download') }}">
+            <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
         </button>
-        <button type="button" class="lc-viewer__btn" @click="close()" title="{{ __('laracrate::viewer.close') }}">
-            <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg>
+        <button type="button" class="laracrate-viewer__btn" @click="close()" title="{{ __('laracrate::viewer.close') }}">
+            <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg>
         </button>
     </div>
 
-    <p class="lc-viewer__error" x-show="error" x-text="error"></p>
+    <p class="laracrate-viewer__error" x-show="error" x-text="error"></p>
 
-    <div class="lc-viewer__stage" :class="full && 'lc-viewer__stage--full'" x-show="item && ! error" @click.self="full = false">
-        <div class="lc-viewer__bar">
-            <span class="lc-viewer__title" x-text="title"></span>
-            <span class="lc-viewer__count" x-show="gallery.length > 1" x-text="count"></span>
-            <button type="button" class="lc-viewer__btn" @click="download()" title="{{ __('laracrate::viewer.download') }}">
-                <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
+    <div class="laracrate-viewer__stage" :class="full && 'laracrate-viewer__stage--full'" x-show="item && ! error" @click.self="full = false">
+        <div class="laracrate-viewer__bar">
+            <span class="laracrate-viewer__title" x-text="title"></span>
+            <span class="laracrate-viewer__count" x-show="gallery.length > 1" x-text="count"></span>
+            <a class="laracrate-viewer__btn" x-show="item?.edit" :href="item?.edit" wire:navigate title="{{ __('laracrate::viewer.edit') }}">
+                <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </a>
+            <button type="button" class="laracrate-viewer__btn" x-show="item?.download" @click="download()" title="{{ __('laracrate::viewer.download') }}">
+                <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0l-4-4m4 4l4-4M5 19h14"/></svg>
             </button>
-            <button type="button" class="lc-viewer__btn" @click="full = false" title="{{ __('laracrate::viewer.collapse') }}">
-                <svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg>
+            <button type="button" class="laracrate-viewer__btn" @click="full = false" title="{{ __('laracrate::viewer.collapse') }}">
+                <svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 6l12 12M6 18L18 6"/></svg>
             </button>
         </div>
-        <button type="button" class="lc-viewer__btn lc-viewer__nav lc-viewer__nav--prev" x-show="gallery.length > 1 && place > 0"
-                @click="step(-1)" title="{{ __('laracrate::viewer.previous') }}"><svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
-        <button type="button" class="lc-viewer__btn lc-viewer__nav lc-viewer__nav--next" x-show="gallery.length > 1 && place < gallery.length - 1"
-                @click="step(1)" title="{{ __('laracrate::viewer.next') }}"><svg class="lc-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+        <button type="button" class="laracrate-viewer__btn laracrate-viewer__nav laracrate-viewer__nav--prev" x-show="gallery.length > 1 && place > 0"
+                @click="step(-1)" title="{{ __('laracrate::viewer.previous') }}"><svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+        <button type="button" class="laracrate-viewer__btn laracrate-viewer__nav laracrate-viewer__nav--next" x-show="gallery.length > 1 && place < gallery.length - 1"
+                @click="step(1)" title="{{ __('laracrate::viewer.next') }}"><svg class="laracrate-viewer__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+        <template x-if="item?.type === 'html'">
+            <iframe :srcdoc="frame(item.html, full)" sandbox="" :title="item.name"></iframe>
+        </template>
         <template x-if="item?.type === 'image'">
             <img :src="item.url" :alt="item.name" @click="full = true" @load="retried = false" x-on:error="recover()">
         </template>

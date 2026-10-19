@@ -110,6 +110,11 @@ return [
     | Each collection defines disk, access, single, sensitive, variants
     | override. Models can override via $fileCollections.
     |
+    | `access` is `public` or `private`: who the files are for. How a private one
+    | is served is chosen where it is used (`url()` or `streamUrl()`); a
+    | `sensitive` or `encrypt` collection is only ever served through PHP. The 1.x
+    | values 'signed' and 'stream' read as private ('stream' also as sensitive).
+    |
     | Optional: `ttl_hours` declares a TTL for the collection's Files. The
     | `laracrate:purge-expired` command (schedulable hourly) deletes Files
     | with created_at < now() - ttl_hours, cascading to variants and the
@@ -152,7 +157,7 @@ return [
         // with a rasterized preview of the first page.
         'documents' => [
             'disk'   => 's3',
-            'access' => 'signed',
+            'access' => 'private',
             'types'  => [
                 'document' => [
                     'preview' => [
@@ -197,20 +202,19 @@ return [
     | URL strategy
     |--------------------------------------------------------------------------
     |
-    | signed_ttl:           TTL in minutes for R2 signed URLs (default 5).
-    | signed_cache_ttl:     TTL of the server-side cache of the signed URL (default 4 min).
-    | sensitive_redirect_ttl: ultra short TTL for the signed URL after validating
-    |                        in the stream controller (seconds).
-    | route_signed_ttl:     TTL in minutes of the HMAC of the /files/{slug}/stream route.
+    | The links of a private file: `$file->url()` signs one straight to the disk,
+    | `$file->url(expires: ...)` sets when it runs out. `streamUrl()` and
+    | `downloadUrl()` go through PHP, check the view policy on each request and
+    | never expire.
+    |
+    | signed_ttl:       minutes a signed link lasts when the caller does not say (default 5).
+    | signed_cache_ttl: minutes that default link is cached server-side (default 4).
     |
     */
 
     'urls' => [
-        'signed_ttl'             => 5,
-        'signed_cache_ttl'       => 4,
-        'sensitive_redirect_ttl' => 10,
-        'route_signed_ttl'       => 15,
-        'bind_to_user'           => true,
+        'signed_ttl'       => 5,
+        'signed_cache_ttl' => 4,
     ],
 
     /*
@@ -262,13 +266,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | laracrate::viewer shows images, audio and video in a card at the bottom of
-    | the page. image_variant: the variant an image is shown with (the file itself
-    | when it has none). Videos play their `playback` copy when there is one.
+    | the page. image_variant / video_variant: the variant an image is shown with
+    | and a video plays (the file itself when it has none, or when null).
     |
     */
 
     'viewer' => [
         'image_variant' => 'display',
+        'video_variant' => null,
     ],
 
     /*
@@ -317,20 +322,30 @@ return [
     | Direct uploads (presigned to R2/S3)
     |--------------------------------------------------------------------------
     |
-    | route_prefix:  URL prefix of the presign / cancel endpoints.
-    | middleware:    middleware of the uploads route group. The app is
-    |                responsible for authorization (auth, throttle, etc.).
-    | allowed_disks: allow-list of disks that direct uploads are permitted to
-    |                (validated on presign and multipart init). Empty = no
-    |                restriction. The multipart block inherits this middleware
-    |                when its own is null.
+    | route_prefix:    URL prefix of the upload endpoints.
+    | middleware:      middleware of the uploads route group. The app is
+    |                  responsible for authorization (auth, throttle, etc.).
+    | allowed_disks:   allow-list of disks the plain presign endpoint signs for.
+    |                  Empty = the disks of the configured collections. The
+    |                  multipart block inherits this middleware when its own is null.
+    | mode:            how the upload components upload by default. 'presign':
+    |                  the component signs the files when they are picked and the
+    |                  queue registers each one by its key. 'grant': the component
+    |                  hands the browser an UploadGrant and the queue signs each
+    |                  file with it. Either way uploads survive a wire:navigate. A
+    |                  component can pick its own with `upload-mode`, and one that
+    |                  uploads through PHP (encrypted collections) always uses 'grant'.
+    | presign_minutes: how long an object signed in 'presign' mode can wait for its
+    |                  bytes. The whole batch is signed at once, so a long one needs time.
     |
     */
 
     'uploads' => [
-        'route_prefix'  => 'laracrate/uploads',
-        'middleware'    => ['web', 'auth'],
-        'allowed_disks' => [],
+        'route_prefix'    => 'laracrate/uploads',
+        'middleware'      => ['web', 'auth'],
+        'allowed_disks'   => [],
+        'mode'            => env('LARACRATE_UPLOAD_MODE', 'presign'),
+        'presign_minutes' => 120,
     ],
 
     /*
@@ -665,24 +680,6 @@ return [
             // Path to the font .ttf. null = system font.
             'font_path' => null,
         ],
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | UI (Livewire uploader)
-    |--------------------------------------------------------------------------
-    |
-    | Default theme for `<livewire:laracrate-uploader>` when the `theme=` prop
-    | is not passed. Built-in themes:
-    |   default · brutalist · material · ios · glassmorphism · neon · minimal · neumorphism
-    |
-    | For custom themes: `vendor:publish --tag=laracrate-views` and create the
-    | blade in `resources/views/vendor/laracrate/uploader/themes/{name}.blade.php`.
-    |
-    */
-
-    'ui' => [
-        'default_theme' => env('LARACRATE_THEME', 'default'),
     ],
 
     /*

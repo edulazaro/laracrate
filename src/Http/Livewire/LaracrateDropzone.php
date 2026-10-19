@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Http\Livewire;
 
+use EduLazaro\Laracrate\Http\Livewire\Concerns\HasAppearance;
 use EduLazaro\Laracrate\Concerns\UploaderHasFolderTarget;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
@@ -12,24 +13,23 @@ use EduLazaro\Laracrate\Http\Livewire\Concerns\IssuesUploadGrants;
 use Livewire\Component;
 
 /**
- * Multi-file dropzone with direct upload to R2/S3 via presigned PUT.
+ * Multi-file dropzone, straight to the bucket.
  *
  *   <livewire:laracrate-dropzone :model="$organization" collection="gallery" />
- *   <livewire:laracrate-dropzone :model="$user" collection="documents" theme="studio" />
+ *   <livewire:laracrate-dropzone :model="$case" collection="documents" :deferred="true" />
  *
- * Flow (all in the browser, JS in the theme blade):
- *   1. the user drops or selects files
- *   2. for each file: POST /laracrate/uploads/presign
- *   3. PUT directly to R2 with the signed URL
- *   4. on finish, $wire.registerUploaded(key, name, mime, size) creates the
- *      File row via $model->addFile(): the Observer queues the variants
- *   5. dispatch laracrate-file-uploaded per file + laracrate-batch-completed
- *
- * The binary does NOT pass through PHP. The server only signs the URL and records metadata.
+ * By default the files upload as soon as they are picked. `deferred` stages them
+ * instead: the user reviews the queue, removes what they do not want and starts the
+ * batch with the Upload button (or the page does, with a `laracrate-start-batch`
+ * event). Either way the files go to the page's upload queue in this component's mode
+ * (IssuesUploadGrants), so they finish after a wire:navigate, and the binary never
+ * passes through PHP. Slots, the integrated slot picker, `layout="list"` and
+ * `hide-actions` work in both.
  */
 class LaracrateDropzone extends Component
 {
     use IssuesUploadGrants;
+    use HasAppearance;
     use UploaderHasFolderTarget;
 
     #[Locked]
@@ -39,34 +39,58 @@ class LaracrateDropzone extends Component
     public string $collection;
 
     #[Locked]
-    public ?string $theme = null;
-
-    /**
-     * Allows multiple files. Default true (the typical dropzone case).
-     */
-    #[Locked]
     public bool $multiple = true;
 
+    /** Stage the files and upload them when the user confirms, instead of at once. */
+    #[Locked]
+    public bool $deferred = false;
+
     /**
-     * If true, "done" items stay visible in the queue when finished.
+     * If true, "done" items stay visible after the upload.
      * If false (default), they disappear after 1.5s. Errors always persist.
      */
     #[Locked]
     public bool $persistQueue = false;
 
     /**
-     * Visual cap of accepted files in the queue. 0/null = unlimited.
+     * Hides the theme's internal "Upload/Cancel" buttons. Useful when the
+     * batch trigger lives outside (the footer of a modal). To start from
+     * outside, dispatch `laracrate-start-batch` with detail `{ collection, fileableId }`.
+     */
+    #[Locked]
+    public bool $hideActions = false;
+
+    /**
+     * Queue layout. 'grid' (default) or 'list'. Each theme may implement it
+     * its own way; those that do not declare it use grid.
+     */
+    #[Locked]
+    public string $layout = 'grid';
+
+    /**
+     * Maximum cap of accepted files in the queue. 0 or null = unlimited.
+     * The Alpine factory rejects extras and notifies via the `laracrate-max-files` event.
      */
     #[Locked]
     public ?int $maxFiles = null;
 
     /**
-     * Opaque identifier the caller associates with the widget. It is included
-     * in the `laracrate-file-uploaded` event so the caller can route the File
-     * to the right target when there are several widgets on the same page.
+     * IDs of the FileSlot each uploaded file will be attached to. If passed,
+     * CreateFileAction validates acceptsExtension + canAcceptMore before creating,
+     * and the front auto-derives maxFiles and acceptedExtensions from the slot.
      */
     #[Locked]
-    public ?string $contextKey = null;
+    public array $slots = [];
+
+    /**
+     * Polymorphic creator ("who the file is attributed to"). If not passed,
+     * defaults to auth()->user(). Useful when an admin uploads on behalf of
+     * another user: the slot quotas are counted against that user.
+     */
+    #[Locked]
+    public ?string $creatorType = null;
+    #[Locked]
+    public ?int $creatorId = null;
 
     /**
      * Polymorphic owner ("semantic owner / recipient of the file"). Differs from the
@@ -79,30 +103,112 @@ class LaracrateDropzone extends Component
     #[Locked]
     public ?int $ownerId = null;
 
-    /** Livewire mount: initialize the component props. */
+    /**
+     * Opaque identifier the caller associates with the widget. It is included
+     * in the `laracrate-file-uploaded` event so the caller can route the File
+     * to the right target when there are several widgets on the same page
+     * (e.g. one field per instance in a form-builder).
+     */
+    #[Locked]
+    public ?string $contextKey = null;
+
+    /**
+     * Options for the slot selector integrated in the component.
+     * If empty, the selector is not rendered and the behavior is the classic
+     * one (cap derived from `$slots` passed as a prop).
+     *
+     * Format: array of arrays with keys `id`, `name`, optionally `color`,
+     * `description`. Example:
+     *   [
+     *       ['id' => 60, 'name' => 'DNI'],
+     *       ['id' => 61, 'name' => 'Contract', 'color' => '#7C2D12'],
+     *   ]
+     *
+     * When an option is selected, `$slots = [id]` automatically and
+     * `computeEffective()` recomputes maxFiles + allowed extensions.
+     */
+    #[Locked]
+    public array $slotOptions = [];
+
+    /**
+     * Label above the selector. If null, no visible label is rendered.
+     * E.g.: "Document type", "Category", "Tag".
+     */
+    #[Locked]
+    public ?string $slotLabel = null;
+
+    /**
+     * Placeholder text for the selector when no slot is chosen. If the UI
+     * allows it, it also works as a "no slot" option. Default: "Unclassified" (i18n).
+     */
+    #[Locked]
+    public ?string $slotPlaceholder = null;
+
+    /**
+     * If true, the selector allows "no slot" as an explicit option; if false,
+     * it forces choosing one before files can be dropped (the dropzone stays
+     * disabled while there is no selection). Default: true.
+     */
+    #[Locked]
+    public bool $slotOptional = true;
+
+    /**
+     * ID of the currently selected slot. Reactive: it changes from the theme's
+     * selector via wire:model.live. It triggers `updatedSelectedSlotId`, which
+     * syncs `$this->slots = [id]`.
+     */
+    public ?int $selectedSlotId = null;
+
+    /** Livewire mount: initialize props, resolve creator and slot picker. */
     public function mount(
         Model $model,
         string $collection,
         ?string $theme = null,
+        bool $deferred = false,
         bool $multiple = true,
         bool $persistQueue = false,
+        bool $hideActions = false,
+        string $layout = 'grid',
         ?int $maxFiles = null,
-        ?string $contextKey = null,
-        ?int $folderId = null,
+        array $slots = [],
+        mixed $creator = null,
+        ?string $creatorType = null,
+        ?int $creatorId = null,
         mixed $owner = null,
         ?string $ownerType = null,
         ?int $ownerId = null,
+        array $slotOptions = [],
+        ?string $slotLabel = null,
+        ?string $slotPlaceholder = null,
+        bool $slotOptional = true,
+        ?int $selectedSlotId = null,
+        ?string $contextKey = null,
+        ?int $folderId = null,
     ): void {
+        $this->contextKey = $contextKey;
+        $this->folderId   = $folderId;
         $this->model        = $model;
         $this->collection   = $collection;
         $this->theme        = $theme;
+        $this->deferred     = $deferred;
         $this->multiple     = $multiple;
         $this->persistQueue = $persistQueue;
+        $this->hideActions  = $hideActions;
+        $this->layout       = in_array($layout, ['grid', 'list'], true) ? $layout : 'grid';
         $this->maxFiles     = ($maxFiles !== null && $maxFiles > 0) ? $maxFiles : null;
-        $this->contextKey   = $contextKey;
-        $this->folderId     = $folderId;
+        $this->slots        = array_values(array_filter(array_map('intval', $slots)));
 
-        // Resolve owner: explicit ownerType/ownerId wins over a Model.
+        // Resolve creator: prioritize explicit creatorType/creatorId (more
+        // reliable than serializing a Model between Livewire components).
+        if ($creatorType && $creatorId) {
+            $this->creatorType = $creatorType;
+            $this->creatorId   = (int) $creatorId;
+        } elseif ($creator instanceof Model) {
+            $this->creatorType = $creator->getMorphClass();
+            $this->creatorId   = (int) $creator->getKey();
+        }
+
+        // Resolve owner the same way: explicit ownerType/ownerId wins over a Model.
         if ($ownerType && $ownerId) {
             $this->ownerType = $ownerType;
             $this->ownerId   = (int) $ownerId;
@@ -111,53 +217,86 @@ class LaracrateDropzone extends Component
             $this->ownerId   = (int) $owner->getKey();
         }
 
+        // Integrated slot picker
+        $this->slotOptions     = $this->normalizeSlotOptions($slotOptions);
+        $this->slotLabel       = $slotLabel;
+        $this->slotPlaceholder = $slotPlaceholder;
+        $this->slotOptional    = $slotOptional;
+
+        if ($selectedSlotId !== null) {
+            $this->selectedSlotId = (int) $selectedSlotId;
+            $this->slots = [$this->selectedSlotId];
+        } elseif (count($this->slotOptions) === 1) {
+            // Only one possible option: auto-select and do NOT show the selector.
+            // The dropzone directly reflects that slot's cap/extensions.
+            $this->selectedSlotId = $this->slotOptions[0]['id'];
+            $this->slots = [$this->selectedSlotId];
+        }
+
         $this->refreshUploadGrant();
     }
 
     /**
-     * Registers a file already uploaded to R2 (key) as a File of the model.
-     * Called by the blade JS after the PUT to R2 has finished.
+     * The theme uses this to decide whether to render the visible selector.
+     * Rule: it is only shown if there are 2+ options AND there is no slot fixed
+     * externally (e.g. via a single slot or a slot preselected in mount with empty slotOptions).
      */
-    public function registerUploaded(string $key, string $name, string $mime, int $size): ?int
+    public function showsSlotPicker(): bool
     {
-        $upload = FileUpload::fromArray([
-            'disk'          => $this->disk(),
-            'key'           => $key,
-            'mime_type'     => $mime,
-            'original_name' => $name,
-            'size'          => $size,
-        ]);
-
-        // Resolve owner override if passed via prop.
-        $owner = null;
-        if ($this->ownerType && $this->ownerId) {
-            $class = \Illuminate\Database\Eloquent\Relations\Relation::getMorphedModel($this->ownerType)
-                ?? $this->ownerType;
-            if (class_exists($class)) {
-                $owner = $class::find($this->ownerId);
-            }
-        }
-
-        $file = $this->model->addFile($upload, $this->collection, owner: $owner, folder: $this->folder());
-
-        if (! $file) {
-            return null;
-        }
-
-        $this->dispatch(
-            'laracrate-file-uploaded',
-            collection: $this->collection,
-            fileId: $file->id,
-            contextKey: $this->contextKey,
-        );
-
-        return $file->id;
+        return count($this->slotOptions) >= 2;
     }
 
     /**
-     * Notifies that the batch finished (all files processed).
-     * The JS calls it once after the last file of the batch.
+     * Lifecycle hook: when the user changes the integrated selector, syncs
+     * `$this->slots` so `computeEffective()` uses the new slot in render().
      */
+    public function updatedSelectedSlotId($value): void
+    {
+        // The value comes from the browser: only one of the offered slots, or none.
+        $offered = array_column($this->slotOptions, 'id');
+
+        if ($value === null || $value === '' || $value === '0' || ! in_array((int) $value, $offered, true)) {
+            $this->selectedSlotId = null;
+            $this->slots = [];
+        } else {
+            $this->selectedSlotId = (int) $value;
+            $this->slots = [$this->selectedSlotId];
+        }
+
+        $this->refreshUploadGrant();
+    }
+
+    /**
+     * Normalizes the slot picker options to a consistent shape.
+     * Accepts:
+     *   - array of arrays with keys (id, name, color?, description?)
+     *   - array of Eloquent models (takes id + name)
+     *   - Eloquent collection
+     */
+    protected function normalizeSlotOptions(array|\Illuminate\Support\Collection $options): array
+    {
+        $out = [];
+        foreach ($options as $opt) {
+            if ($opt instanceof Model) {
+                $out[] = [
+                    'id'    => (int) $opt->getKey(),
+                    'name'  => (string) ($opt->name ?? $opt->label ?? '#' . $opt->getKey()),
+                    'color' => $opt->color ?? null,
+                ];
+                continue;
+            }
+            if (is_array($opt) && isset($opt['id'])) {
+                $out[] = [
+                    'id'    => (int) $opt['id'],
+                    'name'  => (string) ($opt['name'] ?? $opt['label'] ?? '#' . $opt['id']),
+                    'color' => $opt['color'] ?? null,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /** Notify that the batch finished (all files processed). */
     public function batchCompleted(int $ok, int $error): void
     {
         $this->dispatch(
@@ -240,25 +379,126 @@ class LaracrateDropzone extends Component
         return $out;
     }
 
-    /** Render the dropzone theme view. */
+    /**
+     * Computes the effective cap and effective extensions from the slots.
+     * The most restrictive cap wins. Counts the files already uploaded by this
+     * creator in each slot to subtract them from the per_creator limit.
+     *
+     * @return array{maxFiles: ?int, extensions: array, slotInfo: array}
+     */
+    protected function computeEffective(): array
+    {
+        $effectiveMaxFiles    = $this->maxFiles;
+        $effectiveExtensions  = $this->acceptedExtensions();
+        $slotInfo             = [];
+
+        if (!empty($this->slots)) {
+            $slotModels = \EduLazaro\Laracrate\Models\FileSlot::whereIn('id', $this->slots)->get();
+
+            foreach ($slotModels as $slot) {
+                if ($slot->max_files_per_creator !== null) {
+                    $used = $slot->uploadedCount($this->creatorType, $this->creatorId);
+                    $remaining = max(0, $slot->max_files_per_creator - $used);
+                    $effectiveMaxFiles = $effectiveMaxFiles === null
+                        ? $remaining
+                        : min($effectiveMaxFiles, $remaining);
+                }
+
+                if (!empty($slot->allowed_extensions)) {
+                    $slotExts = array_map('strtolower', $slot->allowed_extensions);
+                    $effectiveExtensions = empty($effectiveExtensions)
+                        ? $slotExts
+                        : array_values(array_intersect($effectiveExtensions, $slotExts));
+                }
+
+                $slotInfo[] = [
+                    'id'    => $slot->id,
+                    'name'  => $slot->name,
+                    'color' => $slot->color,
+                ];
+            }
+        }
+
+        return [
+            'maxFiles'   => $effectiveMaxFiles,
+            'extensions' => $effectiveExtensions,
+            'slotInfo'   => $slotInfo,
+        ];
+    }
+
+    /**
+     * Detects the dropzone's visual category (image, video, audio, document,
+     * mixed) from the accepted extensions. Used by the theme to pick the
+     * appropriate icon.
+     */
+    protected function detectIconCategory(array $extensions): string
+    {
+        if (empty($extensions)) {
+            return 'mixed';
+        }
+
+        $imageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif', 'svg', 'avif'];
+        $videoExt = ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'];
+        $audioExt = ['mp3', 'm4a', 'wav', 'ogg', 'webm', 'aac', 'flac'];
+        $docExt   = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'csv'];
+
+        $exts = array_map('strtolower', $extensions);
+        $allInCategory = fn(array $pool) => !empty(array_intersect($exts, $pool))
+            && empty(array_diff($exts, $pool));
+
+        if ($allInCategory($imageExt)) return 'image';
+        if ($allInCategory($videoExt)) return 'video';
+        if ($allInCategory($audioExt)) return 'audio';
+        if ($allInCategory($docExt))   return 'document';
+        return 'mixed';
+    }
+
     public function render()
     {
-        $theme = $this->theme ?? config('laracrate.ui.default_theme', 'default');
+        $effective = $this->computeEffective();
 
-        $view = view()->exists("laracrate::dropzone.themes.{$theme}")
-            ? "laracrate::dropzone.themes.{$theme}"
-            : 'laracrate::dropzone.themes.default';
+        // Notify the front of the effective cap on each render. The theme listens
+        // to `laracrate-deferred-config` with `{ fileableType, fileableId, collection,
+        // maxFiles }` and updates `cfg.maxFiles` reactively, without depending on the
+        // remount by key. A solution for cases where Livewire morphdom keeps the
+        // Alpine state stable across slot changes.
+        $this->dispatch(
+            'laracrate-deferred-config',
+            fileableType: $this->model->getMorphClass(),
+            fileableId: (string) $this->model->getKey(),
+            collection: $this->collection,
+            maxFiles: $effective['maxFiles'],
+        );
 
-        return view($view, [
-            'config'       => $this->model->getCollectionConfig($this->collection),
-            'disk'         => $this->disk(),
-            'fileableType' => $this->model->getMorphClass(),
-            'fileableId'   => $this->model->getKey(),
-            'acceptAttr'   => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
-            'extensions'   => $this->acceptedExtensions(),
-            'maxSizeKb'    => $this->maxSizeKb(),
-            'multiple'     => $this->multiple,
-            'persistQueue' => $this->persistQueue,
+        return view('laracrate::dropzone', [
+            'deferred'     => $this->deferred,
+            'appearance'   => $this->appearance(),
+            'config'            => $this->model->getCollectionConfig($this->collection),
+            'collection'        => $this->collection,
+            'disk'              => $this->disk(),
+            'fileableType'      => $this->model->getMorphClass(),
+            'fileableId'        => $this->model->getKey(),
+            'acceptAttr'        => implode(',', $this->acceptedMimeTypes() ?: ['*/*']),
+            'extensions'        => $effective['extensions'],
+            'iconCategory'      => $this->detectIconCategory($effective['extensions']),
+            'maxSizeKb'         => $this->maxSizeKb(),
+            // 'multiple' and 'maxFiles' are public props of the component and are
+            // exposed automatically to the view by Livewire. We rename them here so
+            // the view variables win over the public prop (otherwise they get
+            // shadowed when the prop is null and the effective value is computed in render).
+            'multipleAllowed'   => $this->multiple,
+            'persistQueue'      => $this->persistQueue,
+            'hideActions'       => $this->hideActions,
+            'layout'            => $this->layout,
+            'effectiveMaxFiles' => $effective['maxFiles'],
+            'slotInfo'          => $effective['slotInfo'],
+            // Slot picker integrado
+            'showSlotPicker'    => $this->showsSlotPicker(),
+            'pickerOptions'     => $this->slotOptions,
+            'pickerLabel'       => $this->slotLabel,
+            'pickerPlaceholder' => $this->slotPlaceholder ?: __('laracrate::uploader.slot_placeholder'),
+            'pickerOptional'    => $this->slotOptional,
+            'requiresSlot'      => !$this->slotOptional && $this->selectedSlotId === null,
         ]);
     }
 }

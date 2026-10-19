@@ -10,7 +10,7 @@ class PresignedUploadTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_presign_with_canonical_path_when_fileable_provided(): void
+    public function test_presign_never_writes_into_a_model_path_the_request_names(): void
     {
         Storage::fake('media');
 
@@ -24,13 +24,11 @@ class PresignedUploadTest extends TestCase
         ]);
 
         $response->assertOk();
-        $key = $response->json('key');
-
-        $this->assertStringStartsWith('property/42/gallery/', $key);
-        $this->assertStringContainsString('photo.jpg', $key);
+        $this->assertStringStartsWith('temp/', $response->json('key'));
+        $this->assertStringContainsString('photo.jpg', $response->json('key'));
     }
 
-    public function test_presign_falls_back_to_temp_when_no_fileable(): void
+    public function test_presign_signs_a_temp_key(): void
     {
         Storage::fake('media');
 
@@ -55,17 +53,61 @@ class PresignedUploadTest extends TestCase
         $response->assertStatus(403);
     }
 
-    public function test_cancel_removes_temp_file(): void
+    /** Presign as a browser with the session `$session`, and put the bytes. */
+    private function presignIn(string $session): string
+    {
+        $key = $this->withCredentials()->withCookie(config('session.cookie'), $session)
+            ->postJson('/laracrate/uploads/presign', ['disk' => 'media', 'mime' => 'image/jpeg', 'file_name' => 'thing.jpg'])
+            ->assertOk()->json('key');
+        Storage::disk('media')->put($key, 'binary');
+
+        return $key;
+    }
+
+    private function cancelIn(string $session, string $key)
+    {
+        return $this->withCredentials()->withCookie(config('session.cookie'), $session)
+            ->deleteJson('/laracrate/uploads/media/' . base64_encode($key));
+    }
+
+    public function test_cancel_removes_the_temp_file_it_signed(): void
     {
         Storage::fake('media');
-        Storage::disk('media')->put('temp/01HK_thing.jpg', 'binary');
+        $key = $this->presignIn(str_repeat('a', 40));
 
-        $key = base64_encode('temp/01HK_thing.jpg');
+        $this->cancelIn(str_repeat('a', 40), $key)->assertOk();
 
-        $response = $this->deleteJson("/laracrate/uploads/media/{$key}");
+        Storage::disk('media')->assertMissing($key);
+    }
 
-        $response->assertOk();
-        Storage::disk('media')->assertMissing('temp/01HK_thing.jpg');
+    public function test_another_browser_cannot_cancel_it(): void
+    {
+        Storage::fake('media');
+        $key = $this->presignIn(str_repeat('a', 40));
+
+        $this->cancelIn(str_repeat('b', 40), $key)->assertForbidden();
+
+        Storage::disk('media')->assertExists($key);
+    }
+
+    public function test_a_temp_key_presign_did_not_sign_cannot_be_cancelled(): void
+    {
+        Storage::fake('media');
+        Storage::disk('media')->put('temp/01HK_someone.jpg', 'binary');
+
+        $this->cancelIn(str_repeat('a', 40), 'temp/01HK_someone.jpg')->assertForbidden();
+
+        Storage::disk('media')->assertExists('temp/01HK_someone.jpg');
+    }
+
+    public function test_cancel_only_takes_a_plain_temp_key(): void
+    {
+        Storage::fake('media');
+        Storage::disk('media')->put('temp/nested/01HK_thing.jpg', 'binary');
+
+        $this->cancelIn(str_repeat('a', 40), 'temp/nested/01HK_thing.jpg')->assertStatus(422);
+
+        Storage::disk('media')->assertExists('temp/nested/01HK_thing.jpg');
     }
 
     public function test_cancel_refuses_non_temp_keys(): void

@@ -16,6 +16,7 @@ return [
     'loading'     => 'Abriendo…',
     'expand'      => 'Ver a tamaño completo',
     'collapse'    => 'Volver a la esquina',
+    'edit'        => 'Editar',
     'download'    => 'Descargar',
     'previous'    => 'Anterior',
     'next'        => 'Siguiente',

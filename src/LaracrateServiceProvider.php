@@ -11,11 +11,8 @@ use EduLazaro\Laracrate\Console\Commands\AbortStaleMultipartCommand;
 use EduLazaro\Laracrate\Console\Commands\PurgeExpiredFilesCommand;
 use EduLazaro\Laracrate\Console\Commands\RecomputeUsageCommand;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzone;
-use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneDeferred;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingle;
-use EduLazaro\Laracrate\Http\Livewire\LaracrateDropzoneSingleDeferred;
 use EduLazaro\Laracrate\Http\Livewire\LaracrateUploader;
-use EduLazaro\Laracrate\Http\Livewire\LaracrateUploaderDeferred;
 use Livewire\Livewire;
 use EduLazaro\Laracrate\Extractors\PdfTextExtractor;
 use EduLazaro\Laracrate\Extractors\PlainTextExtractor;
@@ -23,7 +20,8 @@ use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Models\Folder;
 use EduLazaro\Laracrate\Observers\FileObserver;
 use EduLazaro\Laracrate\Observers\FolderObserver;
-use EduLazaro\Laracrate\Pipeline\Steps\Document\ExtractPdfPreviewStep;
+use EduLazaro\Laracrate\Pipeline\Steps\Document\GeneratePdfVariantsStep;
+use EduLazaro\Laracrate\Pipeline\Steps\Image\DetectSphereStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Image\ExtractImageDimensionsStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Image\GenerateImageVariantsStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Image\OptimizeImageStep;
@@ -32,7 +30,7 @@ use EduLazaro\Laracrate\Pipeline\Steps\Text\ExtractTextStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\GenerateEmbeddingStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Text\PersistChunksStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Video\ExtractVideoDimensionsStep;
-use EduLazaro\Laracrate\Pipeline\Steps\Video\ExtractVideoPreviewStep;
+use EduLazaro\Laracrate\Pipeline\Steps\Video\GenerateVideoVariantsStep;
 use EduLazaro\Laracrate\Pipeline\Steps\Video\TranscodeVideoStep;
 use EduLazaro\Laracrate\Policies\FilePolicy;
 use EduLazaro\Laracrate\Services\StorageManager;
@@ -57,6 +55,7 @@ class LaracrateServiceProvider extends ServiceProvider
         $this->app->alias(StorageManager::class, 'laracrate.manager');
 
         $this->app->singleton(PolicyRegistry::class);
+        $this->app->singleton(\EduLazaro\Laracrate\Support\ViewerRegistry::class);
         $this->app->alias(PolicyRegistry::class, 'laracrate.policies');
 
         $this->app->singleton(UsageReporter::class);
@@ -149,10 +148,6 @@ class LaracrateServiceProvider extends ServiceProvider
             ], 'laracrate-migrations');
 
             $this->publishes([
-                __DIR__ . '/../resources/views' => resource_path('views/vendor/laracrate'),
-            ], 'laracrate-views');
-
-            $this->publishes([
                 __DIR__ . '/../lang' => $this->app->langPath('vendor/laracrate'),
             ], 'laracrate-translations');
 
@@ -172,11 +167,8 @@ class LaracrateServiceProvider extends ServiceProvider
         }
 
         Livewire::component('laracrate-uploader', LaracrateUploader::class);
-        Livewire::component('laracrate-uploader-deferred', LaracrateUploaderDeferred::class);
         Livewire::component('laracrate-dropzone', LaracrateDropzone::class);
-        Livewire::component('laracrate-dropzone-deferred', LaracrateDropzoneDeferred::class);
         Livewire::component('laracrate-dropzone-single', LaracrateDropzoneSingle::class);
-        Livewire::component('laracrate-dropzone-single-deferred', LaracrateDropzoneSingleDeferred::class);
     }
 
     /** Binds the configured embedding provider (OpenAI or null) in the container. */
@@ -238,6 +230,7 @@ class LaracrateServiceProvider extends ServiceProvider
             $registry = new FileActionRegistry();
 
             // Image
+            $registry->add(new DetectSphereStep());
             $registry->add(new ExtractImageDimensionsStep());
             $registry->add(new OptimizeImageStep());
             $registry->add(new GenerateImageVariantsStep());
@@ -245,10 +238,10 @@ class LaracrateServiceProvider extends ServiceProvider
             // Video
             $registry->add(new ExtractVideoDimensionsStep());
             $registry->add(new TranscodeVideoStep());
-            $registry->add(new ExtractVideoPreviewStep());
+            $registry->add(new GenerateVideoVariantsStep());
 
-            // Document (PDF preview)
-            $registry->add(new ExtractPdfPreviewStep());
+            // Document (PDF pages)
+            $registry->add(new GeneratePdfVariantsStep());
 
             // Text + AI
             $registry->add(new ExtractTextStep());

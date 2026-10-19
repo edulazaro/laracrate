@@ -22,6 +22,11 @@ use Illuminate\Support\Str;
  * Being self-contained is what lets an upload outlive its page: whoever finishes it
  * (the component, the upload tray after a wire:navigate) just sends the token back.
  *
+ * It only works for the user it was issued to (their model class and id, so a client
+ * #5 and a user #5 are not the same person) and in the browser session it was issued
+ * in: a token copied elsewhere is refused even with the same account. `maxFiles`
+ * caps how many files it signs, counted by the upload endpoints.
+ *
  * `transport` is how the bytes travel: 'direct' (presigned PUT to the bucket) or
  * 'server' (through PHP). A collection with `encrypt` always goes through the
  * server, the only place it can be encrypted; otherwise the collection's `upload`
@@ -34,7 +39,8 @@ final class UploadGrant
 
     private function __construct(
         public readonly string $id,
-        public readonly ?string $userId,
+        public readonly ?array $user,
+        public readonly ?string $session,
         public readonly string $fileableType,
         public readonly string $fileableId,
         public readonly string $collection,
@@ -46,12 +52,14 @@ final class UploadGrant
         public readonly bool $replace,
         public readonly string $transport,
         public readonly int $expiresAt,
+        public readonly ?int $maxFiles = null,
     ) {}
 
     /**
      * @param  Model|array{0: string, 1: int|string}|null  $creator  model or [morph, id]
      * @param  Model|array{0: string, 1: int|string}|null  $owner    model or [morph, id]
      * @param  string  $transport  the component's default: 'direct' or 'server'
+     * @param  int|null  $maxFiles  how many files it may sign; null for no limit
      */
     public static function for(
         Model $fileable,
@@ -63,6 +71,7 @@ final class UploadGrant
         ?string $contextKey = null,
         bool $replace = false,
         string $transport = 'direct',
+        ?int $maxFiles = null,
     ): self {
         $config = $fileable->getCollectionConfig($collection);
 
@@ -74,7 +83,8 @@ final class UploadGrant
 
         return new self(
             id: (string) Str::ulid(),
-            userId: auth()->id() !== null ? (string) auth()->id() : null,
+            user: self::currentUser(),
+            session: self::currentSession(),
             fileableType: $fileable->getMorphClass(),
             fileableId: (string) $fileable->getKey(),
             collection: $collection,
@@ -86,15 +96,17 @@ final class UploadGrant
             replace: $replace,
             transport: $transport,
             expiresAt: now()->getTimestamp() + self::TTL_SECONDS,
+            maxFiles: $maxFiles !== null && $maxFiles > 0 ? $maxFiles : null,
         );
     }
 
     public function token(): string
     {
         return Crypt::encryptString(json_encode([
-            'v' => 1,
+            'v' => 2,
             'i' => $this->id,
-            'u' => $this->userId,
+            'u' => $this->user,
+            'ss' => $this->session,
             'f' => [$this->fileableType, $this->fileableId],
             'c' => $this->collection,
             's' => $this->slots,
@@ -105,13 +117,14 @@ final class UploadGrant
             'r' => $this->replace,
             't' => $this->transport,
             'e' => $this->expiresAt,
+            'm' => $this->maxFiles,
         ]));
     }
 
     /**
      * Reads a token sent back by the browser.
      *
-     * @throws InvalidUploadGrant  unreadable, expired, or issued to another user
+     * @throws InvalidUploadGrant  unreadable, expired, or issued to another user or browser
      */
     public static function fromToken(string $token): self
     {
@@ -121,18 +134,25 @@ final class UploadGrant
             throw new InvalidUploadGrant();
         }
 
-        if (($data['v'] ?? null) !== 1 || ($data['e'] ?? 0) < now()->getTimestamp()) {
+        // A version 1 token, from a page opened before the update, reads as expired.
+        if (($data['v'] ?? null) !== 2 || ($data['e'] ?? 0) < now()->getTimestamp()) {
             throw new InvalidUploadGrant('The upload grant has expired. Reload the page.');
         }
 
-        $current = auth()->id() !== null ? (string) auth()->id() : null;
-        if (($data['u'] ?? null) !== $current) {
+        if (($data['u'] ?? null) !== self::currentUser()) {
+            throw new InvalidUploadGrant();
+        }
+
+        // A grant issued without a session (a console command, a stateless API) has
+        // none to compare; one issued in a browser only works in that browser.
+        if (($data['ss'] ?? null) !== null && $data['ss'] !== self::currentSession()) {
             throw new InvalidUploadGrant();
         }
 
         return new self(
             id: $data['i'],
-            userId: $data['u'],
+            user: $data['u'],
+            session: $data['ss'] ?? null,
             fileableType: $data['f'][0],
             fileableId: (string) $data['f'][1],
             collection: $data['c'],
@@ -144,6 +164,7 @@ final class UploadGrant
             replace: (bool) ($data['r'] ?? false),
             transport: $data['t'] === 'server' ? 'server' : 'direct',
             expiresAt: (int) $data['e'],
+            maxFiles: isset($data['m']) ? (int) $data['m'] : null,
         );
     }
 
@@ -184,6 +205,26 @@ final class UploadGrant
     public function disk(): string
     {
         return $this->fileable()->uploadDiskFor($this->collection);
+    }
+
+    /** The signed in user as [morph class, id], or null for a guest. Presign's cancel uses it too. */
+    public static function currentUser(): ?array
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return null;
+        }
+
+        return [$user instanceof Model ? $user->getMorphClass() : $user::class, (string) $user->getAuthIdentifier()];
+    }
+
+    /** A fingerprint of the browser session, or null when the request has none. Presign's cancel uses it too. */
+    public static function currentSession(): ?string
+    {
+        $request = request();
+
+        return $request->hasSession() ? hash('sha256', $request->session()->getId()) : null;
     }
 
     private static function reference(Model|array|null $model): ?array

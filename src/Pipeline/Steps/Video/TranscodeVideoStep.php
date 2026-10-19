@@ -9,7 +9,7 @@ use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Services\StorageManager;
 
 /**
- * Pipeline step that transcodes a video into the configured output format.
+ * Pipeline step that transcodes a video in place with `'transcode' => true`.
  */
 class TranscodeVideoStep implements FileActionInterface
 {
@@ -22,7 +22,7 @@ class TranscodeVideoStep implements FileActionInterface
 
         $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video', $file->fileable_type);
 
-        return !empty($config['transcode']);
+        return ($config['transcode'] ?? false) === true;
     }
 
     /** Returns the priority that orders this step within the pipeline. */
@@ -31,14 +31,9 @@ class TranscodeVideoStep implements FileActionInterface
         return 25;
     }
 
-    /** Runs the video transcoding for the file: in place, or as a variant with 'variant'. */
+    /** Runs the video transcoding for the file, replacing the original. */
     public function handle(File $file): void
     {
-        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'video', $file->fileable_type);
-
-        TranscodeVideoAction::create()->run([
-            'file'         => $file,
-            'keepOriginal' => ($config['transcode'] ?? null) === 'variant',
-        ]);
+        TranscodeVideoAction::create()->run(['file' => $file]);
     }
 }

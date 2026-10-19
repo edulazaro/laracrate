@@ -13,11 +13,11 @@ use Illuminate\Support\Facades\URL;
 class GenerateLocalSignedUrlAction extends Action
 {
     /** Build a temporary signed URL for the given local file. */
-    public function handle(File $file, int $minutes = 5): string
+    public function handle(File $file, int $minutes = 5, ?\DateTimeInterface $expires = null): string
     {
         return URL::temporarySignedRoute(
             'laracrate.local.serve',
-            now()->addMinutes($minutes),
+            $expires ?? now()->addMinutes($minutes),
             ['file' => $file->slug]
         );
     }

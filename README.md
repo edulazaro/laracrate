@@ -30,7 +30,7 @@ Polymorphic file storage for Laravel: direct uploads to R2/S3, granular access c
 14. [File slots](#file-slots)
 15. [Processing pipeline](#processing-pipeline)
 16. [Images, variants and watermarks](#images-variants-and-watermarks)
-17. [Video and PDF previews](#video-and-pdf-previews)
+17. [Video and PDF variants](#video-and-pdf-variants)
 18. [Text extraction, embeddings and search (RAG)](#text-extraction-embeddings-and-search-rag)
 19. [Access control and authorization](#access-control-and-authorization)
 20. [Sensitive content and encryption](#sensitive-content-and-encryption)
@@ -56,12 +56,12 @@ What you get:
 - **Polymorphic ownership.** Three independent morphs per file (`fileable`, `creator`/`owner`, `tenant`) so a file knows what it belongs to, who created it, and which tenant scopes it.
 - **Asynchronous processing pipeline.** Creating a file dispatches a queued job that runs ordered steps by file type. Your user's upload stays instant.
 - **Image variants and per-variant watermarks.** Automatic resized derivatives with optional watermarking configured per variant.
-- **Video and PDF previews.** Transcoding, dimension extraction, and rasterized preview frames.
-- **Three access modes per collection.** `public` (direct CDN), `signed` (temporary signed URL), and `stream` (controller with audit and viewer binding).
+- **Typed variants for video and PDF.** MP4 copies, teasers built from fragments, frames and strips of frames, and rendered PDF pages, each under the name your app gives it, plus a `preview` that names one of them.
+- **Public or private files.** A private file gets a signed link straight to the disk, or is served through PHP with the view policy checked on every request: the caller chooses, per use.
 - **Text extraction, embeddings and hybrid search.** Opt-in extraction, chunking, embedding generation, and a pluggable `ChunkStore` (MySQL or Meilisearch) for keyword plus semantic search.
 - **Folders and slots.** A folder tree for organizing files, and file slots for "fill in this required document" workflows with quotas.
 - **Multi-tenant buckets and usage accounting.** Optional dedicated bucket per tenant and storage usage reporting for quotas.
-- **Optional Livewire UI.** Six upload components across eleven visual themes, all publishable. None of it is required to use the package.
+- **Optional Livewire UI.** Three upload components, styled by a single CSS file with eleven themes. None of it is required to use the package.
 
 At a glance:
 
@@ -80,7 +80,7 @@ At a glance:
         v
   Pipeline steps:
     image  : extract dimensions -> optimize -> generate variants
-    video  : extract dimensions -> transcode -> extract preview
+    video  : extract dimensions -> transcode -> generate variants -> extract preview
     pdf    : extract preview
     text   : extract text -> chunk -> generate embeddings -> persist chunks
         |                                                          |
@@ -100,7 +100,7 @@ Laracrate follows six principles. Keep them in mind and the rest of the API will
 2. **Reuse `Storage::disk()`.** Disk credentials live in your app's `config/filesystems.php`, not here. Laracrate resolves disks through Laravel's filesystem and never duplicates that configuration.
 3. **Everything is a pipeline of Actions.** Each operation is an isolated, testable, queueable class (built on `edulazaro/laractions`). The processing pipeline is just a registry of ordered steps you can extend.
 4. **Processing is asynchronous.** Variants, video and PDF previews, text extraction, and embeddings all run on the queue. The user's upload is instantaneous, and a file simply stays `pending` until a worker picks it up.
-5. **Access is decided per collection.** Each collection declares one of three access modes (`public`, `signed`, `stream`), so the right URL strategy and audit behavior come from configuration, not scattered checks.
+5. **Who a file is for is decided per collection; how it is served, per use.** A collection is `public` or `private`. For a private file the code picks a signed link to the disk (`url()`) or the route through PHP (`streamUrl()`); only encrypted and sensitive files are always served through PHP.
 6. **`path` is the full object key.** A file's `path` stores the complete key of the object in the disk (directories, filename, extension included). Use the `key` accessor to read it. Never rebuild a key by concatenating `path` and `name`.
 
 ## Requirements
@@ -154,13 +154,12 @@ php artisan vendor:publish --tag=laracrate-config
 php artisan migrate
 ```
 
-You only need the config tag to get started. The package loads its migrations, views, and translations directly from the package directory, so publishing those is optional and only needed when you want to customize them.
+You only need the config tag to get started. The package loads its migrations, views, and translations directly from the package directory, so publishing those is optional and only needed when you want to customize them. The views are not published: the look is `resources/css/laracrate.css`, customised with variables (see "Themes and customising").
 
 | Tag | What it copies | Destination |
 | --- | --- | --- |
 | `laracrate-config` | The config file | `config/laracrate.php` |
 | `laracrate-migrations` | The migration files | `database/migrations` |
-| `laracrate-views` | The Blade views (uploader themes, etc.) | `resources/views/vendor/laracrate` |
 | `laracrate-translations` | The language files | `lang/vendor/laracrate` |
 
 After publishing config, clear the cache if you have it cached:
@@ -315,11 +314,13 @@ If the queue is not running, the file stays in a pending processing state until 
 
 Before you reach for the reference sections, here is the vocabulary Laracrate uses. Every file is a row in `laracrate_files` (an Eloquent `EduLazaro\Laracrate\Models\File`) decorated with the concepts below. Read this once and the rest of the docs will click.
 
-**Collection.** The business grouping a file belongs to, stored in the `collection` column (for example `avatar`, `documents`, `lawsuit-document`). A collection is declared in `config('laracrate.collections.*')` and decides the disk, the access mode, the accepted types, the variants to generate, and whether text extraction or embeddings run. When you attach a file to one of your models you always name its collection (see the Working with files from your models section).
+**Collection.** The business grouping a file belongs to, stored in the `collection` column (for example `avatar`, `documents`, `lawsuit-document`). A collection is declared in `config('laracrate.collections.*')` and decides the disk, the access (`public` or `private`), the accepted types, the variants to generate, and whether text extraction or embeddings run. When you attach a file to one of your models you always name its collection (see the Working with files from your models section).
 
-**Type.** A coarse media class stored in the `type` column and cast to the `EduLazaro\Laracrate\Enums\FileType` enum: `IMAGE`, `VIDEO`, `AUDIO`, or `DOCUMENT`. Laracrate derives it from the MIME with `FileType::fromMime()` (anything that is not `image/*`, `video/*`, or `audio/*` becomes `DOCUMENT`). The pipeline picks which steps run per type.
+**Type.** What a file is, stored in the `type` column and cast to the `EduLazaro\Laracrate\Enums\FileType` enum: `IMAGE`, `VIDEO`, `AUDIO`, `DOCUMENT`. Laracrate derives it from the MIME with `FileType::fromMime()` (anything that is not `image/*`, `video/*`, or `audio/*` becomes `DOCUMENT`); the format itself stays in `mime_type` and `extension`, and the pipeline picks its steps by the type.
 
-**File vs variant.** A top-level **file** has `parent_id = null`. A **variant** is a derived file (a thumbnail, an optimized copy, a video or PDF preview) linked to its parent by `parent_id` and named by the `variant` column. Variants are real `File` rows, created with `$file->createVariant($name, $overrides)`, and they inherit the parent scope (fileable, creator, tenant, disk, collection, access). You navigate them with dot notation: `$file->variant('preview.thumbnail')` walks the tree and falls back to the nearest existing ancestor instead of returning null, while `$file->variantOrFail('preview.thumbnail')` throws if any link is missing. Helpers: `$file->isTopLevel()`, `$file->isVariant()`. See the Images, variants and watermarks section.
+**Mode.** How an image is shown, in the `mode` column, cast to `EduLazaro\Laracrate\Enums\FileMode`: `default`, `sphere` (a 360° photo) or `frames` (a strip of a video's frames). Its type stays `image`, so it is processed, listed and served as any other image.
+
+**File vs variant.** A top-level **file** has `parent_id = null`. A **variant** is a derived file (a thumbnail, an MP4 copy, a video frame, a PDF page) linked to its parent by `parent_id` and named by the `variant` column with the name your config gives it. Variants are real `File` rows, created with `$file->createVariant($name, $overrides)`, and they inherit the parent scope (fileable, creator, tenant, disk, collection, access). You navigate them with dot notation: `$file->variant('portada.mini')` walks the tree and falls back to the nearest existing ancestor instead of returning null, while `$file->variantOrFail('portada.mini')` throws if any link is missing. `$file->preview()` is the variant the collection names as the type's `preview`. Helpers: `$file->isTopLevel()`, `$file->isVariant()`. See the Images, variants and watermarks and Video and PDF variants sections.
 
 **The four polymorphic morphs.** A file carries four independent `morphTo` relations. They are orthogonal, not a hierarchy, and you set only the ones your app needs.
 
@@ -334,15 +335,14 @@ Use `$file->effectiveOwner()` to get the explicit owner or fall back to the crea
 
 **path is the full object key.** The `path` column stores the complete object key on the disk (directories, filename, and extension together), for example `user/1/avatar/01J...webp`. It is not just the directory, and you never concatenate it with `name` to build a key. Always read the key through the accessor `$file->key`, which trims a stray leading slash. Derived keys come from `$file->siblingKey($name)` (same directory) and `$file->variantKey($name)` (sibling `variants/` subdirectory). The `name` column is just `basename($path)`.
 
-**Access mode.** The `access` column, cast to `EduLazaro\Laracrate\Enums\FileAccess`, decides how a file is served:
+**Access.** The `access` column, cast to `EduLazaro\Laracrate\Enums\FileAccess`, says who a file is for:
 
-| Case | How it is served |
+| Case | Meaning |
 | --- | --- |
-| `PUBLIC` | Direct CDN URL via `Storage::url()`. No signature, no audit. |
-| `SIGNED` | Temporary signed URL via `Storage::temporaryUrl()`, cached server-side. |
-| `STREAM` | Served through the package controller: per-request authorization, audit, optional viewer binding, encryption, and watermark. |
+| `PUBLIC` | Anyone. `url()` is its permanent public URL (`Storage::url()`), with no signature and no audit. |
+| `PRIVATE` | Only who its view policy lets in. `url()` signs a link straight to the disk that expires; `streamUrl()` and `downloadUrl()` serve it through PHP, checking the policy on every request. |
 
-Each collection declares its access mode. See the Upload modes and Access control and authorization sections.
+How a private file is served is chosen where it is used, not per collection. The exception is a file marked `sensitive` or stored encrypted: it never gets a direct link, so `url()` returns its stream route. Each collection declares its access. See the Displaying files and Access control and authorization sections.
 
 **Visibility.** A separate axis from access, stored in the `visibility` column and cast to `EduLazaro\Laracrate\Enums\FileVisibility`: `OWNER`, `GROUP`, `TENANT`, or `WORLD`. Where access governs the transport, visibility expresses the intended audience for your policies to enforce.
 
@@ -396,7 +396,7 @@ The `File` model (`EduLazaro\Laracrate\Models\File`) wraps this table. Its route
 | `id` | bigint | Primary key. |
 | `slug` | ulid | Unique. Used as the public route key (never expose `id`). |
 | `parent_id` | bigint, nullable | Points at the parent file. Null means top-level. Set means this row is a variant. Cascades on delete. |
-| `variant` | string(50), nullable | Variant name (`thumbnail`, `preview`, `small`, ...). Unique together with `parent_id`. |
+| `variant` | string(50), nullable | Variant name, as the collection config names it (`thumbnail`, `web`, `portada`, ...). Unique together with `parent_id`. |
 | `folder_id` | bigint, nullable | Folder this file lives in. Null means the root of its fileable. Nulls on folder delete. |
 
 **The four morphs**
@@ -430,15 +430,16 @@ Each file carries four independent polymorphic relations (see the Core concepts 
 | `context` | string | Defaults to `laracrate.default_context`. Indexed. |
 | `collection` | string | Defaults to `laracrate.default_collection`. Indexed. |
 | `type` | enum | `image`, `video`, `audio`, `document`. Cast to `FileType`. Indexed. |
+| `mode` | string | How an image is shown: `default`, `sphere` or `frames` (since migration `0000_00_00_000042`). Cast to `FileMode`. Indexed. |
 | `category` | string, nullable | Free-form app category. Indexed. |
 
 **Access flags**
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `access` | enum | `public`, `signed`, `stream`. Defaults to `signed`. Cast to `FileAccess`. Indexed. |
+| `access` | enum | `public` or `private`. Defaults to `private`. Cast to `FileAccess` through `AsFileAccess`, which reads the 1.x values `signed` and `stream` as private until migration `0000_00_00_000041` rewrites them (a `stream` row also becomes `sensitive`). Indexed. |
 | `visibility` | string, nullable | Free-form visibility label. The `FileVisibility` enum (`owner`, `group`, `tenant`, `world`) is available if you want to use its values. Indexed. |
-| `sensitive` | boolean | Defaults to false. Indexed. |
+| `sensitive` | boolean | Defaults to false. A sensitive file never gets a direct link: it is only served through PHP. Indexed. |
 | `is_encrypted` | boolean | Defaults to false. |
 
 **Metadata and presentation**
@@ -601,18 +602,18 @@ The package ships four example collections (`avatar`, `gallery`, `documents`, `i
 | Key | Type | Purpose |
 | --- | --- | --- |
 | `disk` | string | The `Storage::disk()` name from your `config/filesystems.php`. The package never duplicates credentials; it resolves this disk. There is no default, a missing disk is intentionally an error. |
-| `access` | string | `public` (CDN-direct), `signed` (temporary signed URL), or `stream` (controller with audit and viewer bind). See the Upload modes and Access control sections. |
+| `access` | string | `public` or `private` (the default). Who the files are for; how a private one is served is chosen where it is used (`url()` or `streamUrl()`). The 1.x values `signed` and `stream` still read as private, `stream` also as `sensitive`. See the Displaying files and Access control sections. |
 | `single` | bool | `true` keeps one file per owner. Replacing the file removes the previous one. |
-| `sensitive` | bool | Binds access to the authenticated viewer and re-validates on each request. See the Sensitive content section. |
+| `sensitive` | bool | The files never get a direct link: `url()` returns the stream route, which checks the view policy and logs each access. See the Sensitive content section. |
 | `encrypt` | bool | Encrypts the binary before it is stored on the backend. See the Sensitive content and encryption section. |
 | `ttl_hours` | int | Files in the collection expire after this many hours. The `laracrate:purge-expired` command (run hourly) deletes them, cascading to variants and the backend binary. Useful for `temp_uploads`, expiring exports, or unpromoted drafts. |
 | `quota_bytes` | int | Storage limit your app can check with `UsageReporter` before accepting more uploads. The package does not enforce quotas itself. See the Multi-tenancy, buckets and usage section. |
 | `track_usage` | bool | Maintain live per-owner usage counters (file count and total bytes) for this collection in the `laracrate_folderables` table, updated by the file observer on create and delete, and rebuildable with `laracrate:recompute-usage`. See the Multi-tenancy, buckets and usage section. |
 | `component` | string | Blade component used for default rendering. |
 | `placeholder` | string | Fallback asset when the file does not exist (highest priority in placeholder resolution, below). |
-| `types` | array | Per-type processing config (`image`, `document`, `audio`, `video`), keyed by type. Each type block can carry `accepted_mime_types`, `accepted_extensions`, `max_file_size`, `variants`, `preview`, and so on, overriding the global `defaults`. |
-| `variants` | array | Image variant definitions: `['name' => ['width' => ..., 'height' => ..., 'fit' => bool, 'watermark' => bool]]`. See the Images, variants and watermarks section. |
-| `preview` | array | Rasterized preview config for documents and videos. Documents accept `page`, `width`, `engine`, and nested `variants`. Videos accept `frame_at` and nested `variants`. See the Video and PDF previews section. |
+| `types` | array | Per-type processing config (`image`, `document`, `audio`, `video`), keyed by type. Each type block can carry `accepted_mime_types`, `accepted_extensions`, `max_file_size`, `variants`, `preview`, and so on, overriding the global `defaults`. The `image` block's `modes` (`['default', 'sphere']`) says whether 360° photos are told apart. |
+| `variants` | array | Inside a type block. Image variants: `['name' => ['width' => ..., 'height' => ..., 'fit' => bool, 'watermark' => bool]]` (see the Images, variants and watermarks section). Video and PDF variants carry a `type` (`video`, `image`, `frames`); see the Video and PDF variants section. |
+| `preview` | string | Inside a type block. The name of one of its variants (dot notation for nested ones, `'portada.mini'`): `$file->preview()` returns it. See the Video and PDF variants section. |
 | `extract` / `extract_text` | bool, string or array | When to extract text from the file: `'always'` (`true`), `'on_demand'` or `'never'` (`false`), or a list of types. Can also be set per type inside `types` (`extract_text` is a legacy alias for `extract`). See the per-type extraction note below and the Text extraction section. |
 | `embed` | bool, string or array | Whether to generate embeddings, with the same values as `extract`. See the Text extraction, embeddings and search section. |
 | `actions` | array | Custom actions to attach to the collection. |
@@ -625,12 +626,12 @@ By default any model using `HasFiles` can write to a collection with the same co
 ```php
 'documents' => [
     'disk'   => 'documents',
-    'access' => 'signed',
+    'access' => 'private',
     'models' => [
-        // Cases get the stricter, viewer-bound stream access.
-        'case'         => ['access' => 'stream', 'sensitive' => true],
-        // Organizations keep signed access but skip PDF previews.
-        'organization' => ['types' => ['document' => ['preview' => false]]],
+        // Cases never hand out a direct link.
+        'case'         => ['sensitive' => true],
+        // Organizations accept larger documents.
+        'organization' => ['types' => ['document' => ['max_file_size' => 51200]]],
     ],
 ],
 ```
@@ -769,25 +770,19 @@ Now `$user->fileLink('avatar', 'small')` returns the uploaded avatar when it exi
 
 ### URL strategy
 
-TTLs and cache windows for the URL accessors. See the Displaying files and Access control sections for how each mode uses them.
+How long the signed link of a private file lasts when the caller does not say. `$file->url(expires: ...)` sets it per call; `streamUrl()` and `downloadUrl()` are not signed and never expire. See the Displaying files section.
 
 ```php
 'urls' => [
-    'signed_ttl'             => 5,
-    'signed_cache_ttl'       => 4,
-    'sensitive_redirect_ttl' => 10,
-    'route_signed_ttl'       => 15,
-    'bind_to_user'           => true,
+    'signed_ttl'       => 5,
+    'signed_cache_ttl' => 4,
 ],
 ```
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `signed_ttl` | `5` | Minutes a backend signed URL stays valid (for `access: signed`). |
-| `signed_cache_ttl` | `4` | Minutes the server-side cache of a signed URL is kept. |
-| `sensitive_redirect_ttl` | `10` | Seconds for the ultra-short signed URL issued after validation in the stream controller. |
-| `route_signed_ttl` | `15` | Minutes the route HMAC for `/laracrate/files/{slug}/stream` stays valid. |
-| `bind_to_user` | `true` | Binds stream URLs to the user identity, re-validating on demand. |
+| `signed_ttl` | `5` | Minutes the default signed link of a private file stays valid. |
+| `signed_cache_ttl` | `4` | Minutes that default link is cached server-side, so a page with many files signs each one once. A link with its own `expires` is not cached. |
 
 ### Policies
 
@@ -803,7 +798,7 @@ With the bridge on, the Gate abilities `view`, `update`, and `delete` map to the
 
 ### Streaming
 
-Routing and audit options for the controller that serves `access: stream` files.
+Routing and audit options for the routes that serve a file through PHP (`streamUrl()`, `downloadUrl()`) and the viewer's data.
 
 ```php
 'stream' => [
@@ -815,7 +810,7 @@ Routing and audit options for the controller that serves `access: stream` files.
 ],
 ```
 
-The `laracrate/files` prefix avoids collisions with an existing `FileController` under `/files/...`, which is common. `increment_downloads` bumps the file download counter, and `log_access` audits each download. See the HTTP endpoints section.
+The `laracrate/files` prefix avoids collisions with an existing `FileController` under `/files/...`, which is common. Keep `auth` in the middleware: these routes carry no signature, so the session and the view policy are what let a request in. `increment_downloads` bumps the download counter on `download`, and `log_access` logs each access. See the HTTP endpoints section.
 
 ### Status polling
 
@@ -892,11 +887,11 @@ Image processing options used by the optimize and variant steps. Do not confuse 
 ],
 ```
 
-`driver` is `imagick` (recommended) or `gd`. When `optimize_originals` is `true`, the original is re-encoded to webp within `max_width`/`max_height` at `quality`. See the Images, variants and watermarks section.
+`driver` is `imagick` (recommended) or `gd`. When `optimize_originals` is `true`, the original is re-encoded to webp within `max_width`/`max_height` at `quality`. In a collection whose image type takes the `sphere` mode (`'image' => ['modes' => ['default', 'sphere']]`), `DetectSphereStep` gives a photo mode `sphere` when its XMP declares an equirectangular projection (`GPano:ProjectionType="equirectangular"`, as 360 cameras and Google Photo Sphere write it); a wide photo is not a 360 one. See the Images, variants and watermarks section.
 
 ### PDF preview engine
 
-Selects the engine that rasterizes a PDF page into a PNG for the `preview` variant.
+Selects the engine that rasterizes a PDF page into a PNG for a page variant (`'type' => 'image'` in the document `variants`).
 
 ```php
 'pdf_preview_engine' => 'auto',
@@ -908,17 +903,17 @@ Selects the engine that rasterizes a PDF page into a PNG for the `preview` varia
 | `imagick` | PHP imagick extension, Ghostscript (`gs`), and the PDF coder enabled in ImageMagick `policy.xml` | Heavier setup. |
 | `auto` | tries `pdftoppm`, falls back to `imagick` | Default. |
 
-You can override the engine per collection inside the `preview` block:
+You can override the engine per variant:
 
 ```php
-'preview' => ['page' => 1, 'width' => 600, 'engine' => 'pdftoppm'],
+'variants' => ['portada' => ['type' => 'image', 'page' => 1, 'width' => 600, 'engine' => 'pdftoppm']],
 ```
 
-See the Video and PDF previews section.
+See the Video and PDF variants section.
 
 ### Video
 
-Defaults for ffmpeg-based transcoding when a collection does not override them.
+Defaults for ffmpeg-based transcoding (`'transcode' => true` and the video copies in `variants`) when a variant does not set its own `max_width`, `max_height` or `bitrate_kbps`.
 
 ```php
 'video' => [
@@ -928,7 +923,7 @@ Defaults for ffmpeg-based transcoding when a collection does not override them.
 ],
 ```
 
-See the Video and PDF previews section.
+See the Video and PDF variants section.
 
 ### Encryption
 
@@ -1064,18 +1059,6 @@ Settings for the watermark embedded into specific variants. The original (master
 | `text.font_path` | `null` | Path to a `.ttf` font, or `null` for the system font. |
 
 See the Images, variants and watermarks section for the mechanics.
-
-### UI
-
-Default theme for the `<livewire:laracrate-uploader>` component when no `theme=` prop is passed.
-
-```php
-'ui' => [
-    'default_theme' => env('LARACRATE_THEME', 'default'),
-],
-```
-
-The built-in themes are `default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`, `chatgpt`, `claude`, and `studio`. For a custom theme, publish the views with `vendor:publish --tag=laracrate-views` and add your blade under `resources/views/vendor/laracrate/uploader/themes/`. See the Livewire components and themes section.
 
 ### Queue
 
@@ -1223,7 +1206,21 @@ $photos  = $user->images()->get();         // every image across collections
 
 ## Displaying files
 
-Once a file exists, you render it from a URL. Every `File` resolves its own URL based on the collection access mode (public CDN, signed URL, or streamed), so you do not build paths by hand. The same call works for every access mode (see the Access control section for what each mode does).
+Once a file exists, you render it from a URL. A file has three, and you pick the one the place needs:
+
+| Method | What it is | Expires |
+| --- | --- | --- |
+| `$file->url()` | A direct link. Public file: its public URL. Private file: a link signed straight to the disk (an R2/S3 presigned GET, or a signed local route on a `local` disk). Encrypted or sensitive file: its `streamUrl()`, since PHP has to decrypt it or check each access. | Private links: after `laracrate.urls.signed_ttl` (5 min), or when you say with `url(expires: ...)`. S3 and R2 refuse more than 7 days. |
+| `$file->streamUrl()` | The file through PHP, shown in the browser. Behind the session, the view policy is checked on every request; `Range` is honoured, so video seeks. | Never. |
+| `$file->downloadUrl()` | The file through PHP as an attachment, counted in `downloads_count`. | Never. |
+
+```php
+$file->url();                               // signed for 5 minutes when private
+$file->url(expires: now()->addHours(3));    // a video watched for a while
+$file->streamUrl();                         // a link stored in a document, or a page left open
+```
+
+Use `url()` where the page renders and is read right away, and `streamUrl()` where the link must keep working (an image embedded in a document, a long session). A signed link is only checked when it is made; the stream route checks the policy every time.
 
 The simplest path is to grab the file and read its **`url()`**:
 
@@ -1240,39 +1237,47 @@ For Blade convenience the model exposes accessors so you can skip the method cal
 | Accessor | Equivalent to |
 | --- | --- |
 | `$file->link` | `$file->url()` |
-| `$file->preview_link` | `$file->variant('preview.thumbnail')->url('image')`, falling back to the image placeholder |
+| `$file->preview_link` | `$file->preview()?->url('image')`; for an image without a preview, the image itself; anything else, the image placeholder |
 
 ```blade
 <img src="{{ $file->link }}">
-<img src="{{ $file->preview_link }}"> {{-- thumbnail for video, PDF, audio, image --}}
+<img src="{{ $file->preview_link }}"> {{-- the variant the type names as its preview --}}
 ```
 
-`preview_link` never throws: if the disk is unreachable or the variant is missing, it returns the configured placeholder so one broken file cannot break the page.
+`preview_link` never throws: if the disk is unreachable or the variant is missing, it returns the configured placeholder so one broken file cannot break the page. It is a direct link (`url()`), so it follows the same expiry; for one that lasts, use `$file->preview()?->streamUrl()`.
 
 ### Navigating variants
 
-A file can have derived variants (a `thumbnail`, a `small` image, a video `preview`, and so on, created by the pipeline). Reach them with **`variant()`** using dot notation:
+A file can have derived variants (a `thumbnail`, a `small` image, a video frame called `portada`, and so on, created by the pipeline under the names your config gives them). Reach them with **`variant()`** using dot notation:
 
 ```php
 $file->variant('thumbnail')->url();
-$file->variant('preview.small')->url('image');
+$file->variant('portada.mini')->url('image');
 ```
 
-`variant()` never returns `null`. If any link in the chain is missing it falls back to the closest existing ancestor, so `$file->variant('preview.small')` returns the `preview` (or the original) when `small` was not generated yet. When that silent fallback would be a bug, use **`variantOrFail()`** instead, which throws `RuntimeException` if any segment is missing:
+`variant()` never returns `null`. If any link in the chain is missing it falls back to the closest existing ancestor, so `$file->variant('portada.mini')` returns `portada` (or the original) when `mini` was not generated yet. When that silent fallback would be a bug, use **`variantOrFail()`** instead, which throws `RuntimeException` if any segment is missing:
 
 ```php
-$thumb = $file->variantOrFail('preview.thumbnail'); // throws if not generated
+$thumb = $file->variantOrFail('portada.mini'); // throws if not generated
+```
+
+**`preview()`** is the variant the type's `preview` names, or `null` when it names none or that variant does not exist yet. Unlike `variant()`, it never falls back to the original, so a video is never handed out as an image:
+
+```php
+// 'video' => [..., 'preview' => 'portada.mini']
+$video->preview();              // the same as $video->variant('portada.mini')
+$video->preview()?->url();
 ```
 
 To avoid lazy-loading each variant on access, eager load the tree with the `withVariants()` scope on the `File` model:
 
 ```php
-$files = File::withVariants()->get(); // loads file -> preview -> thumbnail|small|...
+$files = File::withVariants()->get(); // loads file -> its variants -> theirs
 ```
 
 ### `url()` and forced types
 
-`url()` returns the real URL, or `null` when no valid backend resolves. Pass a type to force a fallback: if the file is not that type, or its URL cannot be built, you get the configured placeholder for that type instead of `null`.
+`url()` returns the real URL, or `null` when no valid backend resolves. Pass a type to force a fallback: if the file is not that type, or its URL cannot be built, you get the configured placeholder for that type instead of `null`. A 360° photo or a strip of frames is type `image`, so `url('image')` serves it.
 
 ```php
 $file->url();          // real URL or null
@@ -1288,7 +1293,7 @@ The trait gives you two helpers that go straight from a model + collection to a 
 ```blade
 <img src="{{ $user->fileLink('avatar') }}">
 <img src="{{ $user->fileLink('avatar', 'medium') }}">     {{-- a variant --}}
-<img src="{{ $user->fileLink('cover', 'preview.thumbnail') }}">
+<img src="{{ $user->fileLink('cover', 'portada.mini') }}">
 ```
 
 ```php
@@ -1388,7 +1393,7 @@ await fetch('/profile/avatar', {
 });
 ```
 
-`presignAndUpload(file, opts)` options: `disk` (required), `collection`, `fileable` (`{ type, id }`), `maxSizeKb`, `presignUrl` (override the presign route), and `onProgress` (a `0..1` callback). It returns `{ key, disk, original_name, mime_type, size }`.
+`presignAndUpload(file, opts)` options: `disk` (required), `maxSizeKb`, `presignUrl` (override the presign route), and `onProgress` (a `0..1` callback). It returns `{ key, disk, original_name, mime_type, size }`.
 
 On the backend, rebuild a `FileUpload` from that payload and pass it to `addFile()`:
 
@@ -1414,22 +1419,30 @@ public function confirm(Request $request)
 }
 ```
 
-`FileUpload::fromArray()` accepts `disk`, `key`, `original_name` (or `originalName`), `mime_type` (or `mimeType`), `size`, and optional `width`, `height`, `duration`, `digest`.
+`FileUpload::fromArray()` accepts `disk`, `key`, `original_name` (or `originalName`), `mime_type` (or `mimeType`), and optional `size`, `width`, `height`, `duration`, `digest`.
 
-**Where the file lands.** The presign endpoint chooses the key two ways. If you pass `fileable_type`, `fileable_id`, and `collection`, the file is uploaded straight to its **canonical key** (`{fileable_type}/{fileable_id}/{collection}/{ulid}_{name}`), so no move is needed afterward. If you do not (the common case for a creation form with no model yet), it lands under `temp/`. When you then call `addFile()` with that `temp/` key, Laracrate moves the object to its canonical key. On S3-compatible disks the move is a server-side `copyObject` plus `deleteObject` (`StorageManager::moveServerSide()`): the bytes never come back through PHP.
+**The size is measured, not trusted.** `addFile()` asks the bucket how big the object is (one HEAD, no download) and checks the collection's rules with that, whatever `size` says: a presigned PUT does not bind the length, so the size the browser declares means nothing. An object over the maximum is refused (`UploadRejected` with reason `size`) and deleted from `temp/`; one that is not in the bucket is refused with reason `missing`.
+
+**Where the file lands.** The presign endpoint always signs a key under `temp/`; the request cannot name a model path, which used to let anyone write into another model's folder. When you then call `addFile()` with that `temp/` key, Laracrate moves the object to its canonical key (`{fileable_type}/{fileable_id}/{collection}/{ulid}_{name}`). On S3-compatible disks the move is a server-side `copyObject` plus `deleteObject` (`StorageManager::moveServerSide()`): the bytes never come back through PHP.
 
 If the user cancels before confirming, delete the orphaned `temp/` object with `deleteTemp(disk, key)` from the JS helper. It only deletes keys that start with `temp/`.
 
 ### Multipart (large files)
 
-For files past the threshold, S3/R2 multipart splits the upload into parts that the browser `PUT`s in parallel, each returning an `ETag`. Laracrate exposes the orchestration endpoints; there is no bundled multipart JS helper, so you drive the four endpoints yourself based on `file.size`:
+For files past the threshold, S3/R2 multipart splits the upload into parts that the browser `PUT`s in parallel, each returning an `ETag`. It works under an [upload grant](#upload-modes-grants-and-the-upload-tray), like `sign` and `confirm`: the grant is the only source of the target, so the request never names a disk, a model or a key. There is no bundled multipart client yet (the upload queue sends every file with a single PUT), so you drive the endpoints yourself based on `file.size`:
 
-1. **Init.** `POST /laracrate/multipart/init` with `disk`, `expected_size`, and optionally `mime`, `file_name`, `part_size`, `fileable_type`, `fileable_id`, `collection`. The response gives you `upload_id`, `id`, `key`, `part_size`, `total_parts`, `expires_at`, and `parts` (an array of `{ part_number, url, method }`).
-2. **Upload parts.** `PUT` each part's bytes to its `url`. Capture the `ETag` response header for every part.
-3. **Reissue (optional).** If a part URL expires before you use it, `POST /laracrate/multipart/{id}/parts` with `part_numbers` to get fresh URLs.
-4. **Complete.** `POST /laracrate/multipart/{id}/complete` with `parts` as `[{ part_number, etag }, ...]`. S3 assembles the object at `key`. To cancel instead, `DELETE /laracrate/multipart/{id}`.
+1. **Init.** `POST /laracrate/multipart/init` with `grant`, `file_name`, `mime` and `size`, and optionally `part_size`. The file is checked against the collection and slot rules first, as `sign` does. The response gives you `id`, `part_size`, `total_parts`, `expires_at`, and `parts` (an array of `{ part_number, url, method }`).
+2. **Upload parts.** `PUT` each part's bytes to its `url`. Capture the `ETag` response header for every part (your bucket's CORS has to expose it).
+3. **Reissue (optional).** If a part URL expires before you use it, `POST /laracrate/multipart/{id}/parts` with `grant` and `part_numbers` to get fresh URLs.
+4. **Complete.** `POST /laracrate/multipart/{id}/complete` with `grant` and `parts` as `[{ part_number, etag }, ...]`. S3 assembles the object and Laracrate creates the File, answering like `confirm`. The size checked is the one the bucket holds, since no part URL binds a length, and an object the collection refuses is deleted. To cancel instead, `DELETE /laracrate/multipart/{id}` with `grant`.
 
-After `complete`, the binary exists at `key` but no `File` row has been created yet. Persist it the same way as a presigned upload, by calling `addFile(FileUpload::fromArray([...]), $collection)` with the final `disk` and `key`. Multipart sessions are tracked in `laracrate_multipart_uploads`; only the creator can complete or abort a session, and stale ones are reaped by `laracrate:abort-stale-multipart` (see the artisan commands section).
+Reissuing, completing and cancelling only accept the grant that started the session, which only the user it was issued to can send. The object goes straight to its canonical key rather than to `temp/`: moving it afterwards would be a single `CopyObject`, which S3 refuses past 5 GB.
+
+Sessions are tracked in `laracrate_multipart_uploads`, with the File they produced in `file_id`. Schedule `laracrate:abort-stale-multipart` (see the artisan commands section): until a session is aborted, its parts take space in the bucket without showing in any listing.
+
+An application that starts multipart sessions on its own, with `InitiateMultipartUploadAction` and its siblings behind its own routes, keeps doing so: those sessions carry no grant, and these endpoints do not reach them.
+
+Earlier versions took the disk and the key of `init` from the request, and left these routes with no middleware at all when `multipart.middleware` was `null`, the shipped default. If you cannot update yet, set that key explicitly.
 
 Multipart requires an S3-compatible disk. Tuning lives under `config('laracrate.multipart')`: `part_size` (10 MB default, 5 MB minimum), `expire_minutes`, and `url_ttl_minutes`.
 
@@ -1450,13 +1463,14 @@ You rarely call these routes by name from PHP. The JS helper and your upload flo
 | POST | `laracrate/uploads/sign` | `laracrate.uploads.sign` | Grant based: check a file against the rules, then a presigned PUT and a receipt, or the address to post it to |
 | POST | `laracrate/uploads/confirm` | `laracrate.uploads.confirm` | Grant based: create the File of a direct upload (the receipt proves the key was issued to this grant) |
 | POST | `laracrate/uploads/receive` | `laracrate.uploads.receive` | Grant based: take a file through PHP and create the File at once (encrypted collections) |
-| POST | `laracrate/multipart/init` | `laracrate.multipart.init` | Start a multipart session, returns `upload_id`, `total_parts`, and part URLs |
-| POST | `laracrate/multipart/{multipart}/parts` | `laracrate.multipart.parts` | Reissue presigned URLs for specific parts |
-| POST | `laracrate/multipart/{multipart}/complete` | `laracrate.multipart.complete` | Assemble the final object from uploaded part ETags |
-| DELETE | `laracrate/multipart/{multipart}` | `laracrate.multipart.abort` | Abort and clean up a multipart session |
-| GET | `laracrate/files/{file:slug}/stream` | `laracrate.files.stream` | Stream a protected file inline (audit + viewer bind) |
-| GET | `laracrate/files/{file:slug}/preview` | `laracrate.files.preview` | Stream the file's preview variant |
-| GET | `laracrate/files/{file:slug}/download` | `laracrate.files.download` | Download a protected file as an attachment |
+| POST | `laracrate/uploads/register` | `laracrate.uploads.register` | Presign mode of the components: create the File of an object the component signed, by its key alone |
+| POST | `laracrate/multipart/init` | `laracrate.multipart.init` | Grant based: check a file against the rules and start a multipart session, returns the part URLs |
+| POST | `laracrate/multipart/{multipart}/parts` | `laracrate.multipart.parts` | Reissue presigned URLs for specific parts (with the session's grant) |
+| POST | `laracrate/multipart/{multipart}/complete` | `laracrate.multipart.complete` | Assemble the object from the part ETags and create the File (with the session's grant) |
+| DELETE | `laracrate/multipart/{multipart}` | `laracrate.multipart.abort` | Abort and clean up a multipart session (with the session's grant) |
+| GET | `laracrate/files/{file:slug}/stream` | `laracrate.files.stream` | The file through PHP, inline (`streamUrl()`). Checks `canView` on every request, honours `Range`, decrypts, logs; not counted as a download |
+| GET | `laracrate/files/{file:slug}/download` | `laracrate.files.download` | The file through PHP as an attachment (`downloadUrl()`), counted in `downloads_count` |
+| GET | `laracrate/files/{file:slug}/viewer` | `laracrate.files.viewer` | What the viewer shows (JSON): name, type and a link made at request time, after `canView` |
 | GET | `laracrate/files/{file:slug}/status` | `laracrate.files.status` | Processing status for one file (JSON) |
 | POST | `laracrate/files/status` | `laracrate.files.status.batch` | Processing status for many files in one request |
 | POST | `_laracrate/local/upload` | `laracrate.local.upload` | Receive bytes for the local-driver presigned fallback (signed) |
@@ -1468,15 +1482,16 @@ You rarely call these routes by name from PHP. The JS helper and your upload flo
 | --- | --- | --- | --- |
 | Presigned uploads | `laracrate.uploads.route_prefix` (`laracrate/uploads`) | `laracrate.uploads.middleware` (`['web', 'auth']`) | `laracrate.uploads.` |
 | Multipart | `laracrate.multipart.route_prefix` (`laracrate/multipart`) | `laracrate.multipart.middleware` (falls back to the uploads middleware when null) | `laracrate.multipart.` |
-| Stream / preview / download | `laracrate.stream.route_prefix` (`laracrate/files`) | `laracrate.stream.middleware` (`['web', 'auth']`) | `laracrate.stream.route_name_prefix` (`laracrate.files`) |
+| Stream / download / viewer | `laracrate.stream.route_prefix` (`laracrate/files`) | `laracrate.stream.middleware` (`['web', 'auth']`) | `laracrate.stream.route_name_prefix` (`laracrate.files`) |
 | Status | `laracrate.status.route_prefix` (`laracrate/files`) | `laracrate.status.middleware` (`['web', 'auth']`) | `laracrate.files.` |
 | Local driver | fixed `_laracrate/local` | `signed` | `laracrate.local.` |
 
 A few details worth knowing:
 
-- **Authorization is yours.** The upload and multipart groups only apply the configured middleware. Restricting which disks a user may write to is enforced separately by `config('laracrate.uploads.allowed_disks')`, checked in the presign and init endpoints (empty means no restriction).
-- **`cancel` only touches `temp/`.** The DELETE endpoint refuses any key that does not start with `temp/`, so it cannot be used to delete canonical objects. The `deleteTemp()` JS helper builds the `{encodedKey}` segment for you.
-- **Multipart ownership.** `parts`, `complete`, and `abort` verify the caller is the session's creator (when a creator was recorded at init), returning 403 otherwise.
+- **Authorization is yours.** The upload and multipart groups only apply the configured middleware. Restricting which disks a user may write to is enforced separately by `config('laracrate.uploads.allowed_disks')`, checked in the presign endpoint. The grant based endpoints, multipart included, take the disk from the grant's collection.
+- **`cancel` only touches `temp/`, and only what this browser signed.** The DELETE endpoint refuses any key that is not a plain `temp/` name, and any key that was not signed by `presign` in the same browser session (or for the same user when there was no session). The `deleteTemp()` JS helper builds the `{encodedKey}` segment for you.
+- **Files through PHP are not signed.** `stream`, `download` and `viewer` sit behind the session and check the file's view policy on every request, so their links never expire. Keep `auth` in `laracrate.stream.middleware`.
+- **Multipart sessions answer to their grant.** `parts`, `complete`, and `abort` return 403 for any grant other than the one that started the session, and for sessions started outside these endpoints.
 - **Local routes are signed, not authed.** The `_laracrate/local` group is protected by Laravel's `signed` middleware. The URLs are minted by `StorageManager::presignedUpload()` and `GenerateSignedUrlAction`, so they carry their own expiry. They exist only as the dev-time stand-in for real presigned S3/R2 URLs.
 - **Status responses.** Both status endpoints check `canView()` per file and return `{ slug, status, ready, url, preview, variants, error }` per file (the batch endpoint keys the map by slug and silently omits files you cannot view). Use the `pollFileStatus` and `pollFilesStatus` JS helpers to consume them; see the displaying files and processing pipeline sections for how `ready` and `variants` are populated.
 
@@ -1700,19 +1715,20 @@ Each step is a small class implementing `EduLazaro\Laracrate\Contracts\FileActio
 
 | Priority | Step class (namespace `EduLazaro\Laracrate\Pipeline\Steps\...`) | Runs when |
 |----------|-----------------------------------------------------------------|-----------|
-| 10 | `Image\ExtractImageDimensionsStep` | `type` is `image` |
+| 5 | `Image\DetectSphereStep` | `type` is `image` and the collection's image type takes the `sphere` mode: gives mode `sphere` to a photo whose XMP declares an equirectangular projection; otherwise it stays `default` |
+| 10 | `Image\ExtractImageDimensionsStep` | the base type is `image` |
 | 10 | `Video\ExtractVideoDimensionsStep` | `type` is `video` |
-| 20 | `Image\OptimizeImageStep` | `type` is `image` and optimization is enabled (collection `optimize`, type `optimize`, or `laracrate.image.optimize_originals`) |
-| 25 | `Video\TranscodeVideoStep` | `type` is `video` and the video type config sets `transcode` |
-| 40 | `Image\GenerateImageVariantsStep` | `type` is `image` and the image type config declares `variants` |
-| 45 | `Video\ExtractVideoPreviewStep` | `type` is `video` and the video type config sets `preview` |
-| 45 | `Document\ExtractPdfPreviewStep` | `type` is `document`, `mime_type` is `application/pdf`, and the document type config sets `preview` |
+| 20 | `Image\OptimizeImageStep` | the base type is `image` and optimization is enabled (collection `optimize`, type `optimize`, or `laracrate.image.optimize_originals`) |
+| 25 | `Video\TranscodeVideoStep` | `type` is `video` and the video type config sets `'transcode' => true` |
+| 30 | `Video\GenerateVideoVariantsStep` | `type` is `video` and the video type config declares `variants` (copies, teasers, frames, strips of frames) |
+| 40 | `Image\GenerateImageVariantsStep` | the base type is `image` and the image type config declares `variants` |
+| 45 | `Document\GeneratePdfVariantsStep` | `type` is `document`, `mime_type` is `application/pdf`, and the document type config declares variants with `'type' => 'image'` (rendered pages) |
 | 60 | `Text\ExtractTextStep` | embeddings enabled, the collection should extract or embed, and a text extractor exists for the file |
 | 70 | `Text\ChunkTextStep` | embeddings enabled, the collection should embed, and the `{key}.json` sidecar exists |
 | 80 | `Text\GenerateEmbeddingStep` | embeddings enabled, the collection should embed, and the `{key}.chunks.jsonl` sidecar exists |
 | 90 | `Text\PersistChunksStep` | the `{key}.chunks.jsonl` sidecar exists |
 
-The text steps write two **sidecar artifacts** next to the binary on the same disk: `{key}.json` (extracted full text plus per-page content) and `{key}.chunks.jsonl` (chunks and embeddings). Each later step gates on the artifact the previous one produced, so the chain stops cleanly if extraction yields nothing. These sidecars are purged when the file is force deleted. See the Images, variants and watermarks, Video and PDF previews, and Text extraction, embeddings and search (RAG) sections for what each step actually does and the config keys it reads.
+The text steps write two **sidecar artifacts** next to the binary on the same disk: `{key}.json` (extracted full text plus per-page content) and `{key}.chunks.jsonl` (chunks and embeddings). Each later step gates on the artifact the previous one produced, so the chain stops cleanly if extraction yields nothing. These sidecars are purged when the file is force deleted. See the Images, variants and watermarks, Video and PDF variants, and Text extraction, embeddings and search (RAG) sections for what each step actually does and the config keys it reads.
 
 ### Priority bands
 
@@ -1722,7 +1738,7 @@ The text steps write two **sidecar artifacts** next to the binary on the same di
 |------|---------|
 | 0-19 | Metadata (dimensions, duration) |
 | 20-39 | Transforming the original (optimize, transcode, encrypt) |
-| 40-59 | Derivatives (variants, previews, thumbnails) |
+| 40-59 | Derivatives (variants, pages, thumbnails) |
 | 60-79 | Semantic extraction (text, OCR, transcription) |
 | 80-99 | AI (chunking, embeddings, classification) |
 | 100+ | App-specific post-processing |
@@ -1823,7 +1839,7 @@ Per-collection action classes must implement `FileActionInterface`. If a configu
 
 Laracrate processes every image you upload into an optimized original plus any number of resized **variants** (thumbnails, medium, large, and so on). Variants are generated asynchronously in the pipeline, so the user's upload stays instant. Each variant is a real `File` row of its own with `parent_id` pointing at the original, `type = image`, and a `variant` name, so you can query and serve it like any other file. The original is never destroyed by variant generation, and the original is never watermarked.
 
-You declare variants per file type inside a collection's config. The orchestrator (`GenerateImageVariantsAction`) iterates `types.image.variants` for the collection and dispatches `GenerateImageVariantAction` once per definition. A failure in one variant is logged and skipped, the rest still generate.
+You declare variants per file type inside a collection's config. The orchestrator (`GenerateImageVariantsAction`) iterates `types.image.variants` for the collection and dispatches `GenerateImageVariantAction` once per definition. A failure in one variant is logged and skipped, the rest still generate. A 360° photo (mode `sphere`) and a strip of frames (mode `frames`) are type `image`: they go through the same steps and read the same `image` block. The type's `'preview' => 'thumbnail'` names the variant `$file->preview()` and `preview_link` return (see the Video and PDF variants section).
 
 ```php
 // config/laracrate.php
@@ -1890,9 +1906,10 @@ A watermark is baked into the binary of specific variants at generation time. Yo
 // config/laracrate.php
 'collections' => [
     'identity' => [
-        'disk'   => 'documents',
-        'access' => 'stream',
-        'types'  => [
+        'disk'      => 'documents',
+        'access'    => 'private',
+        'sensitive' => true,
+        'types'     => [
             'image' => [
                 'variants' => [
                     'thumbnail' => ['width' => 300],                       // no watermark
@@ -1938,92 +1955,140 @@ The watermark itself is configured once in the top-level `watermark` block. It c
 
 The text `content` closure receives the `File` and may return `null` to skip the text, which is useful for stamping per-file data (an owner id, an order number) onto the watermark. Because a closure cannot live in `env`, set it by publishing the config or in a service provider.
 
-## Video and PDF previews
+## Video and PDF variants
 
-For non-image files Laracrate can generate an image **preview** so you have something to render in a gallery or list. Both video and PDF previews work the same way: the package produces a child `File` with `variant = 'preview'` and `type = image`, then optionally generates its own image variants (thumbnail, medium, and so on) from that preview. Both run in the pipeline and depend on external binaries, so they are opt-in per collection.
+Videos and PDFs get variants too, declared in the type's `variants` like the image ones and named by your app. Each one says what it is with `type`:
+
+| `type` | Of | What it makes |
+| --- | --- | --- |
+| `video` (the default for a video) | a video | An MP4 copy, or a teaser when it has `clips` or a `generator` |
+| `image` | a video | One frame, as a JPEG |
+| `frames` | a video | A strip of frames in one JPEG, stored as type `image` with mode `frames` |
+| `image` | a PDF | One page, as a PNG |
+
+They run in the pipeline (`GenerateVideoVariantsStep`, `GeneratePdfVariantsStep`) and need external binaries (`ffmpeg` and `ffprobe` for video, an engine for PDF), so they are opt-in per collection. Every variant is a child `File` under its name; a variant's own `variants` are made from it, so `teaser.mini` is a copy of the teaser and `portada.mini` a resize of the frame. A bare name (`'web'`) is a variant with no options. Regenerating replaces each variant.
 
 ### Video
 
-Video handling has two independent steps. Dimensions and duration are read with `ffprobe` (`ExtractVideoDimensionsAction`, stored on `width`, `height`, `duration`). Preview frame extraction (`ExtractVideoPreviewAction`) pulls a single frame with `ffmpeg` at the configured timestamp and writes it as a JPEG preview. Both require `ffmpeg` and `ffprobe` on the server path.
+Dimensions and duration are read first with `ffprobe` (`ExtractVideoDimensionsAction`, stored on `width`, `height`, `duration`). Then the variants:
 
 ```php
 // config/laracrate.php
 'collections' => [
-    'gallery' => [
+    'deportes' => [
         'disk'   => 'media',
-        'access' => 'public',
+        'access' => 'private',
         'types'  => [
             'video' => [
-                'preview' => [
-                    'frame_at' => '00:00:01', // timestamp of the frame to grab
-                    'variants' => [
-                        'thumbnail' => ['width' => 300, 'height' => 300, 'fit' => true],
-                        'medium'    => ['width' => 800, 'height' => 800],
+                'accepted_extensions' => ['mp4', 'mov'],
+                'max_file_size'       => 512000,
+
+                'variants' => [
+                    // MP4 copies
+                    'hd' => ['max_height' => 1080],
+                    'sd' => ['max_height' => 480, 'bitrate_kbps' => 800],
+
+                    // a frame, and a small copy of it
+                    'portada' => [
+                        'type'     => 'image',
+                        'frame_at' => '00:00:03',
+                        'width'    => 1280,
+                        'variants' => ['mini' => ['width' => 300]],
+                    ],
+
+                    // a strip of 6 frames spread across the video
+                    'escenas' => ['type' => 'frames', 'frames' => 6, 'width' => 320],
+
+                    // 5 one-second fragments joined, no audio, and a smaller copy of it
+                    'teaser' => [
+                        'type'     => 'video',
+                        'clips'    => 5,
+                        'seconds'  => 1,
+                        'audio'    => false,
+                        'variants' => ['mini' => ['max_height' => 360]],
                     ],
                 ],
+
+                'preview' => 'portada.mini',
             ],
         ],
     ],
 ],
 ```
 
-`frame_at` defaults to `00:00:01` when not set. The extracted frame becomes a `preview` child of type image, and the `variants` you list under `preview` are generated from it (each one is in turn a child of the preview), so a video ends up with a preview frame plus its own thumbnail and medium.
+Uploading `gol.mov` leaves:
 
-**Transcoding** is separate and costly, so enable it only on collections that need it. `TranscodeVideoAction` re-encodes to H.264 / AAC MP4 with `ffmpeg` (8-bit 4:2:0, HDR tone-mapped to SDR, index at the start), scaling it down to fit a bounding box. Set it on the video type, in one of two modes:
-
-| Value | What happens to the original |
-| --- | --- |
-| `'transcode' => true` | Replaced in place by the MP4 (then dimensions are re-read). The cheapest option when nobody needs the upload as it was. |
-| `'transcode' => 'variant'` | Kept untouched. The MP4 is stored as a `playback` child, and only when the original would not play in every browser (an H.264 8-bit MP4 or MOV is left alone). For evidence, or anything whose original, quality and metadata must survive. |
-
-Play `$file->playback()`: it returns the `playback` variant when there is one, otherwise the file itself, so it is safe to call in every mode. Downloads keep serving the original.
-
-```php
-'types' => [
-    'video' => ['transcode' => 'variant', 'preview' => ['frame_at' => '00:00:01']],
-],
+```
+#50  gol.mov                (original, untouched)
+ ├─ #51  hd        mp4
+ ├─ #52  sd        mp4
+ ├─ #53  portada   jpg      (frame at 0:03)
+ │    └─ #54  mini   jpg    (300 px)
+ ├─ #55  escenas   jpg      (type frames)
+ └─ #56  teaser    mp4
+      └─ #57  mini   mp4    (the teaser at 360)
 ```
 
 ```blade
-<video src="{{ $file->playback()->url() }}" controls></video>
+<video controls src="{{ $video->variant('hd')->url() }}" poster="{{ $video->preview_link }}"></video>
+<video muted loop playsinline src="{{ $video->variant('teaser.mini')->url() }}"></video>
+```
+
+What each kind takes:
+
+- **Copy** (`video`, no `clips` or `generator`): `max_width`, `max_height`, `bitrate_kbps`, defaulting to `laracrate.video`. The copy is H.264 / AAC MP4, 8-bit 4:2:0, HDR tone-mapped to SDR and with its index at the start, so it plays in every browser. It is skipped when the original already plays in every browser and fits its size: `variant()` then falls back to the original.
+- **Teaser** (`video` with `clips` or `generator`): `clips` fragments (5) of `seconds` each (1), spread evenly over the video, joined into one MP4 within the same `max_*` and `bitrate_kbps`. `audio` (false) keeps the sound when the video has any. Its metadata lists the fragments: `{clips: [[start, length], ...]}`.
+- **Frame** (`image`): `frame_at` as a time (`'00:01:20'`), seconds (`3.5`) or a share of the length (`'20%'`), `00:00:01` by default; a moment past the end takes the last frame. `width` and `height` scale it. Its metadata keeps `at`.
+- **Strip of frames** (`frames`): `frames` (6) spread evenly, each scaled to `width` (320) or `height`, side by side or in rows of `columns`. Its metadata says how to cut it: `{frames, columns, rows, width, height, at: [...]}`, with the width and height of one frame. A strip is one image, so a hover preview moves the background through it with a single download.
+
+**Who picks the moments.** A teaser or a strip of frames can take its moments from a class of yours, an AI looking for the action or the scenes an editor marked, with `generator`. Laracrate only cuts and joins:
+
+```php
+'teaser' => ['type' => 'video', 'audio' => false, 'generator' => App\Media\AiTeaser::class],
 ```
 
 ```php
-// config/laracrate.php
-'video' => [
-    'max_width'    => 1920,
-    'max_height'   => 1920,
-    'bitrate_kbps' => 2500,
-],
+use EduLazaro\Laracrate\Contracts\MomentsGenerator;
+
+class AiTeaser implements MomentsGenerator
+{
+    /** @return list<array{at: float, seconds?: float}> start and length, in seconds */
+    public function generate(File $video, array $spec): array
+    {
+        return [['at' => 12.0, 'seconds' => 2], ['at' => 47.5, 'seconds' => 1.5]];
+    }
+}
 ```
+
+A moment outside the video is dropped, a missing `seconds` takes the variant's `seconds`, and a strip of frames reads only `at`. When the generator throws or returns nothing usable, the moments are spread evenly and the failure is logged.
+
+**Replacing the original.** `'transcode' => true` on the video type still re-encodes the original in place to the same browser-safe MP4 (`TranscodeVideoStep`, before the variants), and its dimensions are re-read. Use it when nobody needs the upload as it was; declare a copy in `variants` when the original must survive (evidence, quality, metadata).
 
 ### PDF
 
-`ExtractPdfPreviewAction` rasterizes one page of a PDF (page 1 by default) to a PNG and stores it as a `preview` child of type image. As with video, any `variants` you declare under `preview` are generated from that PNG (a thumbnail and a medium of page 1).
+A document variant with `'type' => 'image'` renders one page of a PDF to a PNG (`RenderPdfPageAction`):
 
 ```php
-// config/laracrate.php
-'collections' => [
-    'documents' => [
-        'disk'   => 'documents',
-        'access' => 'signed',
-        'types'  => [
-            'document' => [
-                'preview' => [
-                    'page'  => 1,
-                    'width' => 2000,
-                    'variants' => [
-                        'thumbnail' => ['width' => 300],
-                        'medium'    => ['width' => 800],
-                    ],
+'documents' => [
+    'disk'   => 'documents',
+    'access' => 'private',
+    'types'  => [
+        'document' => [
+            'variants' => [
+                'portada' => [
+                    'type'     => 'image',
+                    'page'     => 1,          // 1-indexed, 1 by default
+                    'width'    => 2000,       // downscale only, 2000 by default
+                    'variants' => ['thumbnail' => ['width' => 300], 'medium' => ['width' => 800]],
                 ],
             ],
+            'preview' => 'portada.thumbnail',
         ],
     ],
 ],
 ```
 
-The rasterization engine is selectable with `pdf_preview_engine` (or a per-collection `engine` key inside the `preview` block):
+The rasterization engine is selectable with `pdf_preview_engine`, or per variant with `engine` (and `resolution`, 150 dpi by default):
 
 | Engine | Requires | Notes |
 |--------|----------|-------|
@@ -2031,16 +2096,31 @@ The rasterization engine is selectable with `pdf_preview_engine` (or a per-colle
 | `imagick` | PHP `imagick` extension, Ghostscript (`gs`), and PDF enabled in ImageMagick's `policy.xml` | Reads the PDF through Ghostscript. |
 | `auto` | either of the above | Tries `pdftoppm` first, falls back to `imagick` if it is not available. |
 
+When the engine is forced to `pdftoppm` and the binary is missing or fails, the page is logged and skipped rather than falling back.
+
+### `preview`: the variant that stands for a file
+
+A type's `preview` names one of its variants, with dot notation for a nested one. It is a pointer, not a variant of its own:
+
 ```php
-// config/laracrate.php
-'pdf_preview_engine' => 'auto',
+'video' => ['variants' => [...], 'preview' => 'portada.mini'],
+'image' => ['variants' => ['thumbnail' => ['width' => 300]], 'preview' => 'thumbnail'],
 ```
 
-When the engine is forced to `pdftoppm` and the binary is missing or fails, the action logs and returns null rather than falling back. Set the engine per collection when one disk or document type needs a specific renderer:
+- `$file->preview()` returns that variant, or `null` when the type names none or it does not exist yet (the queue has not made it, or it failed). It never falls back to the original.
+- `$file->preview_link` is `preview()`'s `url('image')`; for an image without a preview, the image itself; for anything else, the image placeholder. The status endpoints answer it as `preview`.
 
-```php
-'preview' => ['page' => 1, 'width' => 600, 'engine' => 'pdftoppm'],
-```
+### Upgrading a 1.x config
+
+The 1.x settings fail with a message that says what to write instead (`InvalidArgumentException` when the variants or the preview are read, so the file's processing fails with it):
+
+| 1.x | 2.0 |
+| --- | --- |
+| `'preview' => ['frame_at' => '00:00:01', 'variants' => [...]]` | `'variants' => ['preview' => ['type' => 'image', 'frame_at' => '00:00:01', 'variants' => [...]]], 'preview' => 'preview.thumbnail'` |
+| `'preview' => ['page' => 1, ...]` on a document | the same, with `'type' => 'image', 'page' => 1` |
+| `'transcode' => 'variant'` and `$file->playback()` | `'variants' => ['playback']` and `$file->variant('playback')` |
+
+Keeping the 1.x names (`preview`, `playback`) in the new config keeps the rows already generated under them.
 
 ## Text extraction, embeddings and search (RAG)
 
@@ -2075,7 +2155,7 @@ Then opt in per collection with `extract` and `embed`:
 'collections' => [
     'documents' => [
         'disk'         => 'documents',
-        'access'       => 'signed',
+        'access'       => 'private',
         'extract' => true, // run the extractor chain, write {key}.json
         'embed'   => true, // chunk + embed + persist to the ChunkStore
     ],
@@ -2277,17 +2357,16 @@ $content = $file->extractedContent();    // ExtractedContent DTO: fullText, page
 
 ## Access control and authorization
 
-Every collection declares an **access mode** that controls how its files reach the browser. The mode lives in the collection config (see the Configuration section) and is stored on each file as the `access` column, backed by the `EduLazaro\Laracrate\Enums\FileAccess` enum. When you call `$file->url()`, Laracrate resolves the right strategy for you, you never build storage URLs by hand.
+Every collection declares who its files are for: `public` or `private`. It lives in the collection config (see the Configuration section) and is stored on each file as the `access` column, backed by the `EduLazaro\Laracrate\Enums\FileAccess` enum. How a private file reaches the browser is chosen where it is used:
 
-The three modes are:
+| | Public file | Private file | Sensitive or encrypted file |
+| --- | --- | --- | --- |
+| `url()` | `Storage::disk()->url()`, permanent, no checks | a presigned GET straight to the disk (a signed local route on a `local` disk), expiring at `expires` or after `laracrate.urls.signed_ttl` | its `streamUrl()` |
+| `streamUrl()` / `downloadUrl()` | served through PHP | served through PHP: session, `canView` on every request, log | the same |
 
-| Mode | Enum case | How `url()` resolves it | Audit | Use for |
-| --- | --- | --- | --- | --- |
-| `public` | `FileAccess::PUBLIC` | `Storage::disk()->url()`, direct CDN link, no signature | No | Avatars, logos, public marketing assets |
-| `signed` | `FileAccess::SIGNED` | `Storage::disk()->temporaryUrl()`, short-lived presigned GET, cached server-side | No | Private-ish files where a temporary direct link is fine |
-| `stream` | `FileAccess::STREAM` | Signed Laravel route to the package stream controller, the binary is proxied through your app | Yes | Sensitive content, anything that needs per-request checks |
+`$file->url()` delegates to `StorageManager::urlFor()`: `public` calls `GeneratePublicUrlAction`, a sensitive or encrypted file returns its stream route, and any other private file calls `GenerateSignedUrlAction`. The default signed link is cached server-side (config `laracrate.urls.signed_cache_ttl`, default 4 minutes) so a page rendering many files does not issue one presign per file; a link with its own `expires` is signed every time. If a disk is misconfigured or unreachable, the signed action logs a warning and returns `null` instead of throwing, so one broken file does not break the whole page.
 
-`$file->url()` delegates to `StorageManager::urlFor()`, which switches on the access value: `public` calls `GeneratePublicUrlAction`, `stream` calls `GenerateSensitiveStreamUrlAction`, and everything else falls back to `GenerateSignedUrlAction`. Signed URLs are cached server-side (config `laracrate.urls.signed_cache_ttl`, default 4 minutes) so a page rendering many files does not issue one presign per file. If a disk is misconfigured or unreachable, the signed action logs a warning and returns `null` instead of throwing, so one broken file does not break the whole page.
+A signed link is checked once, when it is made: whoever holds it can read the file until it expires. The stream route is checked on every request, so it never needs to expire and a revoked permission takes effect at once.
 
 ### Declaring authorization rules
 
@@ -2343,23 +2422,19 @@ The bridge maps Laravel's canonical abilities to the registry methods: Gate `vie
 
 ## Sensitive content and encryption
 
-For files that must never be served by a direct storage URL, set the collection's access mode to `stream` and mark it `sensitive`. Streamed files are proxied through `EduLazaro\Laracrate\Http\Controllers\StreamFileController`, which re-checks permissions on every request, audits the access, and (when the collection is encrypted) decrypts the binary in memory before sending it. The storage backend URL is never exposed to the client.
+For files that must never be served by a direct storage URL, mark the collection `sensitive` (and `encrypt` to store them encrypted). Their `url()` is the stream route, so they are always proxied through `EduLazaro\Laracrate\Http\Controllers\StreamFileController`, which re-checks permissions on every request, logs the access, and (when the file is encrypted) decrypts the binary in memory before sending it. The storage backend URL is never exposed to the client. Any private file can be served the same way with `streamUrl()`.
 
 ### The per-request stream flow
 
-When `access` is `stream`, `$file->url()` returns a temporary signed route built by `GenerateSensitiveStreamUrlAction`. The controller exposes `stream`, `preview`, `download`, and `link` actions, each routed under the `laracrate.files.*` names (`laracrate.files.stream`, `laracrate.files.preview`, `laracrate.files.download`). Every request runs through `validateAccess()` before a single byte is sent:
+`StreamFileController` has two actions, `stream` (inline, `laracrate.files.stream`) and `download` (attachment, `laracrate.files.download`). The routes sit behind `laracrate.stream.middleware` (`['web', 'auth']`) and carry no signature. Every request runs `validateAccess()` before a single byte is sent: `$file->canView($request->user())`, the same PolicyRegistry logic described in the Access control and authorization section. Failure aborts `403`.
 
-1. **Signature check.** The route must carry a valid Laravel signature (`hasValidSignature()`), otherwise the controller aborts `403`. URLs are signed with a TTL from `laracrate.urls.route_signed_ttl` (default 15 minutes).
-2. **Viewer bind (sensitive only).** If `$file->isSensitive()` and `laracrate.urls.bind_to_user` is on (default `true`), the request must be authenticated, and the `u` query parameter (the user id baked into the URL when it was generated) must match the current `Auth::id()`. A leaked URL pasted into another session aborts `403`. Generation only adds `u` when a user is logged in, see `GenerateSensitiveStreamUrlAction`.
-3. **Policy check.** `$file->canView($request->user())` runs the same PolicyRegistry logic described in the Access control and authorization section. Failure aborts `403`.
-
-Only after all three pass does the controller serve the file. The signed route in your HTML is what makes sensitive links safe to render: even if the page is cached, the link expires on its own and is bound to the viewer.
+Because the policy is checked on every request, these links never expire and can be stored (in a document, an email to a colleague who also has access): a permission revoked later takes effect on the next request.
 
 Files are served with **range support** (`Accept-Ranges: bytes`, `206 Partial Content`), by the stream controller and by the local-disk route alike. Audio and video players depend on it: without ranges a browser cannot seek, cannot start a video whose index sits at the end until the whole file has arrived, and Safari does not play video at all. Only the requested bytes are read, with a ranged GET on S3/R2 or a seek on local disks. An encrypted file is decrypted whole and then sliced.
 
 ### Audit and download tracking
 
-`sendFile()` audits before streaming, once per playback: range requests that do not start at the first byte are not counted again. When the request is a `stream` or `download` (not `preview`) and `laracrate.stream.increment_downloads` is on (default `true`), the file's `downloads_count` is incremented and `last_downloaded_at` is stamped with a quiet save (no events fired). When `laracrate.stream.log_access` is on (default `true`), an info log records the file id, collection, user id, IP, and method. Streamed responses are sent with `Cache-Control: private, no-store, no-cache, must-revalidate` so sensitive bytes are never cached downstream.
+`sendFile()` audits before streaming, once per playback: range requests that do not start at the first byte are not counted again. When the request is a `download` and `laracrate.stream.increment_downloads` is on (default `true`), the file's `downloads_count` is incremented and `last_downloaded_at` is stamped with a quiet save (no events fired); showing a file with `stream` is not a download. When `laracrate.stream.log_access` is on (default `true`), an info log records the file id, collection, user id, IP, and method. Streamed responses are sent with `Cache-Control: private, no-store, no-cache, must-revalidate` so sensitive bytes are never cached downstream.
 
 ### Encryption at rest
 
@@ -2370,7 +2445,7 @@ Set `encrypt => true` on a collection to encrypt the binary before it is written
 
 Encryption requires the binary to be present server-side. If a collection has `encrypt => true` but the upload skipped your server (a direct presigned upload, for example), `CreateFileAction` throws, because there is nothing for PHP to encrypt. Encrypted collections must route the bytes through your app on the way in.
 
-On the way out, the stream controller transparently decrypts: in `sendFile()`, when `$file->is_encrypted` is true it calls `DecryptFileAction::create()->run(['file' => $file])`, otherwise it reads the raw object. Encryption pairs naturally with `access => stream`, since the binary has to pass through your app to be decrypted anyway.
+On the way out, the stream controller transparently decrypts: in `sendFile()`, when `$file->is_encrypted` is true it calls `DecryptFileAction::create()->run(['file' => $file])`, otherwise it reads the raw object. An encrypted file never gets a direct link: its `url()` is the stream route, since the binary has to pass through your app to be decrypted anyway.
 
 ### Watermarks are baked in, not applied at stream time
 
@@ -2524,7 +2599,7 @@ It aggregates top-level files (no `parent_id`) per `(fileable_type, fileable_id)
 
 Laracrate ships an **optional** Livewire UI layer. The core (models, storage, pipeline, HTTP endpoints) works without Livewire, so you can ignore this section entirely and build your own front end against the methods in the "Working with files from your models" section. If you do use Livewire, these components wire the model trait, collection config, and upload flow together for you.
 
-The components register only when Livewire is installed (`registerLivewireComponents()` no-ops otherwise). Each one resolves a Blade theme at render time, so the look is fully swappable.
+The components register only when Livewire is installed (`registerLivewireComponents()` no-ops otherwise). There is one view per family, and the look is CSS: import `resources/css/laracrate.css` once (see "Themes and customising").
 
 Minimal example: a single-file uploader for a user avatar.
 
@@ -2532,35 +2607,36 @@ Minimal example: a single-file uploader for a user avatar.
 <livewire:laracrate-uploader :model="$user" collection="avatar" />
 ```
 
-### The six components
+### The three components
 
-All six are registered in `LaracrateServiceProvider` with the tag names below. They split into two families: **card uploaders** (single file, in-place preview) and **dropzones** (presigned direct upload to R2/S3, see the "Upload modes" and "HTTP endpoints" sections). Each family has an instant variant and a deferred variant. Deferred means selecting a file stages it for review and only persists when the user confirms.
+All three are registered in `LaracrateServiceProvider`. They split into two families: the **card uploader** (single file, in-place preview) and the **dropzones** (presigned direct upload to R2/S3, see the "Upload modes" and "HTTP endpoints" sections).
 
-| Tag | Class | Files | Behavior | Use case |
-|-----|-------|-------|----------|----------|
-| `laracrate-uploader` | `LaracrateUploader` | single | Instant: selecting a file calls `setFile()` immediately | Avatar, logo, cover image |
-| `laracrate-uploader-deferred` | `LaracrateUploaderDeferred` | single | Deferred: preview, then `submit()` to persist or `cancel()` to discard | Same as above when you want an explicit confirm step |
-| `laracrate-dropzone` | `LaracrateDropzone` | multiple | Instant direct upload per file, fires per-file and batch events | Galleries, document libraries |
-| `laracrate-dropzone-deferred` | `LaracrateDropzoneDeferred` | multiple | Deferred: queue files, review, then upload the whole batch. Supports file slots and an integrated slot picker | Forms where files are tied to slots or categories |
-| `laracrate-dropzone-single` | `LaracrateDropzoneSingle` | single | Instant direct upload, one file, in-place preview | One large file (a video, a PDF) too big for the card uploader |
-| `laracrate-dropzone-single-deferred` | `LaracrateDropzoneSingleDeferred` | single | Deferred single direct upload, in-place preview | Same, with an explicit confirm step |
+| Tag | Class | Files | Use case |
+|-----|-------|-------|----------|
+| `laracrate-uploader` | `LaracrateUploader` | single, replaces the current one | Avatar, logo, cover image |
+| `laracrate-dropzone` | `LaracrateDropzone` | multiple, with per-file and batch events, file slots and a slot picker | Galleries, document libraries, forms where files are tied to slots |
+| `laracrate-dropzone-single` | `LaracrateDropzoneSingle` | single, replaces the current one | One large file (a video, a PDF) too big for the card uploader |
 
-The dropzones upload straight to your disk with a presigned PUT and the binary never touches PHP. `laracrate-uploader` sends the file through PHP (no CORS needed on the bucket, and the only way an `encrypt` collection can be uploaded). Both go through the shared upload queue, so they keep uploading after a `wire:navigate`: see "Upload grants and the upload tray". `laracrate-uploader-deferred` still stages the file with Livewire's temporary upload and saves it on `submit()`; leaving before submitting saves nothing, by design. Pick the dropzone variants for large files.
+Each one uploads as soon as a file is picked, or with `:deferred="true"` stages it for review and only persists when the user confirms. The dropzones upload straight to your disk with a presigned PUT and the binary never touches PHP. `laracrate-uploader` sends the file through PHP (no CORS needed on the bucket, and the only way an `encrypt` collection can be uploaded). Both go through the shared upload queue, so they keep uploading after a `wire:navigate`: see "Upload modes, grants and the upload tray". The deferred uploader stages the file with Livewire's temporary upload instead and saves it on `submit()`; leaving before submitting saves nothing, by design. Pick the dropzones for large files.
+
+2.0 removes the 1.x tags `laracrate-uploader-deferred`, `laracrate-dropzone-deferred` and `laracrate-dropzone-single-deferred`: use the component without the suffix and `:deferred="true"`.
 
 ### Props
 
-Both card uploaders accept the same props:
+The card uploader accepts:
 
 | Prop | Type | Default | Purpose |
 |------|------|---------|---------|
 | `model` | Eloquent model | required | The model the file belongs to (must use the `HasFiles` trait) |
 | `collection` | string | required | Collection name as declared on the model |
 | `variant` | string | `null` | Variant to show in the preview (falls back to the master, then the collection placeholder) |
-| `theme` | string | `null` | Theme name (falls back to `laracrate.ui.default_theme`) |
 | `layout` | string | `row` | `row` or `portrait` |
-| `rounded` | string | `null` | Override preview rounding: `none`, `sm`, `md`, `lg`, `xl`, `2xl`, `3xl`, `full` |
+| `rounded` | string | `null` | Rounds the preview (an avatar in a circle with `full`): `none`, `sm`, `md`, `lg`, `xl`, `2xl`, `3xl`, `full` |
+| `deferred` | bool | `false` | Preview the file, then `submit()` to persist or `cancel()` to discard |
 
-The dropzone components share `model`, `collection`, and `theme`, plus their own props. Common ones across the dropzones: `contextKey` (an opaque identifier echoed back in the `laracrate-file-uploaded` event so you can route a file when several widgets share a page), `folderId` (target folder, see the "Folders" section), `persistQueue`, and `maxFiles`. `LaracrateDropzoneDeferred` adds slot support (`slots`, `slotOptions`, `slotLabel`, `slotPlaceholder`, `slotOptional`, `selectedSlotId`), a `creator` override (`creator`, or `creatorType` plus `creatorId`), `hideActions`, and a `layout` of `grid` or `list`. The single dropzones add `hideExisting`; the single deferred adds `hideActions`. See the "File slots" section for slot semantics.
+Every component also takes the appearance props of "Themes and customising" (`theme`, `rounded`, `bordered`, `shadow`, `size`, `class`, `style`) and `upload-mode` (`presign` or `grant`, see "Upload modes, grants and the upload tray").
+
+The dropzones share `model`, `collection` and `deferred`, plus their own props. Common ones: `contextKey` (an opaque identifier echoed back in the `laracrate-file-uploaded` event so you can route a file when several widgets share a page), `folderId` (target folder, see the "Folders" section), `persistQueue`, `maxFiles`, and `hideActions` (a deferred one without its own buttons, started by a `laracrate-start-batch` event). `laracrate-dropzone` adds slot support (`slots`, `slotOptions`, `slotLabel`, `slotPlaceholder`, `slotOptional`, `selectedSlotId`), a `creator` override (`creator`, or `creatorType` plus `creatorId`), and a `layout` of `grid` or `list`. `laracrate-dropzone-single` adds `hideExisting`. See the "File slots" section for slot semantics.
 
 ### Immediate vs deferred
 
@@ -2573,9 +2649,10 @@ Instant uploader, persists on selection:
 Deferred uploader, shows a preview and waits for the user to confirm:
 
 ```blade
-<livewire:laracrate-uploader-deferred
+<livewire:laracrate-uploader
     :model="$user"
     collection="avatar"
+    :deferred="true"
     theme="studio"
     layout="portrait"
 />
@@ -2584,14 +2661,26 @@ Deferred uploader, shows a preview and waits for the user to confirm:
 A deferred multi-file dropzone, queue then batch upload:
 
 ```blade
-<livewire:laracrate-dropzone-deferred :model="$organization" collection="gallery" theme="studio" />
+<livewire:laracrate-dropzone :model="$organization" collection="gallery" :deferred="true" theme="studio" />
 ```
 
-All components dispatch browser events you can listen for: `laracrate-file-uploaded` (per file, with `collection`, `fileId`, and `contextKey`), `laracrate-file-deleted` or `laracrate-file-removed`, and on the dropzones `laracrate-batch-completed` (with `ok` and `error` counts) and `laracrate-file-rejected` (with `collection`, `reason` and `fileName`) when a file is refused by the collection or a slot quota. The upload ones are sent only while the page that started the upload is still open: the page reached after a `wire:navigate` may listen for the same collection with another meaning. See "Upload grants and the upload tray" for the events that always fire, and the "Events" section for the server-side events fired during processing.
+All components dispatch browser events you can listen for: `laracrate-file-uploaded` (per file, with `collection`, `fileId`, and `contextKey`), `laracrate-file-deleted` or `laracrate-file-removed`, and on the dropzones `laracrate-batch-completed` (with `ok` and `error` counts) and `laracrate-file-rejected` (with `collection`, `reason` and `fileName`) when a file is refused by the collection or a slot quota. The upload ones are sent only while the page that started the upload is still open: the page reached after a `wire:navigate` may listen for the same collection with another meaning. See "Upload modes, grants and the upload tray" for the events that always fire, and the "Events" section for the server-side events fired during processing.
 
-### Upload grants and the upload tray
+### Upload modes, grants and the upload tray
 
-Every upload component builds an **upload grant** when it mounts: its target (model, collection, slots, creator, owner, folder, context key, whether it replaces the current file) and how the bytes travel, bound to the signed in user and valid for 24 hours. The browser only gets an encrypted token (`$wire.uploadGrant`) it can neither read nor alter, and the upload endpoints (`sign`, `confirm`, `receive`) take nothing else: the disk, the model and the object key never come from the request. A direct upload gets a receipt for the `temp/` key it was signed, and only that grant can confirm it; the size checked is the one the bucket holds, not the one the browser declared.
+The upload components work in one of two modes, `presign` by default (`laracrate.uploads.mode`, optionally `LARACRATE_UPLOAD_MODE`), and each one can pick its own:
+
+```blade
+<livewire:laracrate-dropzone :model="$case" collection="documents" />                     {{-- presign --}}
+<livewire:laracrate-dropzone :model="$case" collection="documents" upload-mode="grant" />
+```
+
+- **presign**: when the user picks files, the component signs them right there, with the collection and slot rules, and the server keeps where each signed key goes. The queue puts the bytes and registers each object with its key alone (`register`); the browser never gets a grant nor names a target. The whole pick is signed at once, so `laracrate.uploads.presign_minutes` (120) is how long a long batch has.
+- **grant**: the component hands the browser an upload grant (below) and the queue signs each file with it when its turn comes.
+
+Either way the uploads live in the page's queue and keep going after a `wire:navigate`. Presign only puts bytes straight in the bucket, so a component that uploads through PHP (an encrypted collection, the single file `laracrate-uploader`) always uses its grant. A key is registered once, only by the user it was signed for and in the same browser session, and with the size the bucket holds.
+
+In grant mode, an upload component builds an **upload grant** when it mounts: its target (model, collection, slots, creator, owner, folder, context key, whether it replaces the current file) and how the bytes travel, bound to the signed in user (their class and id, so a client #5 is not a user #5) and to the browser session it was issued in, and valid for 24 hours. A token copied out of the page does not work in another browser, even with the same account. The browser only gets an encrypted token (`$wire.uploadGrant`) it can neither read nor alter, and the upload endpoints (`sign`, `confirm`, `receive`) take nothing else: the disk, the model and the object key never come from the request. A direct upload gets a receipt for the `temp/` key it was signed, and only that grant can confirm it; the size checked is the one the bucket holds, not the one the browser declared.
 
 The uploads themselves live in one queue for the whole page, `window.Laracrate.uploads` (an Alpine store when Alpine is there), not in the component. That is what lets them survive a `wire:navigate`: the queue keeps going, and a component mounted again for the same target (`$wire.uploadScope`) shows its uploads where they are. Put the tray in your layout to show them all, inside `@persist` so it is not re-created on each navigation:
 
@@ -2603,7 +2692,7 @@ The uploads themselves live in one queue for the whole page, `window.Laracrate.u
 @endauth
 ```
 
-Pass `['position' => 'bottom: 3rem; right: 1rem;']` to move it. It uses its own CSS (your Tailwind build does not scan the package views); the colours are the `--lc-tray-*` variables on `.lc-tray`. A reload, closing the tab or a link without `wire:navigate` still ends the uploads; while any is running the browser asks first.
+Pass `['position' => 'bottom: 3rem; right: 1rem;']` to move it. It uses its own CSS (your Tailwind build does not scan the package views); the colours are the `--wire-laracrate-tray-*` variables on `.laracrate-tray`. A reload, closing the tab or a link without `wire:navigate` still ends the uploads; while any is running the browser asks first.
 
 Your own front end can use the same queue with a grant built on the server:
 
@@ -2618,6 +2707,16 @@ $grant = UploadGrant::for($organization, 'drive', folderId: $folder?->id);
 Laracrate.uploads.add(input.files, { grant, scope })
 window.addEventListener('laracrate:uploaded', (e) => { /* e.detail: scope, fileId, slug, collection, contextKey, name */ })
 ```
+
+A grant can cap how many files it signs with `maxFiles`, counted on the server by `sign`, `receive` and the multipart `init`. A front end that knows how many files were dropped issues the grant for exactly that batch, so it is no good for another one later:
+
+```php
+$grant = UploadGrant::for($organization, 'drive', folderId: $folder?->id, maxFiles: $count);
+```
+
+The queue sends an id with each file (`upload`), so retrying one does not count as another; a request without it always counts as a new file. Without `maxFiles` there is no limit. The components do not set it: their `max-files` is how many files the target holds, not how many uploads a grant signs.
+
+Grants carry a version, and updating to one that changes it invalidates the grants of pages already open: their next upload asks to reload the page.
 
 A page that shows its uploads itself (a chat composer with its attachments) passes `tray: false` to `add()`, and the tray leaves them out.
 
@@ -2641,9 +2740,32 @@ Open a file with `Laracrate.viewer.open(slug)`, or give any element `data-laracr
 
 Elements that share a `data-laracrate-gallery="name"` form a gallery: the viewer shows "2 of 5" and moves through them in page order with its arrows and the arrow keys (not while the person types in a field). Hidden elements count too, so a grid that draws four images with "+N" can still reach the rest. From JavaScript: `Laracrate.viewer.open(slug, { gallery: [slug, ...] })`.
 
-The page never holds a link to the file. The viewer asks `GET /laracrate/files/{slug}/view` when it opens, which answers with the name, the type and a link made at that moment, after the file's own view policy. A signed link may run out while a long recording plays; the viewer then asks again, once, and carries on at the same second. Images show the `display` variant (`laracrate.viewer.image_variant`) and videos their `playback` copy, each falling back to the file itself. Other types answer 422.
+The page never holds a link to the file. The viewer asks `GET /laracrate/files/{slug}/viewer` (`laracrate.files.viewer`) when it opens, which answers with the name, the type and a link made at that moment (`url()`), after the file's own view policy. A signed link may run out while a long recording plays; the viewer then asks again, once, and carries on at the same second. Images (whatever their mode) show the variant in `laracrate.viewer.image_variant` (`display`) and videos the one in `laracrate.viewer.video_variant` (none by default), each falling back to the file itself. Other types answer 422, unless a preview is registered for their MIME type.
 
-Pass `['position' => '...']` to move it; the colours are the `--lc-viewer-*` variables. Next to the upload tray, stack both in one container of your layout.
+```php
+'viewer' => [
+    'image_variant' => 'display',
+    'video_variant' => null,       // e.g. 'web', a copy declared in the video variants
+],
+```
+
+#### Previews for other types
+
+A package or the app can show other files in the viewer as HTML: register a resolver for their MIME type on `ViewerRegistry`, usually from a service provider's `boot()`:
+
+```php
+use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Support\ViewerRegistry;
+
+app(ViewerRegistry::class)->html('application/x-note', fn (File $file) => [
+    'html' => Note::forFile($file)->html,         // what the card shows
+    'edit' => route('notes.edit', $file->slug),   // optional: an "Edit" button
+]);
+```
+
+The resolver runs after the view policy and may return `null` to fall back to the 422. The HTML goes into a sandboxed `iframe` (no scripts, no access to the page), small and scrolling in the card and readable at full size. `edit` adds a pencil that follows the link with `wire:navigate`; `download`, if given, a download button. `laracrate-docs` registers its documents this way.
+
+Pass `['position' => '...']` to move it; the colours are the `--wire-laracrate-viewer-*` variables. Next to the upload tray, stack both in one container of your layout.
 
 ### Handoff: editing a file in another site
 
@@ -2676,32 +2798,64 @@ Include `laracrate::handoff` once in the layout, with the name the editor shows 
 
 An editor only saves to `https` (or `localhost` while developing). On any other address, `open()` still works but offers nowhere to save.
 
-### Themes and layouts
+### Themes and customising
 
-There are **11 themes**: `default`, `brutalist`, `material`, `ios`, `glassmorphism`, `neon`, `minimal`, `neumorphism`, `chatgpt`, `claude`, and `studio`. Each card-uploader theme ships in **2 layouts**, `row` and `portrait`, as `resources/views/uploader/themes/{theme}/{row,portrait}.blade.php`. The dropzone families resolve a single Blade per theme (for example `dropzone/themes/{theme}.blade.php`) and fall back to `default` when a theme has no matching view.
+The look of every component is one stylesheet. Import it once, next to the other wire* packages:
 
-Set the project-wide default in config (the `theme` prop overrides it per component):
-
-```php
-// config/laracrate.php
-'ui' => [
-    'default_theme' => env('LARACRATE_THEME', 'default'),
-],
+```css
+/* resources/css/app.css */
+@import '../../vendor/edulazaro/laracrate/resources/css/laracrate.css';
 ```
 
-```env
-LARACRATE_THEME=studio
+**Themes.** `default`, `studio`, `minimal`, `material`, `ios`, `glassmorphism`, `neon`, `neumorphism`, `brutalist`, `claude` and `chatgpt`. A component without `theme=` takes the theme of its page, the `data-wire-theme` attribute the wire* packages put on an ancestor (usually `<html>`); without one, it looks like `default`. There is no theme setting in the config, as in the rest of the wire* family.
+
+```blade
+<html data-wire-theme="studio">                      {{-- the whole page --}}
+<livewire:laracrate-dropzone ... theme="minimal" />  {{-- this one --}}
 ```
 
-### Customizing views
+**A theme of your own** is CSS, no views to publish. A theme only sets variables; everything you leave out keeps the default. The general ones are the wire* family's, so one theme styles Laracrate, the tables and the modals together; the `--wire-laracrate-*` ones are for Laracrate only:
 
-Publish the package views to override any theme or write a new one:
-
-```bash
-php artisan vendor:publish --tag=laracrate-views
+```css
+[data-wire-theme="acme"] {
+    --wire-font: 'Instrument Sans', sans-serif;
+    --wire-accent: #ff4f38;
+    --wire-radius: 16px;
+    --wire-laracrate-drop-border-color: #1a1719;
+}
 ```
 
-The views land in `resources/views/vendor/laracrate/`. Edit a theme in place, or add a new theme by creating `uploader/themes/{name}/row.blade.php` and `uploader/themes/{name}/portrait.blade.php` (create matching files under `dropzone/themes/`, `dropzone-single/themes/`, etc. if you want the new theme available to those components too). Run `php artisan view:clear` after editing Blade files. The view contract (the variables each theme receives, such as `$config`, `$file`, `$state`, `$previewUrl`, `$acceptAttr`, `$maxSizeKb`, `$pollMs`, `$roundedClass`) is the same for every theme; copy an existing theme as your starting point.
+**One rendering.** Parameters on the tag change only that rendering:
+
+| Prop | Values | Effect |
+|---|---|---|
+| `theme` | a theme name | this component's theme |
+| `rounded` | `none`, `sm`, `md`, `lg`, `xl`, `2xl`, `3xl`, `full` | the radius (in the uploaders, the preview's) |
+| `bordered` | `false` | no borders |
+| `shadow` | `true`, `false` | a soft shadow, or none whatever the theme says |
+| `size` | `sm`, `md`, `lg` | scales text, spacing and icons together |
+| `class` | classes | on the root, to target this one from your CSS |
+| `style` | inline style | on the root, e.g. `--wire-laracrate-drop-padding: 1rem` |
+
+```blade
+<livewire:laracrate-dropzone :model="$case" collection="documents"
+    theme="studio" rounded="none" :bordered="false" size="sm"
+    style="--wire-laracrate-drop-padding: 1rem" />
+```
+
+**The variables.** Each one falls back to its wire* family counterpart where there is one (`--wire-font`, `--wire-text`, `--wire-text-muted`, `--wire-accent`, `--wire-radius`), then to the `default` theme.
+
+| Group | Variables (`--wire-laracrate-…`) |
+|---|---|
+| General | `font`, `mono`, `text`, `text-muted`, `text-faint`, `accent`, `accent-hover`, `accent-text`, `danger`, `bg`, `border-color`, `border-width`, `radius`, `shadow` |
+| Drop area | `drop-bg`, `drop-hover-bg`, `drop-border-width`, `drop-border-style`, `drop-border-color`, `drop-hover-border-color`, `drop-radius`, `drop-padding`, `drop-align`, `drop-items`, `drop-shadow`, `drop-hover-shadow`, `drop-hover-transform`, `drop-backdrop`, `dragover-bg`, `dragover-border-color`, `dragover-shadow`, `dragover-transform` |
+| Icon | `icon-display`, `icon-box`, `icon-size`, `icon-padding`, `icon-bg`, `icon-color`, `icon-border`, `icon-radius`, `icon-shadow`, `icon-filter`, `icon-gap` |
+| Text | `title-size`, `title-weight`, `title-color`, `title-font`, `title-transform`, `title-spacing`, the same for `subtitle-*`, `hint-size`, `hint-color`, `hint-font`, `hint-transform`, `hint-spacing`, the `label-*` ones (status and eyebrows, plus `label-style`), `name-weight` |
+| Button and link | `button-bg`, `button-hover-bg`, `button-text`, `button-border-width`, `button-border-color`, `button-radius`, `button-shadow`, `button-hover-shadow`, `button-hover-transform`, `button-size`, `button-weight`, `button-transform`, `button-spacing`, `button-backdrop`, `link-color`, `link-hover-color`, `link-size`, `link-font`, `link-transform`, `link-spacing`, `link-decoration` |
+| Progress | `progress-bg`, `progress-fill`, `progress-height`, `progress-radius`, `progress-border`, `progress-glow` |
+| Files | `tile-radius`, `tile-border`, `tile-bg`, `tile-placeholder-bg`, `tile-placeholder-color`, `tile-name-bg`, `tile-name-font`, `overlay-uploading`, `overlay-done`, `overlay-error`, `card-bg`, `card-border`, `card-radius`, `card-shadow`, `media-bg`, `preview-radius`, `icon-button-border`, `icon-button-color`, `icon-button-radius`, `icon-button-bg` |
+
+Every part has a stable class (`.laracrate-drop`, `.laracrate-title`, `.laracrate-button`, `.laracrate-tile`, `.laracrate-card`…), and states are `data-state` (`pending`, `uploading`, `done`, `error`) and `is-*` classes (`is-dragover`), for whatever variables do not reach.
 
 ## Localization
 
@@ -2921,6 +3075,7 @@ public function effectiveOwner(): ?Model;           // explicit owner, else crea
 // Variant navigation (dot notation)
 public function variant(string $path): self;        // falls back to nearest ancestor, never null
 public function variantOrFail(string $path): self;  // throws RuntimeException if a link is missing
+public function preview(): ?self;                   // the variant the type's `preview` names, or null
 public function createVariant(string $variantName, array $overrides): self;
 
 // Storage key helpers (path stores the full object key)
@@ -2929,13 +3084,12 @@ public function siblingKey(string $newName): string;
 public function variantKey(string $newName): string;
 
 // URLs and rendering
-public function url(?string $forceType = null): ?string;            // public/signed/stream per access
+public function url(?string $forceType = null, ?\DateTimeInterface $expires = null): ?string; // direct link
 public function placeholderFor(string $type): string;
 public function getLinkAttribute(): ?string;        // $file->link, alias of url()
-public function getPreviewLinkAttribute(): string;  // $file->preview_link, thumbnail or placeholder
-public function streamUrl(): string;                // signed package route, TTL config laracrate.urls.route_signed_ttl
-public function downloadUrl(): string;
-public function previewUrl(): string;
+public function getPreviewLinkAttribute(): string;  // $file->preview_link: preview()'s image link, or placeholder
+public function streamUrl(): string;                // through PHP, inline; session + canView, never expires
+public function downloadUrl(): string;              // through PHP, attachment, counted
 
 // Folder
 public function moveToFolder(?Folder $folder): void;
@@ -2953,7 +3107,7 @@ public function createdByUser(): bool;
 public function createdByAgent(): bool;
 public function createdAutomatically(): bool;
 public function isMultiTenant(): bool;
-public function isImage(): bool;
+public function isImage(): bool;                    // type image, whatever its mode
 public function isVideo(): bool;
 public function isAudio(): bool;
 public function isDocument(): bool;
@@ -2997,7 +3151,7 @@ $file->makeDefault()->publish();
 `EduLazaro\Laracrate\Services\StorageManager`. The package facade over `Storage::disk()`. Resolve it with `app(StorageManager::class)`. See the Upload modes and Multi-tenancy, buckets and usage sections for context.
 
 ```php
-public function urlFor(File $file): ?string;        // public/signed/stream based on $file->access
+public function urlFor(File $file, ?\DateTimeInterface $expires = null): ?string; // see File::url()
 public function diskFor(File $file): \Illuminate\Contracts\Filesystem\Filesystem;
 public function resolveDisk(string $disk): \Illuminate\Contracts\Filesystem\Filesystem;   // honors 'tb:{id}'
 public function configFor(string $disk): array;
@@ -3103,7 +3257,7 @@ When you are done, remove the container with `docker rm -f laracrate-mysql`.
 
 The items below are planned or under consideration. They are distilled from the package backlog and may change. Nothing here is a commitment to ship.
 
-- **Deferred uploader Livewire component** (`laracrate-deferred-uploader`): select and preview a file, then commit to storage only on an explicit confirm, with a discard path. Useful for crop UIs, multi-step forms, and avoiding wasted uploads.
+- **Crop step for the deferred uploader**: crop or rotate the staged image before `submit()` stores it.
 - **Library uploader Livewire component** (`laracrate-library-uploader`): multi-file collections with a default toggle, drag-and-drop reorder, and per-row delete, the pattern apps build by hand today.
 - **`tile` and `banner` layouts**: a square compact layout with hover overlay controls, and a wide cover layout (16:9 or 21:9) for heroes and OG images, both across all uploader themes.
 - **Sync processing in dev**: an option to run the processing pipeline inline when there is no queue worker (or when `queue.default` is `sync`), so a freshly uploaded file is not stuck showing its unoptimized original.

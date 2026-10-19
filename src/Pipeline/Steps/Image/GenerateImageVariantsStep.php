@@ -6,7 +6,7 @@ use EduLazaro\Laracrate\Actions\Files\Image\GenerateImageVariantsAction;
 use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\Variants;
 
 /**
  * Pipeline step that generates configured image variants (resized derivatives).
@@ -41,7 +41,7 @@ class GenerateImageVariantsStep implements FileActionInterface
     /** Resolves the variants configuration for the file's collection. */
     protected function variantsConfig(File $file): array
     {
-        $config = app(StorageManager::class)->getTypeConfig($file->collection, 'image', $file->fileable_type);
+        $config = Variants::typeConfig($file);
 
         return $config['variants'] ?? [];
     }

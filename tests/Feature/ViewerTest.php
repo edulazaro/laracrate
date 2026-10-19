@@ -5,6 +5,7 @@ namespace EduLazaro\Laracrate\Tests\Feature;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
 use EduLazaro\Laracrate\Support\PolicyRegistry;
+use EduLazaro\Laracrate\Support\ViewerRegistry;
 use EduLazaro\Laracrate\Tests\Support\HasFilesTestModel;
 use EduLazaro\Laracrate\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -51,7 +52,7 @@ class ViewerTest extends TestCase
         $image = $this->file(FileType::IMAGE, 'image/jpeg', ['title' => 'Front page']);
         $this->file(FileType::IMAGE, 'image/webp', ['parent_id' => $image->id, 'variant' => 'display', 'path' => 'test/display']);
 
-        $this->getJson(route('laracrate.files.view', $image->slug))
+        $this->getJson(route('laracrate.files.viewer', $image->slug))
             ->assertOk()
             ->assertJson(['slug' => $image->slug, 'name' => 'Front page', 'type' => 'image', 'mime' => 'image/webp'])
             ->assertJsonPath('url', fn (string $url) => str_contains($url, 'test/display'))
@@ -62,28 +63,55 @@ class ViewerTest extends TestCase
     {
         $audio = $this->file(FileType::AUDIO, 'audio/mpeg');
 
-        $this->getJson(route('laracrate.files.view', $audio->slug))
+        $this->getJson(route('laracrate.files.viewer', $audio->slug))
             ->assertOk()
             ->assertJson(['type' => 'audio', 'mime' => 'audio/mpeg', 'name' => 'Hearing.mpeg'])
             ->assertJsonPath('url', fn (string $url) => str_contains($url, $audio->path));
     }
 
-    public function test_a_video_plays_its_playback_copy(): void
+    public function test_a_video_plays_the_configured_variant(): void
     {
+        config()->set('laracrate.viewer.video_variant', 'web');
         $video = $this->file(FileType::VIDEO, 'video/quicktime');
-        $this->file(FileType::VIDEO, 'video/mp4', ['parent_id' => $video->id, 'variant' => 'playback', 'path' => 'test/playback']);
+        $this->file(FileType::VIDEO, 'video/mp4', ['parent_id' => $video->id, 'variant' => 'web', 'path' => 'test/web']);
 
-        $this->getJson(route('laracrate.files.view', $video->slug))
+        $this->getJson(route('laracrate.files.viewer', $video->slug))
             ->assertOk()
             ->assertJson(['type' => 'video', 'mime' => 'video/mp4'])
-            ->assertJsonPath('url', fn (string $url) => str_contains($url, 'test/playback'));
+            ->assertJsonPath('url', fn (string $url) => str_contains($url, 'test/web'));
+    }
+
+    public function test_without_a_configured_variant_a_video_plays_itself(): void
+    {
+        $video = $this->file(FileType::VIDEO, 'video/mp4');
+        $this->file(FileType::VIDEO, 'video/mp4', ['parent_id' => $video->id, 'variant' => 'web', 'path' => 'test/web']);
+
+        $this->getJson(route('laracrate.files.viewer', $video->slug))
+            ->assertOk()
+            ->assertJsonPath('url', fn (string $url) => str_contains($url, $video->path));
     }
 
     public function test_other_files_are_not_shown(): void
     {
         $pdf = $this->file(FileType::DOCUMENT, 'application/pdf');
 
-        $this->getJson(route('laracrate.files.view', $pdf->slug))->assertStatus(422);
+        $this->getJson(route('laracrate.files.viewer', $pdf->slug))->assertStatus(422);
+    }
+
+    public function test_a_file_with_a_registered_preview_shows_as_html(): void
+    {
+        $note = $this->file(FileType::DOCUMENT, 'application/x-note', ['title' => 'Minutes']);
+        app(ViewerRegistry::class)->html('application/x-note', fn (File $file) => [
+            'html' => '<h1>Minutes</h1>',
+            'edit' => '/notes/' . $file->slug,
+        ]);
+
+        $this->getJson(route('laracrate.files.viewer', $note->slug))
+            ->assertOk()
+            ->assertJson([
+                'type' => 'html', 'name' => 'Minutes', 'html' => '<h1>Minutes</h1>',
+                'edit' => '/notes/' . $note->slug, 'url' => null, 'download' => null,
+            ]);
     }
 
     public function test_only_who_may_see_the_file_gets_a_link(): void
@@ -91,6 +119,6 @@ class ViewerTest extends TestCase
         $audio = $this->file(FileType::AUDIO, 'audio/mpeg', ['access' => 'signed']);
         app(PolicyRegistry::class)->viewable('test_owner', fn () => false);
 
-        $this->getJson(route('laracrate.files.view', $audio->slug))->assertForbidden();
+        $this->getJson(route('laracrate.files.viewer', $audio->slug))->assertForbidden();
     }
 }

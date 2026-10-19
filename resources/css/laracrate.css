@@ -1,0 +1,733 @@
+/* =====================================================================
+   Laracrate · the upload components (dropzones, single file, uploader)
+   and every theme, in one file. Import it once from your app.css:
+
+     @import '../../vendor/edulazaro/laracrate/resources/css/laracrate.css';
+
+   A theme is [data-wire-theme="name"] on the component or on any ancestor
+   (the wire* packages put it on <html>), and it only sets variables:
+
+     [data-wire-theme="mine"] { --wire-laracrate-accent: #ff4f38; --wire-laracrate-radius: 0; }
+
+   Every --wire-laracrate-* variable falls back to the wire* family one when
+   there is one (--wire-accent, --wire-font, --wire-text, --wire-text-muted,
+   --wire-radius) and then to the default theme. One component on its own:
+   style="--wire-laracrate-radius: 0", or a class of yours that sets them.
+   ===================================================================== */
+
+/* An element that names a theme starts from the defaults: a theme inside another
+   does not inherit what the outer one set. */
+[data-wire-theme] {
+    --wire-laracrate-font: initial; --wire-laracrate-mono: initial;
+    --wire-laracrate-text: initial; --wire-laracrate-text-muted: initial; --wire-laracrate-text-faint: initial;
+    --wire-laracrate-accent: initial; --wire-laracrate-accent-hover: initial; --wire-laracrate-accent-text: initial;
+    --wire-laracrate-danger: initial; --wire-laracrate-bg: initial;
+    --wire-laracrate-border-color: initial; --wire-laracrate-border-width: initial;
+    --wire-laracrate-radius: initial; --wire-laracrate-shadow: initial;
+    --wire-laracrate-drop-bg: initial; --wire-laracrate-drop-hover-bg: initial;
+    --wire-laracrate-drop-border-width: initial; --wire-laracrate-drop-border-style: initial;
+    --wire-laracrate-drop-border-color: initial; --wire-laracrate-drop-hover-border-color: initial;
+    --wire-laracrate-drop-radius: initial; --wire-laracrate-drop-padding: initial;
+    --wire-laracrate-drop-align: initial; --wire-laracrate-drop-items: initial;
+    --wire-laracrate-drop-shadow: initial; --wire-laracrate-drop-hover-shadow: initial;
+    --wire-laracrate-drop-hover-transform: initial; --wire-laracrate-drop-backdrop: initial;
+    --wire-laracrate-dragover-bg: initial; --wire-laracrate-dragover-border-color: initial;
+    --wire-laracrate-dragover-shadow: initial; --wire-laracrate-dragover-transform: initial;
+    --wire-laracrate-icon-display: initial; --wire-laracrate-icon-box: initial; --wire-laracrate-icon-size: initial;
+    --wire-laracrate-icon-padding: initial; --wire-laracrate-icon-bg: initial; --wire-laracrate-icon-color: initial;
+    --wire-laracrate-icon-border: initial; --wire-laracrate-icon-radius: initial;
+    --wire-laracrate-icon-shadow: initial; --wire-laracrate-icon-filter: initial; --wire-laracrate-icon-gap: initial;
+    --wire-laracrate-title-size: initial; --wire-laracrate-title-weight: initial; --wire-laracrate-title-color: initial;
+    --wire-laracrate-title-font: initial; --wire-laracrate-title-transform: initial; --wire-laracrate-title-spacing: initial;
+    --wire-laracrate-subtitle-size: initial; --wire-laracrate-subtitle-weight: initial; --wire-laracrate-subtitle-color: initial;
+    --wire-laracrate-subtitle-font: initial; --wire-laracrate-subtitle-transform: initial; --wire-laracrate-subtitle-spacing: initial;
+    --wire-laracrate-hint-size: initial; --wire-laracrate-hint-color: initial; --wire-laracrate-hint-font: initial;
+    --wire-laracrate-hint-transform: initial; --wire-laracrate-hint-spacing: initial;
+    --wire-laracrate-label-size: initial; --wire-laracrate-label-weight: initial; --wire-laracrate-label-color: initial;
+    --wire-laracrate-label-font: initial; --wire-laracrate-label-transform: initial;
+    --wire-laracrate-label-spacing: initial; --wire-laracrate-label-style: initial; --wire-laracrate-name-weight: initial;
+    --wire-laracrate-button-bg: initial; --wire-laracrate-button-hover-bg: initial; --wire-laracrate-button-text: initial;
+    --wire-laracrate-button-border-width: initial; --wire-laracrate-button-border-color: initial;
+    --wire-laracrate-button-radius: initial; --wire-laracrate-button-shadow: initial; --wire-laracrate-button-hover-shadow: initial;
+    --wire-laracrate-button-hover-transform: initial; --wire-laracrate-button-size: initial; --wire-laracrate-button-weight: initial;
+    --wire-laracrate-button-transform: initial; --wire-laracrate-button-spacing: initial; --wire-laracrate-button-backdrop: initial;
+    --wire-laracrate-link-color: initial; --wire-laracrate-link-hover-color: initial; --wire-laracrate-link-size: initial;
+    --wire-laracrate-link-font: initial; --wire-laracrate-link-transform: initial; --wire-laracrate-link-spacing: initial;
+    --wire-laracrate-link-decoration: initial;
+    --wire-laracrate-progress-bg: initial; --wire-laracrate-progress-fill: initial; --wire-laracrate-progress-height: initial;
+    --wire-laracrate-progress-radius: initial; --wire-laracrate-progress-border: initial; --wire-laracrate-progress-glow: initial;
+    --wire-laracrate-tile-radius: initial; --wire-laracrate-tile-border: initial; --wire-laracrate-tile-bg: initial;
+    --wire-laracrate-tile-placeholder-bg: initial; --wire-laracrate-tile-placeholder-color: initial;
+    --wire-laracrate-tile-name-bg: initial; --wire-laracrate-tile-name-font: initial;
+    --wire-laracrate-overlay-uploading: initial; --wire-laracrate-overlay-done: initial; --wire-laracrate-overlay-error: initial;
+    --wire-laracrate-card-bg: initial; --wire-laracrate-card-border: initial; --wire-laracrate-card-radius: initial;
+    --wire-laracrate-card-shadow: initial; --wire-laracrate-media-bg: initial; --wire-laracrate-preview-radius: initial;
+    --wire-laracrate-icon-button-border: initial; --wire-laracrate-icon-button-color: initial;
+    --wire-laracrate-icon-button-radius: initial; --wire-laracrate-icon-button-bg: initial;
+}
+
+/* ---------------------------------------------------------------------
+   Variables, resolved once on the component's root.
+   --------------------------------------------------------------------- */
+.laracrate {
+    --_scale: 1;
+    --_font: var(--wire-laracrate-font, var(--wire-font, inherit));
+    --_mono: var(--wire-laracrate-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    --_text: var(--wire-laracrate-text, var(--wire-text, #111827));
+    --_muted: var(--wire-laracrate-text-muted, var(--wire-text-muted, #6b7280));
+    --_faint: var(--wire-laracrate-text-faint, #9ca3af);
+    --_accent: var(--wire-laracrate-accent, var(--wire-accent, #2563eb));
+    --_accent-hover: var(--wire-laracrate-accent-hover, #1d4ed8);
+    --_accent-text: var(--wire-laracrate-accent-text, #fff);
+    --_danger: var(--wire-laracrate-danger, #dc2626);
+    --_bg: var(--wire-laracrate-bg, #fff);
+    --_border-color: var(--wire-laracrate-border-color, #e5e7eb);
+    --_border-width: var(--wire-laracrate-border-width, 1px);
+    --_radius: var(--wire-laracrate-radius, var(--wire-radius, .75em));
+    --_shadow: var(--wire-laracrate-shadow, none);
+
+    --_drop-bg: var(--wire-laracrate-drop-bg, #f9fafb);
+    --_drop-hover-bg: var(--wire-laracrate-drop-hover-bg, #f3f4f6);
+    --_drop-border-width: var(--wire-laracrate-drop-border-width, 2px);
+    --_drop-border-style: var(--wire-laracrate-drop-border-style, dashed);
+    --_drop-border-color: var(--wire-laracrate-drop-border-color, #d1d5db);
+    --_drop-hover-border-color: var(--wire-laracrate-drop-hover-border-color, var(--_drop-border-color));
+    --_drop-radius: var(--wire-laracrate-drop-radius, var(--_radius));
+    --_drop-padding: var(--wire-laracrate-drop-padding, 2.5em);
+    --_drop-align: var(--wire-laracrate-drop-align, center);
+    --_drop-items: var(--wire-laracrate-drop-items, center);
+    --_drop-shadow: var(--wire-laracrate-drop-shadow, var(--_shadow));
+    --_drop-hover-shadow: var(--wire-laracrate-drop-hover-shadow, var(--_drop-shadow));
+    --_drop-hover-transform: var(--wire-laracrate-drop-hover-transform, none);
+    --_drop-backdrop: var(--wire-laracrate-drop-backdrop, none);
+    --_dragover-bg: var(--wire-laracrate-dragover-bg, #eff6ff);
+    --_dragover-border-color: var(--wire-laracrate-dragover-border-color, #60a5fa);
+    --_dragover-shadow: var(--wire-laracrate-dragover-shadow, var(--_drop-shadow));
+    --_dragover-transform: var(--wire-laracrate-dragover-transform, none);
+
+    --_icon-display: var(--wire-laracrate-icon-display, inline-flex);
+    --_icon-box: var(--wire-laracrate-icon-box, auto);
+    --_icon-size: var(--wire-laracrate-icon-size, 3em);
+    --_icon-padding: var(--wire-laracrate-icon-padding, 0);
+    --_icon-bg: var(--wire-laracrate-icon-bg, transparent);
+    --_icon-color: var(--wire-laracrate-icon-color, #9ca3af);
+    --_icon-border: var(--wire-laracrate-icon-border, 0);
+    --_icon-radius: var(--wire-laracrate-icon-radius, var(--_radius));
+    --_icon-shadow: var(--wire-laracrate-icon-shadow, none);
+    --_icon-filter: var(--wire-laracrate-icon-filter, none);
+    --_icon-gap: var(--wire-laracrate-icon-gap, 1em);
+
+    --_title-size: var(--wire-laracrate-title-size, .875em);
+    --_title-weight: var(--wire-laracrate-title-weight, 500);
+    --_title-color: var(--wire-laracrate-title-color, #374151);
+    --_title-font: var(--wire-laracrate-title-font, inherit);
+    --_title-transform: var(--wire-laracrate-title-transform, none);
+    --_title-spacing: var(--wire-laracrate-title-spacing, normal);
+    --_subtitle-size: var(--wire-laracrate-subtitle-size, .75em);
+    --_subtitle-weight: var(--wire-laracrate-subtitle-weight, 400);
+    --_subtitle-color: var(--wire-laracrate-subtitle-color, var(--_muted));
+    --_subtitle-font: var(--wire-laracrate-subtitle-font, inherit);
+    --_subtitle-transform: var(--wire-laracrate-subtitle-transform, none);
+    --_subtitle-spacing: var(--wire-laracrate-subtitle-spacing, normal);
+    --_hint-size: var(--wire-laracrate-hint-size, .75em);
+    --_hint-color: var(--wire-laracrate-hint-color, var(--_muted));
+    --_hint-font: var(--wire-laracrate-hint-font, inherit);
+    --_hint-transform: var(--wire-laracrate-hint-transform, none);
+    --_hint-spacing: var(--wire-laracrate-hint-spacing, normal);
+    --_label-size: var(--wire-laracrate-label-size, .875em);
+    --_label-weight: var(--wire-laracrate-label-weight, 400);
+    --_label-color: var(--wire-laracrate-label-color, #4b5563);
+    --_label-font: var(--wire-laracrate-label-font, inherit);
+    --_label-transform: var(--wire-laracrate-label-transform, none);
+    --_label-spacing: var(--wire-laracrate-label-spacing, normal);
+    --_label-style: var(--wire-laracrate-label-style, normal);
+    --_name-weight: var(--wire-laracrate-name-weight, 500);
+
+    --_button-bg: var(--wire-laracrate-button-bg, var(--_accent));
+    --_button-hover-bg: var(--wire-laracrate-button-hover-bg, var(--_accent-hover));
+    --_button-text: var(--wire-laracrate-button-text, var(--_accent-text));
+    --_button-border-width: var(--wire-laracrate-button-border-width, 0);
+    --_button-border-color: var(--wire-laracrate-button-border-color, transparent);
+    --_button-radius: var(--wire-laracrate-button-radius, .5em);
+    --_button-shadow: var(--wire-laracrate-button-shadow, none);
+    --_button-hover-shadow: var(--wire-laracrate-button-hover-shadow, var(--_button-shadow));
+    --_button-hover-transform: var(--wire-laracrate-button-hover-transform, none);
+    --_button-size: var(--wire-laracrate-button-size, .875em);
+    --_button-weight: var(--wire-laracrate-button-weight, 600);
+    --_button-transform: var(--wire-laracrate-button-transform, none);
+    --_button-spacing: var(--wire-laracrate-button-spacing, normal);
+    --_button-backdrop: var(--wire-laracrate-button-backdrop, none);
+
+    --_link-color: var(--wire-laracrate-link-color, var(--_muted));
+    --_link-hover-color: var(--wire-laracrate-link-hover-color, var(--_text));
+    --_link-size: var(--wire-laracrate-link-size, .75em);
+    --_link-font: var(--wire-laracrate-link-font, inherit);
+    --_link-transform: var(--wire-laracrate-link-transform, none);
+    --_link-spacing: var(--wire-laracrate-link-spacing, normal);
+    --_link-decoration: var(--wire-laracrate-link-decoration, underline);
+
+    --_progress-bg: var(--wire-laracrate-progress-bg, #e5e7eb);
+    --_progress-fill: var(--wire-laracrate-progress-fill, var(--_accent));
+    --_progress-height: var(--wire-laracrate-progress-height, .375em);
+    --_progress-radius: var(--wire-laracrate-progress-radius, 9999px);
+    --_progress-border: var(--wire-laracrate-progress-border, 0);
+    --_progress-glow: var(--wire-laracrate-progress-glow, none);
+
+    --_tile-radius: var(--wire-laracrate-tile-radius, .5em);
+    --_tile-border: var(--wire-laracrate-tile-border, 1px solid #e5e7eb);
+    --_tile-bg: var(--wire-laracrate-tile-bg, transparent);
+    --_tile-placeholder-bg: var(--wire-laracrate-tile-placeholder-bg, #f3f4f6);
+    --_tile-placeholder-color: var(--wire-laracrate-tile-placeholder-color, #9ca3af);
+    --_tile-name-bg: var(--wire-laracrate-tile-name-bg, rgb(0 0 0 / .6));
+    --_tile-name-font: var(--wire-laracrate-tile-name-font, inherit);
+    --_overlay-uploading: var(--wire-laracrate-overlay-uploading, rgb(17 24 39 / .4));
+    --_overlay-done: var(--wire-laracrate-overlay-done, rgb(5 150 105 / .4));
+    --_overlay-error: var(--wire-laracrate-overlay-error, rgb(220 38 38 / .5));
+
+    --_card-bg: var(--wire-laracrate-card-bg, var(--_bg));
+    --_card-border: var(--wire-laracrate-card-border, var(--_border-width) solid var(--_border-color));
+    --_card-radius: var(--wire-laracrate-card-radius, var(--_radius));
+    --_card-shadow: var(--wire-laracrate-card-shadow, var(--_shadow));
+    --_media-bg: var(--wire-laracrate-media-bg, #f9fafb);
+    --_preview-radius: var(--wire-laracrate-preview-radius, 0);
+
+    --_icon-button-border: var(--wire-laracrate-icon-button-border, 1px solid var(--_border-color));
+    --_icon-button-color: var(--wire-laracrate-icon-button-color, var(--_muted));
+    --_icon-button-radius: var(--wire-laracrate-icon-button-radius, .375em);
+    --_icon-button-bg: var(--wire-laracrate-icon-button-bg, transparent);
+
+    display: block;
+    width: 100%;
+    font-family: var(--_font);
+    font-size: calc(1rem * var(--_scale));
+    line-height: 1.5;
+    color: var(--_text);
+}
+.laracrate.is-sm { --_scale: .875; }
+.laracrate.is-lg { --_scale: 1.125; }
+/* Base rules in :where(), so any class below wins over them. */
+:where(.laracrate) *, :where(.laracrate) *::before, :where(.laracrate) *::after { box-sizing: border-box; }
+:where(.laracrate) p { margin: 0; }
+:where(.laracrate) ul { list-style: none; margin: 0; padding: 0; }
+:where(.laracrate) button { font: inherit; }
+:where(.laracrate) svg { display: block; width: 1em; height: 1em; flex-shrink: 0; }
+.laracrate [x-cloak] { display: none !important; }
+
+/* ---------------------------------------------------------------------
+   Pieces every component shares
+   --------------------------------------------------------------------- */
+.laracrate-hidden { display: none !important; }
+.laracrate-truncate { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.laracrate-muted { color: var(--_muted); }
+.laracrate-dot { display: inline-block; width: .5em; height: .5em; border-radius: 9999px; margin-right: .375em; vertical-align: middle; flex-shrink: 0; }
+
+.laracrate-drop {
+    display: flex; flex-direction: column; align-items: var(--_drop-items); justify-content: center;
+    width: 100%; padding: var(--_drop-padding); text-align: var(--_drop-align); cursor: pointer;
+    background: var(--_drop-bg);
+    border-width: var(--_drop-border-width); border-style: var(--_drop-border-style); border-color: var(--_drop-border-color);
+    border-radius: var(--_drop-radius); box-shadow: var(--_drop-shadow);
+    -webkit-backdrop-filter: var(--_drop-backdrop); backdrop-filter: var(--_drop-backdrop);
+    transition: background-color .15s, border-color .15s, box-shadow .15s, transform .15s;
+}
+.laracrate-drop:hover {
+    background: var(--_drop-hover-bg); border-color: var(--_drop-hover-border-color);
+    box-shadow: var(--_drop-hover-shadow); transform: var(--_drop-hover-transform);
+}
+.laracrate-drop.is-dragover {
+    background: var(--_dragover-bg); border-color: var(--_dragover-border-color);
+    box-shadow: var(--_dragover-shadow); transform: var(--_dragover-transform);
+}
+.laracrate-drop:focus-visible { outline: 2px solid var(--_accent); outline-offset: 2px; }
+.laracrate-drop.is-locked { opacity: .5; pointer-events: none; }
+.laracrate-drop.is-full { cursor: default; }
+.laracrate-drop.is-full:hover { background: var(--_drop-bg); border-color: var(--_drop-border-color); box-shadow: var(--_drop-shadow); transform: none; }
+.laracrate-drop.is-compact { padding-block: 1.5em; }
+
+.laracrate-icon {
+    display: var(--_icon-display); align-items: center; justify-content: center; flex-shrink: 0;
+    width: var(--_icon-box); height: var(--_icon-box); padding: var(--_icon-padding);
+    background: var(--_icon-bg); color: var(--_icon-color); border: var(--_icon-border);
+    border-radius: var(--_icon-radius); box-shadow: var(--_icon-shadow); filter: var(--_icon-filter);
+}
+.laracrate-drop > .laracrate-icon { margin-bottom: var(--_icon-gap); }
+.laracrate-icon svg { width: var(--_icon-size); height: var(--_icon-size); }
+
+.laracrate-title {
+    font-family: var(--_title-font); font-size: var(--_title-size); font-weight: var(--_title-weight);
+    color: var(--_title-color); text-transform: var(--_title-transform); letter-spacing: var(--_title-spacing);
+}
+.laracrate-subtitle {
+    margin-top: .25em; font-family: var(--_subtitle-font); font-size: var(--_subtitle-size); font-weight: var(--_subtitle-weight);
+    color: var(--_subtitle-color); text-transform: var(--_subtitle-transform); letter-spacing: var(--_subtitle-spacing);
+}
+.laracrate-hint {
+    margin-top: .5em; font-family: var(--_hint-font); font-size: var(--_hint-size);
+    color: var(--_hint-color); text-transform: var(--_hint-transform); letter-spacing: var(--_hint-spacing);
+}
+.laracrate-hint.is-warning { color: #d97706; }
+.laracrate-label {
+    font-family: var(--_label-font); font-size: var(--_label-size); font-weight: var(--_label-weight); color: var(--_label-color);
+    text-transform: var(--_label-transform); letter-spacing: var(--_label-spacing); font-style: var(--_label-style);
+}
+.laracrate-name { font-size: .875em; font-weight: var(--_name-weight); color: var(--_text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.laracrate-meta { font-size: .6875em; color: var(--_muted); font-variant-numeric: tabular-nums; }
+.laracrate-meta .is-error { color: var(--_danger); }
+.laracrate-error { margin-top: .5em; font-size: .75em; color: var(--_danger); }
+.laracrate-pulse { animation: laracrate-pulse 1.5s ease-in-out infinite; }
+
+.laracrate-button {
+    display: inline-flex; align-items: center; justify-content: center; gap: .375em;
+    height: 2.5rem; padding: 0 1.5em; cursor: pointer; white-space: nowrap;
+    background: var(--_button-bg); color: var(--_button-text);
+    border-width: var(--_button-border-width); border-style: solid; border-color: var(--_button-border-color);
+    border-radius: var(--_button-radius); box-shadow: var(--_button-shadow);
+    font-size: var(--_button-size); font-weight: var(--_button-weight);
+    text-transform: var(--_button-transform); letter-spacing: var(--_button-spacing);
+    -webkit-backdrop-filter: var(--_button-backdrop); backdrop-filter: var(--_button-backdrop);
+    transition: background-color .15s, box-shadow .15s, transform .15s;
+}
+.laracrate-button:hover { background: var(--_button-hover-bg); box-shadow: var(--_button-hover-shadow); transform: var(--_button-hover-transform); }
+.laracrate-button:disabled { opacity: .6; cursor: default; }
+.laracrate-button.is-small { height: 2rem; padding: 0 .875em; font-size: calc(var(--_button-size) * .86); }
+.laracrate-button__count { opacity: .7; font-variant-numeric: tabular-nums; }
+
+.laracrate-link {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--_link-color); font-family: var(--_link-font); font-size: var(--_link-size);
+    text-transform: var(--_link-transform); letter-spacing: var(--_link-spacing);
+    text-decoration: var(--_link-decoration); text-underline-offset: 3px;
+}
+.laracrate-link:hover { color: var(--_link-hover-color); }
+
+.laracrate-icon-button {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 2.25em; height: 2.25em; padding: 0; cursor: pointer;
+    background: var(--_icon-button-bg); color: var(--_icon-button-color);
+    border: var(--_icon-button-border); border-radius: var(--_icon-button-radius);
+    transition: color .15s, background-color .15s, border-color .15s;
+}
+.laracrate-icon-button svg { width: 1em; height: 1em; }
+.laracrate-icon-button:hover { color: var(--_text); border-color: currentColor; }
+.laracrate-icon-button.is-danger:hover { color: var(--_danger); background: rgb(220 38 38 / .06); }
+.laracrate-icon-button.is-accent { background: var(--_button-bg); color: var(--_button-text); border-color: transparent; box-shadow: var(--_button-shadow); }
+.laracrate-icon-button.is-accent:hover { background: var(--_button-hover-bg); color: var(--_button-text); }
+
+.laracrate-progress {
+    width: 100%; height: var(--_progress-height); overflow: hidden;
+    background: var(--_progress-bg); border: var(--_progress-border); border-radius: var(--_progress-radius);
+}
+.laracrate-progress__bar { height: 100%; width: 0; background: var(--_progress-fill); border-radius: inherit; box-shadow: var(--_progress-glow); transition: width .3s; }
+
+.laracrate-spinner { display: inline-flex; color: inherit; }
+.laracrate-spinner svg { width: 1.25em; height: 1.25em; animation: laracrate-spin 1s linear infinite; }
+
+@keyframes laracrate-spin { to { transform: rotate(360deg); } }
+@keyframes laracrate-pulse { 50% { opacity: .4; } }
+
+/* ---------------------------------------------------------------------
+   laracrate-dropzone(-deferred): slot picker, queue, tiles, list
+   --------------------------------------------------------------------- */
+.laracrate-slots { margin-bottom: .75em; }
+.laracrate-slots .laracrate-label { margin-bottom: .25em; }
+.laracrate-slots__wrap { position: relative; }
+.laracrate-slots__trigger {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: .5em; cursor: pointer; text-align: left;
+    padding: .5em .75em; font-size: .875em; color: var(--_text);
+    background: var(--_bg); border: 1px solid var(--_drop-border-color); border-radius: var(--_button-radius);
+}
+.laracrate-slots__trigger:hover { border-color: var(--_text); }
+.laracrate-chevron { color: var(--_faint); transition: transform .15s; }
+.laracrate-chevron.is-open { transform: rotate(180deg); }
+.laracrate-slots__menu {
+    position: absolute; left: 0; right: 0; z-index: 10; margin-top: .25em; max-height: 15em; overflow: auto;
+    background: var(--_bg); border: 1px solid var(--_drop-border-color); border-radius: var(--_button-radius);
+    box-shadow: 0 10px 25px rgb(0 0 0 / .12);
+}
+.laracrate-slots__option {
+    width: 100%; display: flex; align-items: center; gap: .5em; padding: .5em .75em; cursor: pointer; text-align: left;
+    font-size: .875em; color: var(--_text); background: none; border: 0; border-bottom: 1px solid var(--_border-color);
+}
+.laracrate-slots__option:hover { background: rgb(0 0 0 / .03); }
+.laracrate-slots__option.is-active { background: var(--_button-bg); color: var(--_button-text); font-weight: 500; }
+
+.laracrate-queue { margin-top: 1.5em; display: flex; flex-direction: column; gap: .75em; }
+.laracrate-status {
+    display: flex; align-items: center; justify-content: space-between; gap: .75em;
+    font-family: var(--_label-font); font-size: var(--_label-size); font-weight: var(--_label-weight); color: var(--_label-color);
+    text-transform: var(--_label-transform); letter-spacing: var(--_label-spacing); font-style: var(--_label-style);
+    font-variant-numeric: tabular-nums;
+}
+
+.laracrate-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5em; }
+@media (min-width: 640px)  { .laracrate-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 768px)  { .laracrate-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .laracrate-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+.laracrate-tile {
+    position: relative; aspect-ratio: 1 / 1; overflow: hidden;
+    background: var(--_tile-bg); border: var(--_tile-border); border-radius: var(--_tile-radius);
+}
+.laracrate-tile__preview { display: block; width: 100%; height: 100%; object-fit: cover; }
+.laracrate-tile__placeholder {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    background: var(--_tile-placeholder-bg); color: var(--_tile-placeholder-color);
+}
+.laracrate-tile__placeholder svg { width: 2em; height: 2em; }
+.laracrate-tile__overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #fff; opacity: 0; transition: opacity .3s;
+}
+.laracrate-tile__overlay svg { width: 1.5em; height: 1.5em; }
+.laracrate-tile[data-state="uploading"] .laracrate-tile__overlay { opacity: 1; background: var(--_overlay-uploading); }
+.laracrate-tile[data-state="done"] .laracrate-tile__overlay { opacity: 1; background: var(--_overlay-done); }
+.laracrate-tile[data-state="error"] .laracrate-tile__overlay { opacity: 1; background: var(--_overlay-error); }
+.laracrate-dropzone:not([data-deferred]) .laracrate-tile[data-state="pending"] .laracrate-tile__overlay { opacity: 1; background: var(--_overlay-uploading); }
+.laracrate-tile__retry, .laracrate-tile__remove {
+    display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer;
+    background: #fff; border: 1px solid rgb(0 0 0 / .1); border-radius: var(--_icon-button-radius);
+}
+.laracrate-tile__retry { width: 1.75em; height: 1.75em; color: var(--_danger); }
+.laracrate-tile__retry svg { width: .875em; height: .875em; }
+.laracrate-tile__remove { position: absolute; top: .25em; right: .25em; width: 1.25em; height: 1.25em; color: #374151; }
+.laracrate-tile__remove svg { width: .75em; height: .75em; }
+.laracrate-tile__name {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: .125em .375em;
+    background: var(--_tile-name-bg); color: #fff; font-family: var(--_tile-name-font); font-size: .625em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.laracrate-list { display: flex; flex-direction: column; gap: .375em; }
+.laracrate-row {
+    display: flex; align-items: center; gap: .5em; padding: .375em .5em;
+    background: var(--_card-bg); border: var(--_card-border); border-radius: var(--_tile-radius);
+}
+.laracrate-row__icon { color: var(--_faint); }
+.laracrate-row__name { flex: 1; min-width: 0; font-size: .75em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.laracrate-row__size { flex-shrink: 0; font-size: .625em; color: var(--_faint); font-variant-numeric: tabular-nums; }
+.laracrate-row__done { color: #059669; }
+.laracrate-row__retry, .laracrate-row__remove { display: inline-flex; padding: .25em; background: none; border: 0; cursor: pointer; color: var(--_faint); }
+.laracrate-row__retry { color: var(--_danger); }
+.laracrate-row__remove:hover { color: var(--_danger); }
+
+.laracrate-actions { display: flex; flex-direction: column; align-items: center; gap: .5em; padding-top: .5em; }
+
+/* ---------------------------------------------------------------------
+   laracrate-dropzone-single(-deferred): one file in a card
+   --------------------------------------------------------------------- */
+.laracrate-card {
+    display: flex; align-items: center; gap: .75em; padding: .75em;
+    background: var(--_card-bg); border: var(--_card-border); border-radius: var(--_card-radius); box-shadow: var(--_card-shadow);
+}
+.laracrate-card.is-busy { color: var(--_muted); }
+.laracrate-card > .laracrate-icon { --_icon-box: 2.5em; --_icon-size: 1.25em; }
+.laracrate-card__thumb { width: 3em; height: 3em; object-fit: cover; flex-shrink: 0; border-radius: calc(var(--_card-radius) * .66); }
+.laracrate-card__thumb.is-video { width: 5em; background: #000; }
+.laracrate-card__audio { max-width: 180px; flex-shrink: 0; }
+.laracrate-card__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .125em; }
+.laracrate-card__body .laracrate-progress { margin-top: .25em; }
+
+/* ---------------------------------------------------------------------
+   laracrate-uploader(-deferred): layouts row and portrait
+   --------------------------------------------------------------------- */
+.laracrate-uploader__card {
+    display: flex; overflow: hidden;
+    background: var(--_card-bg); border: var(--_card-border); border-radius: var(--_card-radius); box-shadow: var(--_card-shadow);
+}
+.laracrate-uploader__media { position: relative; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--_media-bg); overflow: hidden; }
+.laracrate-uploader__image { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: var(--_preview-radius); }
+.laracrate-uploader__placeholder { color: var(--_faint); }
+.laracrate-uploader__placeholder svg { width: 2em; height: 2em; }
+.laracrate-uploader__drop-hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgb(17 24 39 / .7); color: #fff; font-family: var(--_mono); font-size: .625em; letter-spacing: .1em;
+}
+.laracrate-uploader__body { min-width: 0; display: flex; flex-direction: column; gap: .125em; }
+.laracrate-uploader__body .laracrate-label { font-size: .625em; text-transform: uppercase; letter-spacing: .05em; color: var(--_faint); }
+.laracrate-uploader__actions { display: flex; align-items: center; gap: .5em; }
+
+.laracrate-uploader.is-portrait .laracrate-uploader__card { flex-direction: column; }
+.laracrate-uploader.is-portrait .laracrate-uploader__media { width: 100%; aspect-ratio: 1 / 1; border-bottom: var(--_card-border); }
+.laracrate-uploader.is-portrait .laracrate-uploader__image { position: absolute; inset: 0; }
+.laracrate-uploader.is-portrait .laracrate-uploader__body { padding: .75em .75em 0; }
+.laracrate-uploader.is-portrait .laracrate-uploader__actions { padding: .75em; }
+.laracrate-uploader.is-portrait .laracrate-uploader__actions .laracrate-button { flex: 1; height: 2.25rem; }
+
+.laracrate-uploader.is-row .laracrate-uploader__card { align-items: center; gap: 1em; padding: .75em; }
+.laracrate-uploader.is-row .laracrate-uploader__media {
+    width: 3.5em; height: 3.5em; border: var(--_card-border);
+    border-radius: var(--wire-laracrate-preview-radius, calc(var(--_card-radius) * .66));
+}
+.laracrate-uploader.is-row .laracrate-uploader__image { border-radius: 0; }
+.laracrate-uploader.is-row .laracrate-uploader__body { flex: 1; }
+.laracrate-uploader.is-row .laracrate-uploader__replace { display: none; }
+
+.laracrate-uploader__drop.laracrate-drop { padding: 1.5em; }
+.laracrate-uploader.is-portrait .laracrate-uploader__drop { aspect-ratio: 1 / 1; }
+.laracrate-uploader.is-portrait .laracrate-uploader__choose { display: none; }
+.laracrate-uploader.is-row .laracrate-uploader__drop { flex-direction: row; align-items: center; justify-content: flex-start; gap: .75em; padding: 1em; text-align: left; }
+.laracrate-uploader.is-row .laracrate-uploader__drop > .laracrate-icon { margin-bottom: 0; --_icon-box: 2em; --_icon-size: 1em; }
+.laracrate-uploader.is-row .laracrate-uploader__drop-body { flex: 1; min-width: 0; }
+.laracrate-uploader.is-row .laracrate-uploader__drop .laracrate-hint { margin-top: .125em; }
+.laracrate-uploader.is-row .laracrate-uploader__choose { margin-left: auto; }
+
+/* =====================================================================
+   Themes. Each one only sets variables; default is the fallback of every one.
+   ===================================================================== */
+
+[data-wire-theme="studio"] {
+    --wire-laracrate-accent: #111827; --wire-laracrate-accent-hover: #1f2937;
+    --wire-laracrate-radius: 2px;
+    --wire-laracrate-drop-bg: #fff; --wire-laracrate-drop-hover-bg: #fff;
+    --wire-laracrate-drop-border-width: 1px; --wire-laracrate-drop-border-color: #d1d5db;
+    --wire-laracrate-drop-hover-border-color: #6b7280; --wire-laracrate-drop-padding: 2em;
+    --wire-laracrate-dragover-bg: #f9fafb; --wire-laracrate-dragover-border-color: #111827;
+    --wire-laracrate-icon-box: 2.5em; --wire-laracrate-icon-size: 1.25em; --wire-laracrate-icon-bg: #fff;
+    --wire-laracrate-icon-color: #374151; --wire-laracrate-icon-border: 1px solid #d1d5db; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-color: #111827;
+    --wire-laracrate-subtitle-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-subtitle-size: .6875em;
+    --wire-laracrate-hint-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-hint-size: .625em;
+    --wire-laracrate-hint-transform: uppercase; --wire-laracrate-hint-spacing: .05em; --wire-laracrate-hint-color: #9ca3af;
+    --wire-laracrate-label-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-label-size: .625em;
+    --wire-laracrate-label-transform: uppercase; --wire-laracrate-label-spacing: .05em; --wire-laracrate-label-color: #6b7280;
+    --wire-laracrate-button-radius: 2px; --wire-laracrate-button-weight: 500;
+    --wire-laracrate-link-decoration: underline dotted;
+    --wire-laracrate-progress-height: 2px; --wire-laracrate-progress-radius: 0;
+    --wire-laracrate-tile-radius: 2px; --wire-laracrate-tile-name-bg: rgb(17 24 39 / .7);
+    --wire-laracrate-tile-name-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --wire-laracrate-icon-button-radius: 2px;
+}
+
+[data-wire-theme="minimal"] {
+    --wire-laracrate-radius: 0;
+    --wire-laracrate-drop-bg: transparent; --wire-laracrate-drop-hover-bg: transparent;
+    --wire-laracrate-drop-border-width: 0 0 0 2px; --wire-laracrate-drop-border-style: solid;
+    --wire-laracrate-drop-border-color: #d1d5db; --wire-laracrate-drop-hover-border-color: #6b7280;
+    --wire-laracrate-dragover-bg: rgb(239 246 255 / .5); --wire-laracrate-dragover-border-color: #3b82f6;
+    --wire-laracrate-drop-padding: 1.5em 0 1.5em 1em; --wire-laracrate-drop-align: left; --wire-laracrate-drop-items: flex-start;
+    --wire-laracrate-icon-display: none;
+    --wire-laracrate-title-weight: 400;
+    --wire-laracrate-subtitle-color: #9ca3af; --wire-laracrate-hint-color: #9ca3af;
+    --wire-laracrate-label-size: .75em; --wire-laracrate-label-color: #6b7280;
+    --wire-laracrate-button-bg: #eff6ff; --wire-laracrate-button-hover-bg: #dbeafe; --wire-laracrate-button-text: #1d4ed8;
+    --wire-laracrate-button-border-width: 0 0 0 2px; --wire-laracrate-button-border-color: #3b82f6;
+    --wire-laracrate-button-radius: 0; --wire-laracrate-button-weight: 400;
+    --wire-laracrate-progress-height: 1px; --wire-laracrate-progress-radius: 0; --wire-laracrate-progress-fill: #3b82f6;
+    --wire-laracrate-tile-radius: 0; --wire-laracrate-tile-border: 0; --wire-laracrate-tile-placeholder-bg: #f9fafb;
+    --wire-laracrate-overlay-uploading: rgb(59 130 246 / .3); --wire-laracrate-overlay-done: rgb(59 130 246 / .2); --wire-laracrate-overlay-error: rgb(239 68 68 / .4);
+    --wire-laracrate-card-border: 0; --wire-laracrate-card-radius: 0; --wire-laracrate-icon-button-border: 0;
+}
+
+[data-wire-theme="material"] {
+    --wire-laracrate-accent: #4f46e5; --wire-laracrate-accent-hover: #4338ca;
+    --wire-laracrate-radius: .375em;
+    --wire-laracrate-drop-bg: #fff; --wire-laracrate-drop-hover-bg: #fff;
+    --wire-laracrate-drop-border-width: 1px; --wire-laracrate-drop-border-style: solid; --wire-laracrate-drop-border-color: #e5e7eb;
+    --wire-laracrate-drop-hover-border-color: #a5b4fc; --wire-laracrate-drop-shadow: 0 1px 2px rgb(0 0 0 / .05);
+    --wire-laracrate-dragover-bg: #eef2ff; --wire-laracrate-dragover-border-color: #6366f1;
+    --wire-laracrate-icon-padding: .75em; --wire-laracrate-icon-bg: #eef2ff; --wire-laracrate-icon-radius: 9999px;
+    --wire-laracrate-icon-color: #4f46e5; --wire-laracrate-icon-size: 1.75em; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-color: #111827;
+    --wire-laracrate-label-size: .625em; --wire-laracrate-label-weight: 500; --wire-laracrate-label-transform: uppercase;
+    --wire-laracrate-label-spacing: .05em; --wire-laracrate-label-color: #4338ca;
+    --wire-laracrate-button-radius: .375em; --wire-laracrate-button-weight: 700; --wire-laracrate-button-transform: uppercase;
+    --wire-laracrate-button-spacing: .05em; --wire-laracrate-button-shadow: 0 1px 2px rgb(0 0 0 / .05);
+    --wire-laracrate-button-hover-shadow: 0 4px 6px -1px rgb(0 0 0 / .1);
+    --wire-laracrate-progress-height: 4px; --wire-laracrate-progress-bg: #e0e7ff;
+    --wire-laracrate-tile-radius: .25em; --wire-laracrate-tile-border: 1px solid rgb(0 0 0 / .05);
+    --wire-laracrate-tile-placeholder-bg: #eef2ff; --wire-laracrate-tile-placeholder-color: #818cf8;
+    --wire-laracrate-overlay-uploading: rgb(67 56 202 / .4);
+}
+
+[data-wire-theme="ios"] {
+    --wire-laracrate-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    --wire-laracrate-radius: 1em;
+    --wire-laracrate-drop-bg: rgb(255 255 255 / .6); --wire-laracrate-drop-hover-bg: rgb(255 255 255 / .8);
+    --wire-laracrate-drop-border-width: 1px; --wire-laracrate-drop-border-style: solid; --wire-laracrate-drop-border-color: rgb(0 0 0 / .05);
+    --wire-laracrate-drop-backdrop: blur(24px);
+    --wire-laracrate-dragover-bg: rgb(239 246 255 / .8); --wire-laracrate-dragover-border-color: #60a5fa;
+    --wire-laracrate-icon-padding: .75em; --wire-laracrate-icon-bg: rgb(219 234 254 / .6); --wire-laracrate-icon-radius: 1em;
+    --wire-laracrate-icon-color: #2563eb; --wire-laracrate-icon-size: 1.75em; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-size: .9375em; --wire-laracrate-title-color: #111827;
+    --wire-laracrate-subtitle-size: .8125em; --wire-laracrate-hint-color: #9ca3af;
+    --wire-laracrate-label-size: .8125em; --wire-laracrate-label-color: #4b5563;
+    --wire-laracrate-button-radius: 9999px;
+    --wire-laracrate-progress-height: 4px; --wire-laracrate-progress-bg: rgb(229 231 235 / .8);
+    --wire-laracrate-tile-radius: .75em; --wire-laracrate-tile-border: 1px solid rgb(0 0 0 / .05);
+    --wire-laracrate-overlay-uploading: rgb(37 99 235 / .4); --wire-laracrate-overlay-done: rgb(16 185 129 / .5);
+    --wire-laracrate-icon-button-radius: 9999px;
+}
+
+[data-wire-theme="glassmorphism"] {
+    --wire-laracrate-name-weight: 600;
+    --wire-laracrate-accent: #9333ea; --wire-laracrate-accent-hover: #7e22ce;
+    --wire-laracrate-radius: 1em; --wire-laracrate-bg: rgb(255 255 255 / .6);
+    --wire-laracrate-drop-bg: rgb(255 255 255 / .2); --wire-laracrate-drop-hover-bg: rgb(255 255 255 / .35);
+    --wire-laracrate-drop-border-color: rgb(255 255 255 / .3); --wire-laracrate-drop-shadow: 0 8px 32px rgb(31 38 135 / .1);
+    --wire-laracrate-drop-backdrop: blur(40px);
+    --wire-laracrate-dragover-bg: rgb(255 255 255 / .5); --wire-laracrate-dragover-border-color: rgb(255 255 255 / .7);
+    --wire-laracrate-icon-padding: .75em; --wire-laracrate-icon-bg: rgb(255 255 255 / .4); --wire-laracrate-icon-radius: 1em;
+    --wire-laracrate-icon-border: 1px solid rgb(255 255 255 / .5); --wire-laracrate-icon-color: #7e22ce;
+    --wire-laracrate-icon-size: 1.75em; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-weight: 600; --wire-laracrate-title-color: #111827;
+    --wire-laracrate-subtitle-color: rgb(55 65 81 / .8); --wire-laracrate-hint-color: rgb(55 65 81 / .8);
+    --wire-laracrate-label-size: .75em; --wire-laracrate-label-color: #7e22ce;
+    --wire-laracrate-button-bg: rgb(147 51 234 / .9); --wire-laracrate-button-hover-bg: #7e22ce;
+    --wire-laracrate-button-border-width: 1px; --wire-laracrate-button-border-color: rgb(192 132 252 / .6);
+    --wire-laracrate-button-radius: .75em; --wire-laracrate-button-backdrop: blur(12px);
+    --wire-laracrate-link-color: rgb(55 65 81 / .8);
+    --wire-laracrate-progress-height: 4px; --wire-laracrate-progress-bg: rgb(255 255 255 / .3);
+    --wire-laracrate-tile-radius: .75em; --wire-laracrate-tile-border: 1px solid rgb(255 255 255 / .4); --wire-laracrate-tile-bg: rgb(255 255 255 / .2);
+    --wire-laracrate-tile-placeholder-bg: rgb(255 255 255 / .2); --wire-laracrate-tile-placeholder-color: rgb(255 255 255 / .7);
+    --wire-laracrate-overlay-uploading: rgb(126 34 206 / .4); --wire-laracrate-overlay-done: rgb(16 185 129 / .5);
+    --wire-laracrate-card-border: 1px solid rgb(255 255 255 / .5); --wire-laracrate-card-shadow: 0 8px 32px rgb(31 38 135 / .1);
+    --wire-laracrate-icon-button-radius: .75em;
+}
+
+[data-wire-theme="neon"] {
+    --wire-laracrate-name-weight: 600;
+    --wire-laracrate-text: #f5f5f5; --wire-laracrate-text-muted: #67e8f9; --wire-laracrate-text-faint: #a3a3a3;
+    --wire-laracrate-accent: #22d3ee; --wire-laracrate-bg: #0a0a0a;
+    --wire-laracrate-radius: .375em; --wire-laracrate-border-color: rgb(217 70 239 / .4);
+    --wire-laracrate-drop-bg: #0a0a0a; --wire-laracrate-drop-hover-bg: #0a0a0a;
+    --wire-laracrate-drop-border-color: rgb(217 70 239 / .6); --wire-laracrate-drop-hover-border-color: #e879f9;
+    --wire-laracrate-drop-shadow: 0 0 20px rgb(217 70 239 / .3);
+    --wire-laracrate-dragover-bg: #0a0a0a; --wire-laracrate-dragover-border-color: #22d3ee;
+    --wire-laracrate-dragover-shadow: 0 0 30px rgb(34 211 238 / .45);
+    --wire-laracrate-icon-size: 2.5em; --wire-laracrate-icon-color: #e879f9; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-icon-filter: drop-shadow(0 0 8px rgb(217 70 239 / .6));
+    --wire-laracrate-title-weight: 700; --wire-laracrate-title-color: #fff;
+    --wire-laracrate-subtitle-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-subtitle-size: .625em;
+    --wire-laracrate-subtitle-transform: uppercase; --wire-laracrate-subtitle-spacing: .2em; --wire-laracrate-subtitle-color: #67e8f9;
+    --wire-laracrate-hint-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-hint-size: .625em;
+    --wire-laracrate-hint-transform: uppercase; --wire-laracrate-hint-spacing: .2em; --wire-laracrate-hint-color: #67e8f9;
+    --wire-laracrate-label-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-label-size: .625em;
+    --wire-laracrate-label-transform: uppercase; --wire-laracrate-label-spacing: .25em; --wire-laracrate-label-color: #e879f9;
+    --wire-laracrate-button-bg: rgb(6 182 212 / .2); --wire-laracrate-button-hover-bg: rgb(6 182 212 / .3);
+    --wire-laracrate-button-text: #67e8f9; --wire-laracrate-button-border-width: 1px; --wire-laracrate-button-border-color: #22d3ee;
+    --wire-laracrate-button-radius: .25em; --wire-laracrate-button-size: .75em; --wire-laracrate-button-weight: 700;
+    --wire-laracrate-button-transform: uppercase; --wire-laracrate-button-spacing: .15em;
+    --wire-laracrate-button-hover-shadow: 0 0 12px rgb(34 211 238 / .5);
+    --wire-laracrate-link-color: #e879f9; --wire-laracrate-link-hover-color: #f0abfc; --wire-laracrate-link-size: .625em;
+    --wire-laracrate-link-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --wire-laracrate-link-transform: uppercase; --wire-laracrate-link-spacing: .15em; --wire-laracrate-link-decoration: none;
+    --wire-laracrate-progress-height: 2px; --wire-laracrate-progress-bg: #171717; --wire-laracrate-progress-fill: #67e8f9;
+    --wire-laracrate-progress-border: 1px solid rgb(217 70 239 / .3); --wire-laracrate-progress-glow: 0 0 8px rgb(103 232 249 / .8);
+    --wire-laracrate-tile-radius: .25em; --wire-laracrate-tile-border: 1px solid rgb(217 70 239 / .4); --wire-laracrate-tile-bg: #171717;
+    --wire-laracrate-tile-placeholder-bg: #171717; --wire-laracrate-tile-placeholder-color: #e879f9;
+    --wire-laracrate-tile-name-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --wire-laracrate-overlay-uploading: rgb(192 38 211 / .4); --wire-laracrate-overlay-done: rgb(6 182 212 / .4); --wire-laracrate-overlay-error: rgb(185 28 28 / .6);
+    --wire-laracrate-card-bg: #0a0a0a; --wire-laracrate-card-shadow: 0 0 20px rgb(217 70 239 / .25); --wire-laracrate-media-bg: #171717;
+    --wire-laracrate-icon-button-color: #e879f9; --wire-laracrate-icon-button-radius: .25em;
+}
+
+[data-wire-theme="neumorphism"] {
+    --wire-laracrate-text: #374151; --wire-laracrate-accent: #374151; --wire-laracrate-bg: #e0e5ec;
+    --wire-laracrate-radius: 1em;
+    --wire-laracrate-drop-bg: #e0e5ec; --wire-laracrate-drop-hover-bg: #e0e5ec; --wire-laracrate-drop-border-width: 0;
+    --wire-laracrate-drop-shadow: 8px 8px 16px #a3b1c6, -8px -8px 16px #fff;
+    --wire-laracrate-dragover-bg: #e0e5ec;
+    --wire-laracrate-dragover-shadow: inset 6px 6px 12px #a3b1c6, inset -6px -6px 12px #fff;
+    --wire-laracrate-icon-box: 3.5em; --wire-laracrate-icon-size: 1.25em; --wire-laracrate-icon-bg: #e0e5ec;
+    --wire-laracrate-icon-color: #4b5563; --wire-laracrate-icon-radius: 1em; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-icon-shadow: inset 4px 4px 8px rgb(163 177 198 / .45), inset -4px -4px 8px rgb(255 255 255 / .7);
+    --wire-laracrate-title-color: #374151;
+    --wire-laracrate-label-size: .75em; --wire-laracrate-label-color: #4b5563; --wire-laracrate-label-style: italic;
+    --wire-laracrate-button-bg: #e0e5ec; --wire-laracrate-button-hover-bg: #e0e5ec; --wire-laracrate-button-text: #374151;
+    --wire-laracrate-button-radius: .75em;
+    --wire-laracrate-button-shadow: 4px 4px 8px #a3b1c6, -4px -4px 8px #fff;
+    --wire-laracrate-button-hover-shadow: inset 3px 3px 6px #a3b1c6, inset -3px -3px 6px #fff;
+    --wire-laracrate-progress-bg: #e0e5ec; --wire-laracrate-progress-fill: #374151;
+    --wire-laracrate-progress-border: 0;
+    --wire-laracrate-tile-radius: .75em; --wire-laracrate-tile-border: 0; --wire-laracrate-tile-placeholder-bg: #e0e5ec;
+    --wire-laracrate-tile-placeholder-color: #6b7280; --wire-laracrate-overlay-uploading: rgb(55 65 81 / .4); --wire-laracrate-overlay-done: rgb(16 185 129 / .4);
+    --wire-laracrate-card-border: 0; --wire-laracrate-card-shadow: 6px 6px 12px #a3b1c6, -6px -6px 12px #fff;
+    --wire-laracrate-media-bg: #e0e5ec;
+    --wire-laracrate-icon-button-border: 0; --wire-laracrate-icon-button-radius: .75em;
+    --wire-laracrate-icon-button-bg: #e0e5ec;
+}
+
+[data-wire-theme="brutalist"] {
+    --wire-laracrate-name-weight: 600;
+    --wire-laracrate-text: #0a0a0a; --wire-laracrate-accent: #0a0a0a; --wire-laracrate-accent-hover: #262626;
+    --wire-laracrate-radius: 4px; --wire-laracrate-border-color: #171717; --wire-laracrate-border-width: 2px;
+    --wire-laracrate-drop-bg: #fff; --wire-laracrate-drop-hover-bg: #fff; --wire-laracrate-drop-border-color: #171717;
+    --wire-laracrate-drop-shadow: 4px 4px 0 0 #0a0a0a;
+    --wire-laracrate-drop-hover-shadow: 6px 6px 0 0 #0a0a0a; --wire-laracrate-drop-hover-transform: translate(-2px, -2px);
+    --wire-laracrate-dragover-bg: #fef08a; --wire-laracrate-dragover-border-color: #171717;
+    --wire-laracrate-dragover-shadow: 6px 6px 0 0 #0a0a0a; --wire-laracrate-dragover-transform: translate(-2px, -2px);
+    --wire-laracrate-icon-size: 2.5em; --wire-laracrate-icon-color: #171717; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-title-size: .6875em;
+    --wire-laracrate-title-weight: 600; --wire-laracrate-title-transform: uppercase; --wire-laracrate-title-spacing: .25em;
+    --wire-laracrate-title-color: #737373;
+    --wire-laracrate-subtitle-size: .875em; --wire-laracrate-subtitle-weight: 700; --wire-laracrate-subtitle-color: #0a0a0a;
+    --wire-laracrate-hint-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-hint-color: #737373;
+    --wire-laracrate-label-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --wire-laracrate-label-size: .625em;
+    --wire-laracrate-label-transform: uppercase; --wire-laracrate-label-spacing: .2em; --wire-laracrate-label-color: #404040;
+    --wire-laracrate-button-border-width: 1px; --wire-laracrate-button-border-color: #171717;
+    --wire-laracrate-button-radius: 4px; --wire-laracrate-button-size: .75em; --wire-laracrate-button-weight: 700;
+    --wire-laracrate-button-transform: uppercase; --wire-laracrate-button-spacing: .15em;
+    --wire-laracrate-button-shadow: 4px 4px 0 0 #0a0a0a; --wire-laracrate-button-hover-shadow: 6px 6px 0 0 #0a0a0a;
+    --wire-laracrate-button-hover-transform: translate(-2px, -2px);
+    --wire-laracrate-link-color: #404040; --wire-laracrate-link-hover-color: #0a0a0a; --wire-laracrate-link-size: .625em;
+    --wire-laracrate-link-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --wire-laracrate-link-transform: uppercase; --wire-laracrate-link-spacing: .15em;
+    --wire-laracrate-progress-height: .5em; --wire-laracrate-progress-radius: 0; --wire-laracrate-progress-bg: #fef9c3;
+    --wire-laracrate-progress-fill: #171717; --wire-laracrate-progress-border: 1px solid #171717;
+    --wire-laracrate-tile-radius: 3px; --wire-laracrate-tile-border: 1px solid #171717; --wire-laracrate-tile-bg: #fff;
+    --wire-laracrate-tile-placeholder-bg: #fef08a; --wire-laracrate-tile-placeholder-color: #171717;
+    --wire-laracrate-tile-name-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --wire-laracrate-overlay-uploading: rgb(23 23 23 / .5); --wire-laracrate-overlay-done: rgb(253 224 71 / .7); --wire-laracrate-overlay-error: rgb(239 68 68 / .6);
+    --wire-laracrate-card-shadow: 4px 4px 0 0 #0a0a0a;
+    --wire-laracrate-icon-button-border: 1px solid #171717; --wire-laracrate-icon-button-color: #171717; --wire-laracrate-icon-button-radius: 3px;
+}
+
+[data-wire-theme="claude"] {
+    --wire-laracrate-name-weight: 600;
+    --wire-laracrate-font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --wire-laracrate-text: #1a1a1a; --wire-laracrate-text-muted: #6b6560; --wire-laracrate-text-faint: #8e8881;
+    --wire-laracrate-accent: #c15f3c; --wire-laracrate-accent-hover: #a84d2c;
+    --wire-laracrate-radius: 10px; --wire-laracrate-bg: #faf9f5; --wire-laracrate-border-color: rgb(26 26 26 / .12);
+    --wire-laracrate-drop-bg: #faf9f5; --wire-laracrate-drop-hover-bg: #faf9f5;
+    --wire-laracrate-drop-border-width: 2px 1px 1px; --wire-laracrate-drop-border-style: solid;
+    --wire-laracrate-drop-border-color: #c15f3c rgb(26 26 26 / .12) rgb(26 26 26 / .12);
+    --wire-laracrate-drop-hover-border-color: #c15f3c rgb(26 26 26 / .3) rgb(26 26 26 / .3);
+    --wire-laracrate-dragover-bg: #faf9f5; --wire-laracrate-dragover-border-color: #c15f3c;
+    --wire-laracrate-icon-box: 2.75em; --wire-laracrate-icon-size: 1.25em; --wire-laracrate-icon-bg: #fff;
+    --wire-laracrate-icon-border: 1px solid rgb(26 26 26 / .08); --wire-laracrate-icon-radius: .375em;
+    --wire-laracrate-icon-color: #1a1a1a; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-size: .9375em; --wire-laracrate-title-weight: 600; --wire-laracrate-title-color: #1a1a1a;
+    --wire-laracrate-subtitle-size: .8125em; --wire-laracrate-hint-color: #8e8881;
+    --wire-laracrate-label-size: .8125em; --wire-laracrate-label-color: #6b6560;
+    --wire-laracrate-button-radius: .375em;
+    --wire-laracrate-progress-height: 4px; --wire-laracrate-progress-bg: rgb(26 26 26 / .08);
+    --wire-laracrate-tile-radius: .375em; --wire-laracrate-tile-border: 1px solid rgb(26 26 26 / .08);
+    --wire-laracrate-tile-placeholder-bg: #fff; --wire-laracrate-tile-placeholder-color: #6b6560;
+    --wire-laracrate-overlay-uploading: rgb(26 26 26 / .4); --wire-laracrate-overlay-done: rgb(193 95 60 / .5); --wire-laracrate-overlay-error: rgb(185 28 28 / .5);
+    --wire-laracrate-card-border: 1px solid rgb(26 26 26 / .12); --wire-laracrate-media-bg: #fff;
+    --wire-laracrate-icon-button-radius: .375em;
+}
+
+[data-wire-theme="chatgpt"] {
+    --wire-laracrate-name-weight: 600;
+    --wire-laracrate-font: 'Söhne', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Inter', sans-serif;
+    --wire-laracrate-text: #0d0d0d; --wire-laracrate-text-muted: #5d5d5d; --wire-laracrate-text-faint: #8e8ea0;
+    --wire-laracrate-accent: #0d0d0d; --wire-laracrate-accent-hover: #1a1a1a;
+    --wire-laracrate-radius: .75em; --wire-laracrate-border-color: #e5e5e5;
+    --wire-laracrate-drop-bg: #fff; --wire-laracrate-drop-hover-bg: #fff;
+    --wire-laracrate-drop-border-width: 1px; --wire-laracrate-drop-border-style: solid; --wire-laracrate-drop-border-color: #e5e5e5;
+    --wire-laracrate-drop-hover-border-color: rgb(13 13 13 / .4);
+    --wire-laracrate-dragover-bg: #f7f7f8; --wire-laracrate-dragover-border-color: #0d0d0d;
+    --wire-laracrate-icon-box: 2.75em; --wire-laracrate-icon-size: 1.25em; --wire-laracrate-icon-bg: #fff;
+    --wire-laracrate-icon-border: 1px solid #e5e5e5; --wire-laracrate-icon-radius: .5em;
+    --wire-laracrate-icon-color: #0d0d0d; --wire-laracrate-icon-gap: .75em;
+    --wire-laracrate-title-size: .9375em; --wire-laracrate-title-weight: 600; --wire-laracrate-title-color: #0d0d0d;
+    --wire-laracrate-subtitle-size: .8125em; --wire-laracrate-hint-color: #8e8ea0;
+    --wire-laracrate-label-size: .8125em; --wire-laracrate-label-color: #5d5d5d;
+    --wire-laracrate-button-radius: .5em;
+    --wire-laracrate-progress-height: 4px; --wire-laracrate-progress-bg: #e5e5e5;
+    --wire-laracrate-tile-radius: .5em; --wire-laracrate-tile-border: 1px solid #e5e5e5;
+    --wire-laracrate-tile-placeholder-bg: #f7f7f8; --wire-laracrate-tile-placeholder-color: #8e8ea0;
+    --wire-laracrate-overlay-uploading: rgb(13 13 13 / .4);
+    --wire-laracrate-icon-button-radius: .5em;
+}

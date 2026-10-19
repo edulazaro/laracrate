@@ -7,6 +7,7 @@ use EduLazaro\Laracrate\Tests\Support\HasFilesTestModel;
 use EduLazaro\Laracrate\Tests\Support\TestUser;
 use EduLazaro\Laracrate\Tests\TestCase;
 use EduLazaro\Laracrate\Uploads\UploadGrant;
+use Illuminate\Auth\GenericUser;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -73,6 +74,39 @@ class UploadGrantTest extends TestCase
 
         $this->expectException(InvalidUploadGrant::class);
         UploadGrant::fromToken($token);
+    }
+
+    public function test_the_same_id_of_another_user_class_is_another_user(): void
+    {
+        $token = UploadGrant::for($this->owner, 'gallery')->token();
+
+        // A client #N of another guard is not the user #N the grant was issued to.
+        $this->actingAs(new GenericUser(['id' => $this->user->id]));
+
+        $this->expectException(InvalidUploadGrant::class);
+        UploadGrant::fromToken($token);
+    }
+
+    public function test_a_token_only_works_in_the_browser_session_it_was_issued_in(): void
+    {
+        $session = $this->app['session']->driver();
+        $session->setId(str_repeat('a', 40));
+        $this->app['request']->setLaravelSession($session);
+
+        $token = UploadGrant::for($this->owner, 'gallery')->token();
+        $this->assertNotNull(UploadGrant::fromToken($token)->session);
+
+        // Same account, another browser: the token was copied out of the page.
+        $session->setId(str_repeat('b', 40));
+
+        $this->expectException(InvalidUploadGrant::class);
+        UploadGrant::fromToken($token);
+    }
+
+    public function test_the_token_carries_its_file_limit(): void
+    {
+        $this->assertSame(3, UploadGrant::fromToken(UploadGrant::for($this->owner, 'gallery', maxFiles: 3)->token())->maxFiles);
+        $this->assertNull(UploadGrant::fromToken(UploadGrant::for($this->owner, 'gallery')->token())->maxFiles);
     }
 
     public function test_a_token_expires(): void

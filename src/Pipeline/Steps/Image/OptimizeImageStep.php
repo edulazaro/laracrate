@@ -6,7 +6,7 @@ use EduLazaro\Laracrate\Actions\Files\Image\OptimizeImageAction;
 use EduLazaro\Laracrate\Contracts\FileActionInterface;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Models\File;
-use EduLazaro\Laracrate\Services\StorageManager;
+use EduLazaro\Laracrate\Support\Variants;
 use EduLazaro\Laracrate\Support\CollectionConfig;
 
 /**
@@ -40,7 +40,7 @@ class OptimizeImageStep implements FileActionInterface
     protected function shouldOptimize(File $file): bool
     {
         $colRoot = CollectionConfig::resolve($file->collection, $file->fileable_type);
-        $config  = app(StorageManager::class)->getTypeConfig($file->collection, 'image', $file->fileable_type);
+        $config  = Variants::typeConfig($file);
 
         return (bool) (
             $colRoot['optimize']

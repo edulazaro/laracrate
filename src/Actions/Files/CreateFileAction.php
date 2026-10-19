@@ -2,6 +2,7 @@
 
 namespace EduLazaro\Laracrate\Actions\Files;
 
+use EduLazaro\Laracrate\Enums\FileAccess;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Exceptions\UploadRejected;
 use EduLazaro\Laracrate\Models\File;
@@ -62,8 +63,9 @@ class CreateFileAction extends Action
             ->filter()
             ->values();
         $disk   = $config['disk']   ?? 'documents';
-        $access = $config['access'] ?? 'private';
-        $sensitive = (bool) ($config['sensitive'] ?? false);
+        $access = FileAccess::fromConfig($config['access'] ?? null);
+        // 'stream' is the 1.x name of a private collection served only through PHP.
+        $sensitive = (bool) ($config['sensitive'] ?? false) || ($config['access'] ?? null) === 'stream';
         $encrypt   = (bool) ($config['encrypt'] ?? false);
 
         // Critical validation: encrypt requires PHP to hold the binary
@@ -80,18 +82,33 @@ class CreateFileAction extends Action
 
         $manager = app(StorageManager::class);
 
+        // A direct upload is measured in the bucket: the size a FileUpload brings is
+        // whatever its caller says, often what the browser declared, and a presigned
+        // PUT does not bind the length. One HEAD, no download.
+        $measuredSize = $upload instanceof FileUpload ? $this->measure($upload, $disk, $manager) : null;
+
         // 1. Validate FIRST with the declared metadata (without touching the
         //    binary yet). This avoids leaving orphan binaries in R2 if the
         //    collection rejects by type/mime/size/slot.
         $declared = $this->declaredMetadata($upload);
+        if ($measuredSize !== null) {
+            $declared['size'] = $measuredSize;
+        }
         $type = FileType::fromMime($declared['mime_type']);
-        $this->validateAgainstCollection(
-            $collection, $type, $declared,
-            $fileable, $parent, $manager, $slotModels, $creator
-        );
+        try {
+            $this->validateAgainstCollection(
+                $collection, $type, $declared,
+                $fileable, $parent, $manager, $slotModels, $creator
+            );
+        } catch (UploadRejected $e) {
+            if ($upload instanceof FileUpload) {
+                $this->discardTemp($upload, $disk, $manager);
+            }
+            throw $e;
+        }
 
         // 2. Validation passed: now move/upload the binary.
-        $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt, $tenant);
+        $resolved = $this->resolveUpload($upload, $disk, $collection, $fileable, $manager, $encrypt, $tenant, $measuredSize);
 
         // Auto-position at the end if not declared explicitly.
         if (!isset($data['position']) && !$parent) {
@@ -203,6 +220,30 @@ class CreateFileAction extends Action
             $slotModels,
             $creator,
         );
+    }
+
+    /**
+     * The size of a direct upload's object in the bucket.
+     *
+     * @throws UploadRejected  when the object is not there
+     */
+    protected function measure(FileUpload $upload, string $disk, StorageManager $manager): int
+    {
+        try {
+            return (int) $manager->resolveDisk($disk)->size(ltrim($upload->key, '/'));
+        } catch (\Throwable) {
+            throw new UploadRejected("The object '{$upload->key}' is not in the bucket.", 'missing');
+        }
+    }
+
+    /** A refused direct upload does not stay in temp/. An object under a model's path is left alone. */
+    protected function discardTemp(FileUpload $upload, string $disk, StorageManager $manager): void
+    {
+        $key = ltrim($upload->key, '/');
+
+        if (str_starts_with($key, 'temp/')) {
+            rescue(fn () => $manager->resolveDisk($disk)->delete($key), report: false);
+        }
     }
 
     /**
@@ -341,6 +382,7 @@ class CreateFileAction extends Action
         StorageManager $manager,
         bool $encrypt = false,
         ?Model $tenant = null,
+        ?int $measuredSize = null,
     ): array {
         // Case A: presigned upload completed by the client.
         if ($upload instanceof FileUpload) {
@@ -367,7 +409,7 @@ class CreateFileAction extends Action
 
             return $this->makeRow($key, $upload->originalName, [
                 'mime_type' => $upload->mimeType,
-                'size'      => $upload->size,
+                'size'      => $measuredSize ?? $upload->size,
                 'digest'    => $upload->digest,
                 'width'     => $upload->width,
                 'height'    => $upload->height,

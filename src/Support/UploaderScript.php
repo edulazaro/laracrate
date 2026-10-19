@@ -22,6 +22,7 @@ final class UploaderScript
         $config = json_encode([
             'signUrl'    => route('laracrate.uploads.sign', absolute: false),
             'confirmUrl' => route('laracrate.uploads.confirm', absolute: false),
+            'registerUrl' => route('laracrate.uploads.register', absolute: false),
             'messages'   => [
                 'network' => __('laracrate::uploader.network'),
                 'stalled' => __('laracrate::uploader.stalled'),

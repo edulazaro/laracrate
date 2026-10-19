@@ -10,7 +10,6 @@ use EduLazaro\Laracrate\Tests\Support\HasFilesTestModel;
 use EduLazaro\Laracrate\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 /**
@@ -23,7 +22,7 @@ class RangeRequestTest extends TestCase
 
     private const BODY = '0123456789abcdefghij';
 
-    private function videoFile(string $access = 'stream'): File
+    private function videoFile(string $access = 'private'): File
     {
         Storage::fake('media');
 
@@ -52,14 +51,12 @@ class RangeRequestTest extends TestCase
 
     private function path(string $route, File $file): string
     {
-        $url = URL::temporarySignedRoute($route, now()->addMinutes(5), ['file' => $file->slug]);
-
-        return parse_url($url, PHP_URL_PATH) . '?' . parse_url($url, PHP_URL_QUERY);
+        return parse_url(route($route, ['file' => $file->slug]), PHP_URL_PATH);
     }
 
     public function test_without_range_the_whole_file_is_served_and_ranges_are_announced(): void
     {
-        $response = $this->get($this->path('laracrate.files.preview', $this->videoFile()));
+        $response = $this->get($this->path('laracrate.files.stream', $this->videoFile()));
 
         $response->assertOk();
         $response->assertHeader('Accept-Ranges', 'bytes');
@@ -70,7 +67,7 @@ class RangeRequestTest extends TestCase
     public function test_a_range_returns_only_those_bytes(): void
     {
         $response = $this->withHeader('Range', 'bytes=5-9')
-            ->get($this->path('laracrate.files.preview', $this->videoFile()));
+            ->get($this->path('laracrate.files.stream', $this->videoFile()));
 
         $response->assertStatus(206);
         $response->assertHeader('Content-Range', 'bytes 5-9/20');
@@ -83,16 +80,16 @@ class RangeRequestTest extends TestCase
         $file = $this->videoFile();
 
         $this->assertSame('fghij', $this->withHeader('Range', 'bytes=15-')
-            ->get($this->path('laracrate.files.preview', $file))->streamedContent());
+            ->get($this->path('laracrate.files.stream', $file))->streamedContent());
 
         $this->assertSame('hij', $this->withHeader('Range', 'bytes=-3')
-            ->get($this->path('laracrate.files.preview', $file))->streamedContent());
+            ->get($this->path('laracrate.files.stream', $file))->streamedContent());
     }
 
     public function test_a_range_past_the_end_is_not_satisfiable(): void
     {
         $response = $this->withHeader('Range', 'bytes=50-60')
-            ->get($this->path('laracrate.files.preview', $this->videoFile()));
+            ->get($this->path('laracrate.files.stream', $this->videoFile()));
 
         $response->assertStatus(416);
         $response->assertHeader('Content-Range', 'bytes */20');
@@ -102,17 +99,20 @@ class RangeRequestTest extends TestCase
     {
         $file = $this->videoFile();
 
-        $this->withHeader('Range', 'bytes=0-')->get($this->path('laracrate.files.stream', $file))->assertStatus(206);
-        $this->withHeader('Range', 'bytes=10-')->get($this->path('laracrate.files.stream', $file))->assertStatus(206);
-        $this->withHeader('Range', 'bytes=15-')->get($this->path('laracrate.files.stream', $file))->assertStatus(206);
+        $this->withHeader('Range', 'bytes=0-')->get($this->path('laracrate.files.download', $file))->assertStatus(206);
+        $this->withHeader('Range', 'bytes=10-')->get($this->path('laracrate.files.download', $file))->assertStatus(206);
+        $this->withHeader('Range', 'bytes=15-')->get($this->path('laracrate.files.download', $file))->assertStatus(206);
 
         $this->assertSame(1, $file->fresh()->downloads_count);
     }
 
     public function test_local_disk_serving_honours_ranges(): void
     {
+        // A private file on a local disk: url() is a signed link to the local serve route.
+        $url = $this->videoFile()->url();
+
         $response = $this->withHeader('Range', 'bytes=10-12')
-            ->get($this->path('laracrate.local.serve', $this->videoFile('signed')));
+            ->get(parse_url($url, PHP_URL_PATH) . '?' . parse_url($url, PHP_URL_QUERY));
 
         $response->assertStatus(206);
         $response->assertHeader('Content-Range', 'bytes 10-12/20');

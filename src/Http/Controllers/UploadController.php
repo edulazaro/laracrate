@@ -2,22 +2,16 @@
 
 namespace EduLazaro\Laracrate\Http\Controllers;
 
-use EduLazaro\Laracrate\Actions\Files\CreateFileAction;
-use EduLazaro\Laracrate\Exceptions\InvalidUploadGrant;
-use EduLazaro\Laracrate\Exceptions\UploadRejected;
-use EduLazaro\Laracrate\Models\File;
+use EduLazaro\Laracrate\Http\Controllers\Concerns\HandlesUploadGrants;
 use EduLazaro\Laracrate\Services\StorageManager;
-use EduLazaro\Laracrate\Support\ActiveContent;
 use EduLazaro\Laracrate\Support\FileUpload;
-use EduLazaro\Laracrate\Uploads\UploadGrant;
+use EduLazaro\Laracrate\Uploads\PresignedUploads;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -31,9 +25,14 @@ use Illuminate\Support\Str;
  *            asked for that key, and the File is created (moved server side).
  *   receive  'server' only: the file comes through PHP and is created at once, so
  *            an `encrypt` collection can encrypt it.
+ *   register the 'presign' mode of the components: the component already signed the
+ *            object, and the server kept where it goes (PresignedUploads); the queue
+ *            only sends its key.
  */
 class UploadController extends Controller
 {
+    use HandlesUploadGrants;
+
     /** Hours a receipt stays valid: a slow upload of a big file still makes it. */
     private const RECEIPT_TTL = 6 * 3600;
 
@@ -105,23 +104,50 @@ class UploadController extends Controller
             return $this->fail(__('laracrate::uploader.grant_invalid'), 403);
         }
 
-        // The size the bucket holds, not the one the browser declared: a presigned PUT
-        // does not bind the length, so a declared 1 KB could be a 10 GB object.
-        try {
-            $size = (int) Storage::disk($receipt['d'])->size($receipt['k']);
-        } catch (\Throwable) {
-            return $this->fail(__('laracrate::uploader.not_received'));
-        }
-
+        // No size: addFile() measures the object in the bucket.
         $upload = FileUpload::fromArray([
             'disk'          => $receipt['d'],
             'key'           => $receipt['k'],
             'mime_type'     => $data['mime'] ?: 'application/octet-stream',
             'original_name' => $data['original_name'],
-            'size'          => $size,
         ]);
 
         return $this->store($grant, $upload, $data['original_name']);
+    }
+
+    /**
+     * Creates the File of an object a component signed in 'presign' mode. The target
+     * is the one kept when it was signed, under the component's grant, so it only works
+     * for the user who picked the file, in that browser.
+     */
+    public function register(Request $request): JsonResponse
+    {
+        $data = $request->validate(['key' => 'required|string|max:1024']);
+
+        $pending = PresignedUploads::find($data['key']);
+        if ($pending === null) {
+            return $this->fail(__('laracrate::uploader.grant_invalid'), 403);
+        }
+
+        $grant = $this->grant($pending['grant']);
+        if ($grant instanceof JsonResponse) {
+            return $grant;
+        }
+
+        // No size: addFile() measures the object in the bucket.
+        $response = $this->store($grant, FileUpload::fromArray([
+            'disk'          => $pending['disk'],
+            'key'           => $data['key'],
+            'mime_type'     => $pending['mime'],
+            'original_name' => $pending['name'],
+        ]), $pending['name']);
+
+        // Kept while it fails, so a register sent before the bytes arrived can be retried.
+        if ($response->isSuccessful()) {
+            PresignedUploads::forget($data['key']);
+        }
+
+        return $response;
     }
 
     public function receive(Request $request): JsonResponse
@@ -150,111 +176,5 @@ class UploadController extends Controller
         }
 
         return $this->store($grant, $file, $name);
-    }
-
-    /** Creates the File (or replaces the collection's, for single-file targets). */
-    protected function store(UploadGrant $grant, FileUpload|UploadedFile $upload, string $name): JsonResponse
-    {
-        $fileable = $grant->fileable();
-
-        try {
-            $file = $grant->replace
-                ? $fileable->setFile($grant->collection, $upload, creator: $grant->creator(), owner: $grant->owner())
-                : $fileable->addFile(
-                    $upload,
-                    $grant->collection,
-                    slots: $grant->slots,
-                    creator: $grant->creator(),
-                    owner: $grant->owner(),
-                    folder: $grant->folder(),
-                );
-        } catch (UploadRejected $e) {
-            $this->discard($upload);
-
-            return $this->fail($e->userMessage());
-        } catch (\InvalidArgumentException $e) {
-            $this->discard($upload);
-            Log::warning('Laracrate upload refused', ['collection' => $grant->collection, 'error' => $e->getMessage()]);
-
-            return $this->fail(__('laracrate::uploader.rejected.generic'));
-        }
-
-        if (! $file instanceof File) {
-            $this->discard($upload);
-
-            return $this->fail(__('laracrate::uploader.rejected.generic'));
-        }
-
-        return response()->json([
-            'id'         => $file->id,
-            'slug'       => $file->slug,
-            'name'       => $name,
-            'collection' => $grant->collection,
-            'contextKey' => $grant->contextKey,
-            'scope'      => $grant->scope(),
-        ]);
-    }
-
-    /** The collection and slot rules, plus no runnable content unless the collection asks for it. */
-    protected function refusal(UploadGrant $grant, string $mime, int $size, string $name, Request $request): ?JsonResponse
-    {
-        $fileable = $grant->fileable();
-
-        try {
-            CreateFileAction::create()->preflight(
-                $fileable,
-                $grant->collection,
-                $mime,
-                $size,
-                $name,
-                $grant->slots,
-                $grant->creator() ?? $request->user(),
-            );
-        } catch (UploadRejected $e) {
-            return $this->fail($e->userMessage());
-        }
-
-        if (ActiveContent::is($mime, $name) && ! $this->acceptsExplicitly($grant, $fileable, $mime)) {
-            return $this->fail(__('laracrate::uploader.rejected.active'));
-        }
-
-        return null;
-    }
-
-    protected function acceptsExplicitly(UploadGrant $grant, $fileable, string $mime): bool
-    {
-        $type = \EduLazaro\Laracrate\Enums\FileType::fromMime($mime)->value;
-        $config = app(StorageManager::class)->getTypeConfig($grant->collection, $type, $fileable->getMorphClass());
-
-        return in_array($mime, $config['accepted_mime_types'] ?? [], true);
-    }
-
-    protected function grant(string $token): UploadGrant|JsonResponse
-    {
-        try {
-            return UploadGrant::fromToken($token);
-        } catch (InvalidUploadGrant $e) {
-            return $this->fail(__('laracrate::uploader.grant_invalid'), 403);
-        }
-    }
-
-    /** A refused direct upload must not stay in temp/. */
-    protected function discard(FileUpload|UploadedFile $upload): void
-    {
-        if ($upload instanceof FileUpload && str_starts_with($upload->key, 'temp/')) {
-            rescue(fn () => Storage::disk($upload->disk)->delete($upload->key), report: false);
-        }
-    }
-
-    protected function safeName(string $name): string
-    {
-        $safe = preg_replace('/[^a-zA-Z0-9_\-.]/', '_', $name);
-
-        return Str::limit($safe, 120, '') ?: 'upload';
-    }
-
-    protected function fail(string $message, int $status = 422): JsonResponse
-    {
-        return response()->json(['message' => $message], $status);
     }
 }

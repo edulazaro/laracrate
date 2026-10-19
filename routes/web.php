@@ -15,16 +15,15 @@ $prefix     = config('laracrate.stream.route_prefix', 'laracrate/files');
 $middleware = config('laracrate.stream.middleware', ['web', 'auth']);
 $namePrefix = config('laracrate.stream.route_name_prefix', 'laracrate.files');
 
-// Streaming + descarga firmada del paquete (sensitive collections).
+// Files served through PHP (stream, download) and the viewer's data, behind the session.
 Route::middleware($middleware)
     ->prefix($prefix)
     ->name($namePrefix . '.')
     ->group(function () {
         Route::get('{file:slug}/stream',   [StreamFileController::class, 'stream'])->name('stream');
-        Route::get('{file:slug}/preview',  [StreamFileController::class, 'preview'])->name('preview');
         Route::get('{file:slug}/download', [StreamFileController::class, 'download'])->name('download');
         // What the viewer shows, with a link made at request time. See ViewerController.
-        Route::get('{file:slug}/view', ViewerController::class)->name('view');
+        Route::get('{file:slug}/viewer', ViewerController::class)->name('viewer');
         // Handoff: open in an editor of another site, and the page it saves the copy into.
         Route::get('{file:slug}/handoff/{editor}', [HandoffController::class, 'open'])->name('handoff');
         Route::get('{file:slug}/handoff/{editor}/save', [HandoffController::class, 'save'])->name('handoff.save');
@@ -52,10 +51,13 @@ Route::middleware(config('laracrate.uploads.middleware', ['web', 'auth']))
         Route::post('sign', [UploadController::class, 'sign'])->name('sign');
         Route::post('confirm', [UploadController::class, 'confirm'])->name('confirm');
         Route::post('receive', [UploadController::class, 'receive'])->name('receive');
+        Route::post('register', [UploadController::class, 'register'])->name('register');
     });
 
 // Multipart upload (archivos > 100 MB) directos a S3/R2.
-Route::middleware(config('laracrate.multipart.middleware', config('laracrate.uploads.middleware', ['web', 'auth'])))
+// `??` and not config()'s default: the shipped config sets this key to null, and a
+// key that exists returns its null, which left these routes with no middleware at all.
+Route::middleware(config('laracrate.multipart.middleware') ?? config('laracrate.uploads.middleware') ?? ['web', 'auth'])
     ->prefix(config('laracrate.multipart.route_prefix', 'laracrate/multipart'))
     ->name('laracrate.multipart.')
     ->group(function () {

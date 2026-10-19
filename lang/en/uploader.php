@@ -7,8 +7,8 @@ return [
     | Uploader strings
     |--------------------------------------------------------------------------
     |
-    | Strings used by <livewire:laracrate-uploader> and
-    | <livewire:laracrate-uploader-deferred>. Override from the app via
+    | Strings used by <livewire:laracrate-uploader>, instant and deferred.
+    | Override from the app via
     | `php artisan vendor:publish --tag=laracrate-translations`.
     |
     */
@@ -49,6 +49,9 @@ return [
     // Processing
     'uploading'           => 'Uploading...',
     'preparing'           => 'Preparing...',
+    'in_queue'            => 'in queue',
+    'retry'               => 'Retry',
+    'view'                => 'View',
     'processing'          => 'Processing',
     'processing_dots'     => 'Processing...',
     'loading'             => 'Loading...',
@@ -66,6 +69,8 @@ return [
         'slot_extension'  => '":slot" only accepts :allowed.',
         'slot_full'       => '":slot" already has the maximum number of files (:limit).',
         'active'          => 'This type of file cannot be uploaded.',
+        'too_many'        => 'No more files can be uploaded here.',
+        'missing'         => 'The file did not reach the storage. Try again.',
         'generic'         => 'The file could not be saved.',
     ],
     'network'             => 'The connection was lost.',

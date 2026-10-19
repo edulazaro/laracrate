@@ -10,6 +10,7 @@ use EduLazaro\Laracrate\Tests\TestCase;
 use EduLazaro\Laracrate\Uploads\UploadGrant;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -41,6 +42,10 @@ class UploadEndpointsTest extends TestCase
 
     private function grant(string $collection = 'documents', ...$options): string
     {
+        // Issued outside the test's earlier requests: each of those got a new session,
+        // since a test request keeps no cookie the way a browser does.
+        $this->app->instance('request', Request::create('/'));
+
         return UploadGrant::for($this->owner, $collection, ...$options)->token();
     }
 
@@ -120,6 +125,46 @@ class UploadEndpointsTest extends TestCase
         ])->json();
 
         $this->confirm($grant, $signed)->assertStatus(422);
+    }
+
+    public function test_a_grant_only_works_in_the_browser_it_was_issued_in(): void
+    {
+        // The page that issues it runs in the browser session `aaa…`.
+        $session = $this->app['session']->driver();
+        $session->setId(str_repeat('a', 40));
+        $this->app['request']->setLaravelSession($session);
+        $grant = UploadGrant::for($this->owner, 'documents')->token();
+
+        $body = ['grant' => $grant, 'file_name' => 'deal.pdf', 'mime' => 'application/pdf', 'size' => 15];
+
+        $this->withCredentials()->withCookie(config('session.cookie'), str_repeat('a', 40))
+            ->postJson('/laracrate/uploads/sign', $body)->assertOk();
+        $this->withCredentials()->withCookie(config('session.cookie'), str_repeat('b', 40))
+            ->postJson('/laracrate/uploads/sign', $body)->assertStatus(403);
+    }
+
+    public function test_a_grant_signs_no_more_files_than_its_limit(): void
+    {
+        $grant = $this->grant(maxFiles: 2);
+        $sign = fn (string $upload) => $this->postJson('/laracrate/uploads/sign', [
+            'grant' => $grant, 'upload' => $upload, 'file_name' => 'deal.pdf', 'mime' => 'application/pdf', 'size' => 15,
+        ]);
+
+        $sign('1')->assertOk();
+        $sign('2')->assertOk();
+        $sign('3')->assertStatus(422);
+
+        // A retry of a file already counted is still that file.
+        $sign('1')->assertOk();
+    }
+
+    public function test_a_file_without_its_upload_id_always_counts_as_a_new_one(): void
+    {
+        $grant = $this->grant(maxFiles: 1);
+        $body = ['grant' => $grant, 'file_name' => 'deal.pdf', 'mime' => 'application/pdf', 'size' => 15];
+
+        $this->postJson('/laracrate/uploads/sign', $body)->assertOk();
+        $this->postJson('/laracrate/uploads/sign', $body)->assertStatus(422);
     }
 
     public function test_a_grant_cannot_be_used_by_another_user(): void

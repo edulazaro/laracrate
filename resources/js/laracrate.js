@@ -31,9 +31,8 @@ const defaultEndpoints = {
  *
  * @param {File} file         Objeto File del input.
  * @param {Object} opts
- * @param {string} opts.disk                  Disk lógico (media, documents, ...).
- * @param {string} [opts.collection]          Colección. Si la pasas + fileable, la key es canónica directa.
- * @param {Object} [opts.fileable]            { type, id }. Habilita key canónica (sin temp/).
+ * @param {string} opts.disk                  Disk lógico (media, documents, ...). The key is always under
+ *                                            temp/; addFile() moves it to the model's path when the app registers it.
  * @param {number} [opts.maxSizeKb]           Validación cliente y server.
  * @param {string} [opts.presignUrl]          Override de la ruta presign.
  * @param {Function} [opts.onProgress]        Callback (0..1) para progress del PUT.
@@ -58,9 +57,6 @@ export async function presignAndUpload(file, opts = {}) {
             mime:           file.type || 'application/octet-stream',
             file_name:      file.name,
             max_size_kb:    opts.maxSizeKb,
-            fileable_type:  opts.fileable?.type,
-            fileable_id:    opts.fileable?.id,
-            collection:     opts.collection,
         }),
     }).then(handleJson);
 

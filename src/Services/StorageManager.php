@@ -24,21 +24,25 @@ use Illuminate\Support\Str;
 class StorageManager
 {
     /**
-     * Suitable URL to read a File based on its access.
+     * A direct link to read a File.
      *
-     *   public → direct CDN URL (Storage::url()).
-     *   signed → temporary signed URL with server-side cache.
-     *   stream → package route signed with Laravel; if sensitive, bind viewer.
+     *   public    → its public URL, which does not expire.
+     *   private   → a signed URL to the disk that expires at $expires (laracrate.urls.signed_ttl
+     *               when null).
+     *   encrypted or sensitive → its stream route: an encrypted binary only PHP can decrypt,
+     *               and a sensitive one is never handed out, so every access is checked and logged.
      */
-    public function urlFor(File $file): ?string
+    public function urlFor(File $file, ?\DateTimeInterface $expires = null): ?string
     {
-        $access = $file->access?->value ?? $file->access;
+        if (($file->access?->value ?? $file->access) === 'public') {
+            return GeneratePublicUrlAction::create()->run(['file' => $file]);
+        }
 
-        return match ($access) {
-            'public' => GeneratePublicUrlAction::create()->run(['file' => $file]),
-            'stream' => GenerateSensitiveStreamUrlAction::create()->run(['file' => $file]),
-            default  => GenerateSignedUrlAction::create()->run(['file' => $file]),
-        };
+        if ($file->is_encrypted || $file->isSensitive()) {
+            return $file->streamUrl();
+        }
+
+        return GenerateSignedUrlAction::create()->run(['file' => $file, 'expires' => $expires]);
     }
 
     /**

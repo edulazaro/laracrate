@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Signed URL with a short TTL, cached server-side.
+ * Signed URL that expires when the caller says, or after laracrate.urls.signed_ttl. Only
+ * the default one is cached server-side: a page with many files signs each one once.
  * S3 uses Storage::disk()->temporaryUrl() (native presigned GET, no network).
  * Local falls back to a Laravel signed route that serves the binary.
  *
@@ -21,34 +22,44 @@ use Illuminate\Support\Facades\Storage;
  */
 class GenerateSignedUrlAction extends Action
 {
-    /** Return a cached, short-lived signed URL for the file. */
-    public function handle(File $file): ?string
+    /**
+     * A signed URL for the file. S3/R2 refuse a signature valid for more than 7 days:
+     * past that it fails, is logged and returns null.
+     */
+    public function handle(File $file, ?\DateTimeInterface $expires = null): ?string
     {
+        if ($expires !== null) {
+            return $this->sign($file, $expires);
+        }
+
         $minutes  = (int) config('laracrate.urls.signed_ttl', 5);
         $cacheTtl = (int) config('laracrate.urls.signed_cache_ttl', 4) * 60;
-        $key      = $file->key;
-        $driver   = config("filesystems.disks.{$file->disk}.driver");
 
         return Cache::remember(
             "laracrate:signed:{$file->id}:{$minutes}",
             $cacheTtl,
-            function () use ($file, $key, $driver, $minutes) {
-                try {
-                    if ($driver === 's3') {
-                        return app(\EduLazaro\Laracrate\Services\StorageManager::class)
-                            ->diskFor($file)
-                            ->temporaryUrl($key, now()->addMinutes($minutes));
-                    }
-                    return GenerateLocalSignedUrlAction::create()->run(['file' => $file, 'minutes' => $minutes]);
-                } catch (\Throwable $e) {
-                    Log::warning('laracrate: signed url failed', [
-                        'file_id' => $file->id,
-                        'disk'    => $file->disk,
-                        'error'   => $e->getMessage(),
-                    ]);
-                    return null;
-                }
-            }
+            fn () => $this->sign($file, now()->addMinutes($minutes))
         );
+    }
+
+    protected function sign(File $file, \DateTimeInterface $expires): ?string
+    {
+        try {
+            if (config("filesystems.disks.{$file->disk}.driver") === 's3') {
+                return app(\EduLazaro\Laracrate\Services\StorageManager::class)
+                    ->diskFor($file)
+                    ->temporaryUrl($file->key, $expires);
+            }
+
+            return GenerateLocalSignedUrlAction::create()->run(['file' => $file, 'expires' => $expires]);
+        } catch (\Throwable $e) {
+            Log::warning('laracrate: signed url failed', [
+                'file_id' => $file->id,
+                'disk'    => $file->disk,
+                'error'   => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 }

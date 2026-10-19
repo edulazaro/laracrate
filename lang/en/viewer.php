@@ -16,6 +16,7 @@ return [
     'loading'     => 'Opening…',
     'expand'      => 'View full size',
     'collapse'    => 'Back to the corner',
+    'edit'        => 'Edit',
     'download'    => 'Download',
     'previous'    => 'Previous',
     'next'        => 'Next',

@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
  *
  *      'documents' => [
  *          'disk'   => 'documents',
- *          'access' => 'signed',
+ *          'access' => 'private',
  *      ]
  *
  *      Any model using HasFiles can write to this collection with the same config.
@@ -23,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
  *
  *      'documents' => [
  *          'disk'   => 'documents',        // base shared by all models
- *          'access' => 'signed',
+ *          'access' => 'private',
  *          'models' => [
  *              'case'         => ['path' => 'cases/{slug}/documents'],
  *              'organization' => ['path' => 'orgs/{handle}/documents', 'preview' => false],

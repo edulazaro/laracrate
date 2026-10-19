@@ -2,12 +2,13 @@
 
 namespace EduLazaro\Laracrate\Models;
 
-use EduLazaro\Laracrate\Enums\FileAccess;
+use EduLazaro\Laracrate\Casts\AsFileAccess;
+use EduLazaro\Laracrate\Enums\FileMode;
 use EduLazaro\Laracrate\Enums\FileType;
 use EduLazaro\Laracrate\Enums\ProcessingStatus;
 use EduLazaro\Laracrate\Services\StorageManager;
 use EduLazaro\Laracrate\Support\CollectionConfig;
-use Illuminate\Support\Facades\URL;
+use EduLazaro\Laracrate\Support\Variants;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,7 +36,7 @@ class File extends Model
         'owner_type', 'owner_id',
         'tenant_type', 'tenant_id',
         'disk', 'path', 'name', 'original_name', 'extension', 'mime_type', 'size', 'digest',
-        'context', 'collection', 'type', 'category',
+        'context', 'collection', 'type', 'mode', 'category',
         'access', 'visibility', 'sensitive', 'is_encrypted',
         'title', 'description', 'label', 'default', 'position', 'published', 'is_verified',
         'duration', 'width', 'height', 'bitrate', 'sample_rate',
@@ -62,8 +63,9 @@ class File extends Model
         'bitrate'               => 'integer',
         'sample_rate'           => 'integer',
         'metadata'              => 'array',
-        'access'                => FileAccess::class,
+        'access'                => AsFileAccess::class,
         'type'                  => FileType::class,
+        'mode'                  => FileMode::class,
         'processing_status'     => ProcessingStatus::class,
         'last_downloaded_at'    => 'datetime',
         'processing_started_at' => 'datetime',
@@ -407,6 +409,30 @@ class File extends Model
      * ------------------------------------------------------------------ */
 
     /**
+     * The variant the collection names as the preview of files of this type, e.g.
+     * `'video' => [..., 'preview' => 'portada.mini']`. Null when it names none or that
+     * variant does not exist yet (the queue has not made it, or it failed).
+     *
+     *   $video->preview()   // the same as $video->variant('portada.mini')
+     */
+    public function preview(): ?self
+    {
+        if (! $this->collection || ! $this->type) {
+            return null;
+        }
+
+        $name = Variants::typeConfig($this)['preview'] ?? null;
+
+        if (! is_string($name) || $name === '') {
+            return null;
+        }
+
+        $variant = $this->variant($name);
+
+        return $variant->is($this) ? null : $variant;
+    }
+
+    /**
      * Navigates to a descendant variant using dot notation.
      * Falls back to the nearest real ancestor if the chain breaks: never returns null.
      *
@@ -472,21 +498,22 @@ class File extends Model
      * ------------------------------------------------------------------ */
 
     /**
-     * URL of the File. Returns the real URL (public/signed/stream depending on
-     * access) unless a type is forced and the File does not match: in that case
-     * it returns the placeholder configured for that type.
+     * A direct link to the File (see StorageManager::urlFor): public, signed until
+     * $expires when private, or its stream route when encrypted or sensitive. When a
+     * type is forced and the File does not match, the placeholder of that type.
      *
-     *   $file->url()              -> real URL (or null if there is no valid backend)
-     *   $file->url('image')       -> real URL if type=image, otherwise image placeholder
+     *   $file->url()                              -> the link (null if the backend fails)
+     *   $file->url(expires: now()->addHours(3))   -> a private one that lasts three hours
+     *   $file->url('image')                       -> the link if type=image, otherwise the image placeholder
      */
-    public function url(?string $forceType = null): ?string
+    public function url(?string $forceType = null, ?\DateTimeInterface $expires = null): ?string
     {
         if ($forceType !== null && $this->type?->value !== $forceType) {
             return $this->placeholderFor($forceType);
         }
 
         try {
-            $url = app(StorageManager::class)->urlFor($this);
+            $url = app(StorageManager::class)->urlFor($this, $expires);
         } catch (\Throwable) {
             $url = null;
         }
@@ -520,9 +547,9 @@ class File extends Model
     }
 
     /**
-     * URL of the preview at thumbnail size. For videos/PDF/audio with a
-     * 'preview' variant it forces type 'image' (returns the image placeholder
-     * if the chain falls back to an ancestor of a different type).
+     * An image link that stands for the file in a list: its preview() or, for an image
+     * without one, the image itself. Anything else without a preview gets the image
+     * placeholder.
      *
      * Any exception during URL generation (broken disk, unreachable S3, bad
      * credentials) falls back to a placeholder instead of propagating: a file
@@ -531,48 +558,29 @@ class File extends Model
     public function getPreviewLinkAttribute(): string
     {
         try {
-            return $this->variant('preview.thumbnail')->url('image') ?? $this->placeholderFor('image');
+            return ($this->preview() ?? $this)->url('image') ?? $this->placeholderFor('image');
         } catch (\Throwable) {
             return $this->placeholderFor('image');
         }
     }
 
     /* ------------------------------------------------------------------
-     | Stream / download (the package's signed routes)
+     | Stream / download: the file served through PHP (StreamFileController)
      |
-     | The controller (StreamFileController) requires hasValidSignature(), so
-     | these URLs are always emitted signed with a TTL. The TTL is configurable
-     | in `laracrate.urls.signed_ttl_minutes` (default 15).
+     | Behind the session, every request checks the file's view policy, so these
+     | links never expire.
      * ------------------------------------------------------------------ */
 
-    /** Signed URL to stream the file. */
+    /** Link that shows the file in the browser. */
     public function streamUrl(): string
     {
-        return URL::temporarySignedRoute(
-            'laracrate.files.stream',
-            now()->addMinutes((int) config('laracrate.urls.route_signed_ttl', 15)),
-            ['file' => $this->slug]
-        );
+        return route('laracrate.files.stream', ['file' => $this->slug]);
     }
 
-    /** Signed URL to download the file. */
+    /** Link that downloads the file, counted in downloads_count. */
     public function downloadUrl(): string
     {
-        return URL::temporarySignedRoute(
-            'laracrate.files.download',
-            now()->addMinutes((int) config('laracrate.urls.route_signed_ttl', 15)),
-            ['file' => $this->slug]
-        );
-    }
-
-    /** Signed URL to preview the file. */
-    public function previewUrl(): string
-    {
-        return URL::temporarySignedRoute(
-            'laracrate.files.preview',
-            now()->addMinutes((int) config('laracrate.urls.route_signed_ttl', 15)),
-            ['file' => $this->slug]
-        );
+        return route('laracrate.files.download', ['file' => $this->slug]);
     }
 
     /* ------------------------------------------------------------------
@@ -676,15 +684,6 @@ class File extends Model
     {
         return $this->mime_type === 'application/pdf'
             || strtolower($this->extension ?? '') === 'pdf';
-    }
-
-    /**
-     * The copy to play in a browser: the `playback` variant when the collection keeps
-     * the original (`'transcode' => 'variant'`), otherwise the file itself.
-     */
-    public function playback(): self
-    {
-        return $this->variant(\EduLazaro\Laracrate\Actions\Files\Video\TranscodeVideoAction::PLAYBACK);
     }
 
     /**
