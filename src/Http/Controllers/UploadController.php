@@ -177,4 +177,27 @@ class UploadController extends Controller
 
         return $this->store($grant, $file, $name);
     }
+
+    /**
+     * Removes the current file of a target that replaces it, as the components' delete
+     * button does. Only a replacing grant can: it already deletes that file with its
+     * next upload.
+     */
+    public function remove(Request $request): JsonResponse
+    {
+        $data = $request->validate(['grant' => 'required|string']);
+
+        $grant = $this->grant($data['grant']);
+        if ($grant instanceof JsonResponse) {
+            return $grant;
+        }
+
+        if (! $grant->replace) {
+            return $this->fail(__('laracrate::uploader.target_refused'), 403);
+        }
+
+        $grant->fileable()->setFile($grant->collection, null);
+
+        return response()->json(['deleted' => true]);
+    }
 }

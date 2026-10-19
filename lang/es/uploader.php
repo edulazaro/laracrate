@@ -62,6 +62,7 @@ return [
 
     // Subidas: rechazos y bandeja
     'grant_invalid'       => 'Esta página ha caducado. Recárgala para seguir subiendo.',
+    'target_refused'      => 'No puedes subir archivos aquí.',
     'not_received'        => 'El archivo no llegó al almacenamiento. Inténtalo de nuevo.',
     'rejected' => [
         'type'            => 'Este tipo de archivo no se admite aquí.',

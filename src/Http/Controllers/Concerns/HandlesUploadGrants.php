@@ -57,8 +57,7 @@ trait HandlesUploadGrants
         }
 
         return response()->json([
-            'id'         => $file->id,
-            'slug'       => $file->slug,
+            ...$file->toComponentArray(),
             'name'       => $name,
             'collection' => $grant->collection,
             'contextKey' => $grant->contextKey,

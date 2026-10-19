@@ -337,6 +337,9 @@ return [
     |                  uploads through PHP (encrypted collections) always uses 'grant'.
     | presign_minutes: how long an object signed in 'presign' mode can wait for its
     |                  bytes. The whole batch is signed at once, so a long one needs time.
+    | targets:         the file where the app declares its upload targets for the
+    |                  React and Svelte components (UploadTargets::define), read the
+    |                  first time a component asks for one.
     |
     */
 
@@ -346,6 +349,7 @@ return [
         'allowed_disks'   => [],
         'mode'            => env('LARACRATE_UPLOAD_MODE', 'presign'),
         'presign_minutes' => 120,
+        'targets'         => base_path('routes/uploads.php'),
     ],
 
     /*

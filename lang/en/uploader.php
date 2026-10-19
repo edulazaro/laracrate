@@ -62,6 +62,7 @@ return [
 
     // Uploads: refusals and tray
     'grant_invalid'       => 'This page has expired. Reload it to keep uploading.',
+    'target_refused'      => 'You cannot upload files here.',
     'not_received'        => 'The file did not reach the storage. Try again.',
     'rejected' => [
         'type'            => 'This type of file is not accepted here.',

@@ -564,6 +564,26 @@ class File extends Model
         }
     }
 
+    /**
+     * The file as the React and Svelte components show it: what the upload endpoints
+     * answer, and what an app passes them as the current file.
+     */
+    public function toComponentArray(): array
+    {
+        return [
+            'id'                => $this->id,
+            'slug'              => $this->slug,
+            'name'              => $this->original_name ?: $this->name,
+            'title'             => $this->title,
+            'size'              => (int) $this->size,
+            'type'              => $this->type?->value,
+            'extension'         => $this->extension,
+            'url'               => $this->url(),
+            'preview'           => $this->preview_link,
+            'processing_status' => $this->processing_status?->value ?? ProcessingStatus::COMPLETED->value,
+        ];
+    }
+
     /* ------------------------------------------------------------------
      | Stream / download: the file served through PHP (StreamFileController)
      |

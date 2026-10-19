@@ -8,6 +8,7 @@ use EduLazaro\Laracrate\Http\Controllers\MultipartUploadController;
 use EduLazaro\Laracrate\Http\Controllers\PresignedUploadController;
 use EduLazaro\Laracrate\Http\Controllers\StreamFileController;
 use EduLazaro\Laracrate\Http\Controllers\UploadController;
+use EduLazaro\Laracrate\Http\Controllers\UploadTargetController;
 use EduLazaro\Laracrate\Http\Controllers\ViewerController;
 use Illuminate\Support\Facades\Route;
 
@@ -52,6 +53,10 @@ Route::middleware(config('laracrate.uploads.middleware', ['web', 'auth']))
         Route::post('confirm', [UploadController::class, 'confirm'])->name('confirm');
         Route::post('receive', [UploadController::class, 'receive'])->name('receive');
         Route::post('register', [UploadController::class, 'register'])->name('register');
+        Route::post('remove', [UploadController::class, 'remove'])->name('remove');
+
+        // The targets the app declares, for the React and Svelte components. See UploadTargets.
+        Route::post('targets/{target}', UploadTargetController::class)->name('target');
     });
 
 // Multipart upload (archivos > 100 MB) directos a S3/R2.

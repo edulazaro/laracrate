@@ -55,6 +55,7 @@ class LaracrateServiceProvider extends ServiceProvider
         $this->app->alias(StorageManager::class, 'laracrate.manager');
 
         $this->app->singleton(PolicyRegistry::class);
+        $this->app->singleton(\EduLazaro\Laracrate\Uploads\UploadTargets::class);
         $this->app->singleton(\EduLazaro\Laracrate\Support\ViewerRegistry::class);
         $this->app->alias(PolicyRegistry::class, 'laracrate.policies');
 
