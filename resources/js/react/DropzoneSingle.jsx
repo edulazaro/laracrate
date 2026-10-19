@@ -1,58 +1,65 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
-import { rootProps, useUploadQueue } from './useUploadQueue.js';
+import { rootProps, useUploader } from './useUploader.js';
 import { fill, labelsFor } from '../core/labels.js';
 import { megabytes } from '../core/format.js';
 import { currentFile, singleState } from '../core/single.js';
 
 /**
  * One file, straight to the bucket: the React side of laracrate-dropzone-single, with
- * the same markup. An upload replaces the current file, so the app issues the grant
- * with `replace: true`, and passes the new file back once it is saved:
+ * the same markup. An upload replaces the current file:
  *
- *   <DropzoneSingle grant={grant} file={cover} kind="image" onUploaded={() => reloadCover()} onRemove={deleteCover} />
+ *   <DropzoneSingle target="venue.cover" params={{ venue: venue.id }} />
  *
- * `file` is the app's own JSON of the current one ({ url, name, size, extension?, type? });
- * `onRemove` shows the delete button. With `deferred` the file waits for the Upload
- * button, or for ref.current.startBatch() from the page.
+ * The target (UploadTargets::define, with a grant that replaces) gives the grant, the
+ * collection's rules and the current file; the component shows the one just uploaded,
+ * polls its processing, and removes it. With `grant` instead, the app passes the
+ * current file as `file` (File::toComponentArray()). With `deferred` the file waits
+ * for the Upload button, or for ref.current.startBatch() from the page.
  */
 const DropzoneSingle = forwardRef(function DropzoneSingle(props, ref) {
     const {
-        grant, file = null, kind = 'mixed', deferred = false, hideActions = false, accept = '*/*', maxSizeKb = null,
-        extensions = [], icon = null, locale = 'en', labels: own = {},
-        onUploaded, onRejected, onBatchCompleted, onRemove,
+        grant, target, params, file, kind, deferred = false, hideActions = false, removable = true, accept, maxSizeKb,
+        extensions, icon = null, pollMs, locale = 'en', labels: own = {},
+        onUploaded, onRejected, onBatchCompleted, onRemoved,
     } = props;
     const labels = labelsFor(locale, own);
     const input = useRef(null);
     const [over, setOver] = useState(false);
 
-    const queue = useUploadQueue({
-        grant, autoStart: !deferred, maxFiles: null, persistQueue: false, refusedMessage: labels.refused,
-        onUploaded, onRejected, onBatchCompleted,
+    const uploader = useUploader({
+        grant, target, params, file, pollMs, single: true, autoStart: !deferred, maxFiles: null, persistQueue: false,
+        refusedMessage: labels.refused, onUploaded, onRejected, onBatchCompleted, onRemoved,
     });
+    const queue = uploader.queue;
     useImperativeHandle(ref, () => ({ startBatch: () => queue.startBatch(), clear: () => queue.clear() }), [queue]);
 
     const view = queue.snapshot();
+    const place = uploader.target.snapshot();
+    const rules = place.rules ?? {};
+    const types = kind ?? rules.kind ?? 'mixed';
+    const maxSize = maxSizeKb ?? rules.max_size_kb;
+    const shown = extensions ?? rules.extensions ?? [];
     const { item, staged, failed, busy, progress } = singleState(view);
-    const existing = currentFile(file, kind);
+    const existing = currentFile(place.file, types);
     const pick = () => input.current?.click();
     const take = (files) => queue.handleFiles(Array.from(files || []).slice(0, 1));
     const remove = () => {
-        if (window.confirm(labels.delete_confirm)) onRemove(file);
+        if (window.confirm(labels.delete_confirm)) uploader.target.remove();
     };
     const picker = (
         <input
             ref={input}
             type="file"
             className="laracrate-hidden"
-            accept={accept}
+            accept={accept ?? rules.accept ?? '*/*'}
             onChange={(event) => { take(event.target.files); event.target.value = ''; }}
         />
     );
 
     return (
-        <div {...rootProps(props, 'laracrate laracrate-single')}>
-            {!item && existing && (
+        <div {...rootProps(props, 'laracrate laracrate-single')} aria-busy={!place.ready || undefined}>
+            {place.available && !item && existing && (
                 <div className="laracrate-card">
                     {existing.kind === 'image' && <img src={existing.url} alt={existing.name} className="laracrate-card__thumb" />}
                     {existing.kind === 'video' && <video controls className="laracrate-card__thumb is-video"><source src={existing.url} /></video>}
@@ -64,14 +71,14 @@ const DropzoneSingle = forwardRef(function DropzoneSingle(props, ref) {
                     </div>
                     <button type="button" onClick={pick} className="laracrate-icon-button is-accent" title={labels.replace}><Icon name="upload" /></button>
                     <a href={existing.url} target="_blank" rel="noreferrer" className="laracrate-icon-button" title={labels.view}><Icon name="eye" /></a>
-                    {onRemove && (
-                        <button type="button" onClick={remove} className="laracrate-icon-button is-danger" title={labels.delete_short}><Icon name="close" /></button>
+                    {removable && (
+                        <button type="button" onClick={remove} disabled={place.removing} className="laracrate-icon-button is-danger" title={labels.delete_short}><Icon name="close" /></button>
                     )}
                     {picker}
                 </div>
             )}
 
-            {!item && !existing && (
+            {place.available && !item && !existing && (
                 <div
                     role="button"
                     tabIndex={0}
@@ -82,12 +89,12 @@ const DropzoneSingle = forwardRef(function DropzoneSingle(props, ref) {
                     onClick={pick}
                     onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); pick(); } }}
                 >
-                    <span className="laracrate-icon"><Icon name={icon ?? kind} /></span>
+                    <span className="laracrate-icon"><Icon name={icon ?? types} /></span>
                     <p className="laracrate-title">{labels.select}</p>
                     <p className="laracrate-subtitle">{labels.drag_or_click.toLowerCase()}</p>
-                    {(maxSizeKb || extensions.length > 0) && (
+                    {(maxSize || shown.length > 0) && (
                         <p className="laracrate-hint">
-                            {[maxSizeKb && fill(labels.max_size_capital, { size: megabytes(maxSizeKb) }), extensions.map((extension) => extension.toUpperCase()).join(', ')]
+                            {[maxSize && fill(labels.max_size_capital, { size: megabytes(maxSize) }), shown.map((extension) => extension.toUpperCase()).join(', ')]
                                 .filter(Boolean).join(' · ')}
                         </p>
                     )}
@@ -134,6 +141,8 @@ const DropzoneSingle = forwardRef(function DropzoneSingle(props, ref) {
                     <button type="button" onClick={() => queue.clear()} className="laracrate-icon-button is-danger" title={labels.cancel}><Icon name="close" /></button>
                 </div>
             )}
+
+            {place.error && <p className="laracrate-error">{place.error}</p>}
         </div>
     );
 });

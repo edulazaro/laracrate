@@ -4,6 +4,7 @@ import { DropzoneSingle as ReactSingle } from '../../resources/js/react/index.js
 import { DropzoneSingle as SvelteSingle } from '../../resources/js/svelte/index.js';
 import { useEngine } from '../../resources/js/core/engine.js';
 import { fakeEngine, file } from './fakeEngine.js';
+import { fakeServer } from './fakeServer.js';
 import { mounters, pick, settle } from './mount.jsx';
 
 let engine;
@@ -62,25 +63,34 @@ describe.each(Object.keys(frameworks))('the %s DropzoneSingle', (name) => {
         expect(container.querySelector('.laracrate-card__thumb').getAttribute('src')).toBe(cover.url);
     });
 
-    it('shows the current file, to replace, view or remove', async () => {
-        const remove = vi.fn();
-        window.confirm = vi.fn(() => true);
-        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: cover, onRemove: remove });
+    it('shows the current file, to replace or view', async () => {
+        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: cover });
 
         expect(container.querySelector('.laracrate-name').textContent).toBe('cover.jpg');
         expect(container.querySelector('.laracrate-meta').textContent).toBe('2.0 KB · JPG');
         expect(container.querySelector('a.laracrate-icon-button').getAttribute('href')).toBe(cover.url);
 
-        fireEvent.click(container.querySelector('.laracrate-icon-button.is-danger'));
-        expect(window.confirm).toHaveBeenCalledWith('Delete this file?');
-        expect(remove).toHaveBeenCalledWith(cover);
-
         await pick(container, [file('new.png')]);
         expect(engine.items.map((item) => item.name)).toEqual(['new.png']);
     });
 
-    it('has no delete button when the app does not handle it', () => {
-        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: { ...cover, type: 'document' } });
+    it('removes the current file with its grant, once confirmed', async () => {
+        const server = fakeServer();
+        const removed = vi.fn();
+        window.confirm = vi.fn(() => true);
+        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: cover, onRemoved: removed });
+
+        fireEvent.click(container.querySelector('.laracrate-icon-button.is-danger'));
+        await settle();
+
+        expect(window.confirm).toHaveBeenCalledWith('Delete this file?');
+        expect(server.removed).toEqual(['token']);
+        expect(removed).toHaveBeenCalledWith(cover);
+        expect(container.querySelector('.laracrate-drop')).not.toBeNull();
+    });
+
+    it('has no delete button when it is not removable', () => {
+        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: { ...cover, type: 'document' }, removable: false });
 
         expect(container.querySelector('.laracrate-icon-button.is-danger')).toBeNull();
         expect(container.querySelector('.laracrate-card .laracrate-icon svg')).not.toBeNull();

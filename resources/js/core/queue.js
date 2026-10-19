@@ -154,9 +154,16 @@ export function createQueue(options = {}) {
         /** Mounted: listens to the page's queue, and shows again the uploads still going for its target. */
         start() {
             live = true;
+            ready().catch(() => {});
+            if (typeof options.grant === 'object') this.restore(options.grant?.scope);
+        },
+
+        /** Shows again the uploads of this target (its scope) still going, or failed, in the page's queue. */
+        restore(scope) {
+            if (!scope) return;
+
             ready().then((uploads) => {
-                const scope = typeof options.grant === 'object' ? options.grant?.scope : null;
-                if (!scope || state.queue.length) return;
+                if (state.queue.length) return;
 
                 const carried = uploads.itemsFor(scope).filter((item) => [...ACTIVE, 'error'].includes(item.status));
                 if (!carried.length) return;

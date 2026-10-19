@@ -1,42 +1,46 @@
 <!--
     One file shown big, an avatar or a logo: the Svelte side of laracrate-uploader, with
     the same markup and its two layouts, `row` and `portrait`. An upload replaces the
-    current file, so the app issues the grant with `replace: true`, and passes the new
-    file back once it is saved:
+    current file:
 
-      <Uploader {grant} file={avatar} layout="portrait" rounded="full" onuploaded={reloadAvatar} onremove={deleteAvatar} />
+      <Uploader target="avatar" layout="portrait" rounded="full" />
 
-    `file` is the app's own JSON of the current one ({ url, preview?, name, size,
-    processing_status? }); while it is pending or processing the app passes it again
-    when it changes. `rounded` rounds the preview, not the card. With `deferred` the
-    file waits for the Upload button, or for uploader.startBatch() from the page.
+    The target (UploadTargets::define, with a grant that replaces) gives the grant, the
+    collection's rules and the current file; the component shows the one just uploaded,
+    polls its processing, and removes it. With `grant` instead, the app passes the
+    current file as `file` (File::toComponentArray()). `rounded` rounds the preview, not
+    the card. With `deferred` the file waits for the Upload button, or for
+    uploader.startBatch() from the page.
 -->
 <script>
     import Icon from './Icon.svelte';
-    import { uploadQueue } from './queue.svelte.js';
+    import { uploader } from './uploader.svelte.js';
     import { appearance, styleString } from '../core/appearance.js';
     import { fill, labelsFor } from '../core/labels.js';
     import { megabytes } from '../core/format.js';
     import { currentFile, singleState } from '../core/single.js';
 
     let {
-        grant, file = null, kind = 'image', layout = 'row', deferred = false, accept = '*/*', maxSizeKb = null,
+        grant, target, params, file, kind, layout = 'row', deferred = false, removable = true, accept, maxSizeKb, pollMs,
         locale = 'en', labels: own = {},
         theme = null, rounded = null, bordered = null, shadow = null, size = null, class: className = null, style = '',
-        onuploaded, onrejected, onremove,
+        onuploaded, onrejected, onremoved,
     } = $props();
 
     const labels = $derived(labelsFor(locale, own));
     const look = $derived(appearance({ theme, rounded, bordered, shadow, size, className }, '--wire-laracrate-preview-radius'));
 
-    const upload = uploadQueue(() => ({
-        grant, autoStart: !deferred, maxFiles: null, persistQueue: false, refusedMessage: labels.refused,
-        onUploaded: onuploaded, onRejected: onrejected,
-    }));
+    const upload = uploader(() => ({
+        grant, target, params, file, pollMs, single: true, autoStart: !deferred, maxFiles: null, persistQueue: false,
+        refusedMessage: labels.refused, onUploaded: onuploaded, onRejected: onrejected, onRemoved: onremoved,
+    }), () => [target, params]);
     const queue = upload.queue;
     const view = $derived(upload.view);
+    const place = $derived(upload.target);
+    const rules = $derived(place.rules ?? {});
+    const maxSize = $derived(maxSizeKb ?? rules.max_size_kb);
     const current = $derived(singleState(view));
-    const existing = $derived(currentFile(file, kind));
+    const existing = $derived(currentFile(place.file, kind ?? rules.kind ?? 'image'));
 
     let input = $state();
     let over = $state(false);
@@ -71,7 +75,7 @@
     }
 
     function remove() {
-        if (window.confirm(labels.delete_confirm)) onremove(file);
+        if (window.confirm(labels.delete_confirm)) upload.actions.remove();
     }
 </script>
 
@@ -80,7 +84,7 @@
         bind:this={input}
         type="file"
         class="laracrate-hidden"
-        {accept}
+        accept={accept ?? rules.accept ?? '*/*'}
         onchange={(event) => { take(event.target.files); event.target.value = ''; }}
     />
 {/snippet}
@@ -100,8 +104,11 @@
     data-wire-theme={look.theme ?? undefined}
     class={[`laracrate laracrate-uploader is-${layout === 'portrait' ? 'portrait' : 'row'}`, look.classes].filter(Boolean).join(' ')}
     style={styleString(look.vars, style) || undefined}
+    aria-busy={!place.ready || undefined}
 >
-    {#if current.staged}
+    {#if !place.available}
+        <!-- Asking the target for a grant, or refused: the error is below. -->
+    {:else if current.staged}
         <div class="laracrate-uploader__card is-staged">
             {@render media(current.item.preview)}
             <div class="laracrate-uploader__body">
@@ -150,8 +157,8 @@
                 {#if !deferred}
                     <button type="button" onclick={() => input.click()} class="laracrate-button laracrate-uploader__replace">{labels.replace}</button>
                 {/if}
-                {#if onremove}
-                    <button type="button" onclick={remove} title={labels.delete_short} class="laracrate-icon-button is-danger"><Icon name="trash" /></button>
+                {#if removable}
+                    <button type="button" onclick={remove} disabled={place.removing} title={labels.delete_short} class="laracrate-icon-button is-danger"><Icon name="trash" /></button>
                 {/if}
             </div>
             {#if !deferred}{@render picker()}{/if}
@@ -172,7 +179,7 @@
             <div class="laracrate-uploader__drop-body">
                 <p class="laracrate-title">{deferred ? labels.select : labels.upload}</p>
                 <p class="laracrate-subtitle">{labels.drag_or_click.toLowerCase()}</p>
-                {#if maxSizeKb}<p class="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSizeKb) })}</p>{/if}
+                {#if maxSize}<p class="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSize) })}</p>{/if}
             </div>
             <span class="laracrate-button is-small laracrate-uploader__choose">{labels.choose}</span>
             {@render picker()}
@@ -180,4 +187,5 @@
     {/if}
 
     {#if current.failed}<p class="laracrate-error">{current.item.error || labels.failed}</p>{/if}
+    {#if place.error}<p class="laracrate-error">{place.error}</p>{/if}
 </div>

@@ -1,3 +1,5 @@
+import { setRoutes } from './http.js';
+
 /**
  * The page's upload queue (../laracrate-uploader.js) for a bundled app: a plain
  * script that defines window.Laracrate.uploads once. It is loaded on first use, in
@@ -18,9 +20,11 @@ export function loadEngine() {
 
 /**
  * Sets the upload routes or the messages, as the Blade components do from the app's
- * config and locale: { signUrl, confirmUrl, registerUrl, messages: {...} }.
+ * config and locale: { signUrl, confirmUrl, registerUrl, targetUrl, removeUrl,
+ * statusUrl, messages: {...} }.
  */
 export async function configure(options) {
+    setRoutes(options);
     (await loadEngine()).configure(options);
 }
 

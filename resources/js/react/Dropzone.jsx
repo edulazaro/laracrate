@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
-import { rootProps, useUploadQueue } from './useUploadQueue.js';
+import { rootProps, useUploader } from './useUploader.js';
 import { fill, labelsFor } from '../core/labels.js';
 import { fileSize, megabytes } from '../core/format.js';
 
@@ -8,30 +8,36 @@ import { fileSize, megabytes } from '../core/format.js';
  * Several files, straight to the bucket: the React side of laracrate-dropzone, with
  * the same markup, so laracrate.css and its themes apply as they are.
  *
- *   <Dropzone grant={() => axios.post('/uploads/grant', {...}).then(r => r.data)} onUploaded={file => ...} />
- *   <Dropzone grant={grant} deferred layout="list" theme="studio" rounded="xl" ref={dropzone} />
+ *   <Dropzone target="venue.gallery" params={{ venue: venue.id }} onUploaded={file => ...} />
+ *   <Dropzone target="case.documents" params={{ case: id }} deferred layout="list" theme="studio" ref={dropzone} />
  *
- * `grant` is an UploadGrant the app issued ({ grant, scope }), or a function that asks
- * the app for one for the files picked. With `deferred` the files wait for the
- * Upload button, or for ref.current.startBatch() from the page.
+ * `target` is one the app declared with UploadTargets::define: the component asks it
+ * for a grant and the collection's rules. Instead, `grant` takes an UploadGrant the
+ * app issued ({ grant, scope }), or a function that asks the app for one for the files
+ * picked. With `deferred` the files wait for the Upload button, or for
+ * ref.current.startBatch() from the page.
  */
 const Dropzone = forwardRef(function Dropzone(props, ref) {
     const {
-        grant, deferred = false, multiple = true, maxFiles = null, layout = 'grid', hideActions = false,
-        persistQueue = false, accept = '*/*', maxSizeKb = null, icon = 'upload', locale = 'en', labels: own = {},
+        grant, target, params, deferred = false, multiple = true, maxFiles = null, layout = 'grid', hideActions = false,
+        persistQueue = false, accept, maxSizeKb, icon = 'upload', locale = 'en', labels: own = {},
         onUploaded, onRejected, onBatchCompleted, onMaxFiles,
     } = props;
     const labels = labelsFor(locale, own);
     const input = useRef(null);
     const [over, setOver] = useState(false);
 
-    const queue = useUploadQueue({
-        grant, autoStart: !deferred, maxFiles, persistQueue, refusedMessage: labels.refused,
+    const uploader = useUploader({
+        grant, target, params, autoStart: !deferred, maxFiles, persistQueue, refusedMessage: labels.refused,
         onUploaded, onRejected, onBatchCompleted, onMaxFiles,
     });
+    const queue = uploader.queue;
     useImperativeHandle(ref, () => ({ startBatch: () => queue.startBatch(), clear: () => queue.clear() }), [queue]);
 
     const view = queue.snapshot();
+    const place = uploader.target.snapshot();
+    const rules = place.rules ?? {};
+    const maxSize = maxSizeKb ?? rules.max_size_kb;
     const pick = () => input.current?.click();
     const drop = (event) => {
         event.preventDefault();
@@ -40,8 +46,8 @@ const Dropzone = forwardRef(function Dropzone(props, ref) {
     };
 
     return (
-        <div {...rootProps(props, 'laracrate laracrate-dropzone')} data-deferred={deferred || undefined}>
-            {!view.reachedMax ? (
+        <div {...rootProps(props, 'laracrate laracrate-dropzone')} data-deferred={deferred || undefined} aria-busy={!place.ready || undefined}>
+            {!place.available ? null : !view.reachedMax ? (
                 <div
                     role="button"
                     tabIndex={0}
@@ -55,13 +61,13 @@ const Dropzone = forwardRef(function Dropzone(props, ref) {
                     <span className="laracrate-icon"><Icon name={icon} /></span>
                     <p className="laracrate-title">{deferred ? labels.select : labels.upload}</p>
                     <p className="laracrate-subtitle">{labels.drag_or_click.toLowerCase()}</p>
-                    {maxSizeKb && <p className="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSizeKb) })}</p>}
+                    {maxSize && <p className="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSize) })}</p>}
                     <input
                         ref={input}
                         type="file"
                         className="laracrate-hidden"
                         multiple={multiple && (maxFiles === null || maxFiles > 1)}
-                        accept={accept}
+                        accept={accept ?? rules.accept ?? '*/*'}
                         onChange={(event) => { queue.handleFiles(event.target.files); event.target.value = ''; }}
                     />
                 </div>
@@ -150,6 +156,8 @@ const Dropzone = forwardRef(function Dropzone(props, ref) {
                     )}
                 </div>
             )}
+
+            {place.error && <p className="laracrate-error">{place.error}</p>}
         </div>
     );
 });

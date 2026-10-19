@@ -1,4 +1,7 @@
 export { createQueue } from './queue.js';
+export { createTarget } from './target.js';
+export { createUploader } from './uploader.js';
+export { setRoutes } from './http.js';
 export { appearance, styleString } from './appearance.js';
 export { LABELS, labelsFor, fill } from './labels.js';
 export { ICONS, icon } from './icons.js';

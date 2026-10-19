@@ -4,6 +4,7 @@ import { Uploader as ReactUploader } from '../../resources/js/react/index.js';
 import { Uploader as SvelteUploader } from '../../resources/js/svelte/index.js';
 import { useEngine } from '../../resources/js/core/engine.js';
 import { fakeEngine, file } from './fakeEngine.js';
+import { fakeServer } from './fakeServer.js';
 import { mounters, pick, settle } from './mount.jsx';
 
 let engine;
@@ -73,17 +74,19 @@ describe.each(Object.keys(frameworks))('the %s Uploader', (name) => {
     });
 
     it('shows the current file with its processing state, to replace or remove', async () => {
-        const remove = vi.fn();
-        window.confirm = vi.fn(() => true);
+        const server = fakeServer();
+        window.confirm = vi.fn(() => false);
         const { container, update } = mount({
-            grant: { grant: 'token', scope: 's' }, file: { ...avatar, processing_status: 'processing' }, onRemove: remove,
+            grant: { grant: 'token', scope: 's' }, file: { ...avatar, processing_status: 'processing' },
         });
 
         expect(container.querySelector('.laracrate-meta').textContent).toBe('4 KB · processing');
         expect(container.querySelector('.laracrate-uploader__replace').textContent).toBe('Replace');
 
         fireEvent.click(container.querySelector('.laracrate-icon-button.is-danger'));
-        expect(remove).toHaveBeenCalledWith(expect.objectContaining({ url: avatar.url }));
+        await settle();
+        expect(window.confirm).toHaveBeenCalled();
+        expect(server.removed).toEqual([]);
 
         update({ file: { ...avatar, processing_status: 'failed' } });
         await settle();
@@ -95,7 +98,7 @@ describe.each(Object.keys(frameworks))('the %s Uploader', (name) => {
     });
 
     it('shows a document with no image as a placeholder', () => {
-        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: { url: '/cv.pdf', name: 'cv.pdf', size: 1024, type: 'document' } });
+        const { container } = mount({ grant: { grant: 'token', scope: 's' }, file: { url: '/cv.pdf', name: 'cv.pdf', size: 1024, type: 'document' }, removable: false });
 
         expect(container.querySelector('.laracrate-uploader__image')).toBeNull();
         expect(container.querySelector('.laracrate-uploader__placeholder svg')).not.toBeNull();

@@ -2,23 +2,25 @@
     Several files, straight to the bucket: the Svelte side of laracrate-dropzone, with
     the same markup, so laracrate.css and its themes apply as they are.
 
-      <Dropzone grant={() => api('POST', '/uploads/grant', {...})} onuploaded={(file) => ...} />
-      <Dropzone {grant} deferred layout="list" theme="studio" rounded="xl" bind:this={dropzone} />
+      <Dropzone target="venue.gallery" params={{ venue: venue.id }} onuploaded={(file) => ...} />
+      <Dropzone target="case.documents" params={{ case: id }} deferred layout="list" theme="studio" bind:this={dropzone} />
 
-    `grant` is an UploadGrant the app issued ({ grant, scope }), or a function that asks
-    the app for one for the files picked. With `deferred` the files wait for the Upload
-    button, or for dropzone.startBatch() from the page.
+    `target` is one the app declared with UploadTargets::define: the component asks it
+    for a grant and the collection's rules. Instead, `grant` takes an UploadGrant the
+    app issued ({ grant, scope }), or a function that asks the app for one for the files
+    picked. With `deferred` the files wait for the Upload button, or for
+    dropzone.startBatch() from the page.
 -->
 <script>
     import Icon from './Icon.svelte';
-    import { uploadQueue } from './queue.svelte.js';
+    import { uploader } from './uploader.svelte.js';
     import { appearance, styleString } from '../core/appearance.js';
     import { fill, labelsFor } from '../core/labels.js';
     import { fileSize, megabytes } from '../core/format.js';
 
     let {
-        grant, deferred = false, multiple = true, maxFiles = null, layout = 'grid', hideActions = false,
-        persistQueue = false, accept = '*/*', maxSizeKb = null, icon = 'upload', locale = 'en', labels: own = {},
+        grant, target, params, deferred = false, multiple = true, maxFiles = null, layout = 'grid', hideActions = false,
+        persistQueue = false, accept, maxSizeKb, icon = 'upload', locale = 'en', labels: own = {},
         theme = null, rounded = null, bordered = null, shadow = null, size = null, class: className = null, style = '',
         onuploaded, onrejected, onbatchcompleted, onmaxfiles,
     } = $props();
@@ -26,12 +28,15 @@
     const labels = $derived(labelsFor(locale, own));
     const look = $derived(appearance({ theme, rounded, bordered, shadow, size, className }));
 
-    const upload = uploadQueue(() => ({
-        grant, autoStart: !deferred, maxFiles, persistQueue, refusedMessage: labels.refused,
+    const upload = uploader(() => ({
+        grant, target, params, autoStart: !deferred, maxFiles, persistQueue, refusedMessage: labels.refused,
         onUploaded: onuploaded, onRejected: onrejected, onBatchCompleted: onbatchcompleted, onMaxFiles: onmaxfiles,
-    }));
+    }), () => [target, params]);
     const queue = upload.queue;
     const view = $derived(upload.view);
+    const place = $derived(upload.target);
+    const rules = $derived(place.rules ?? {});
+    const maxSize = $derived(maxSizeKb ?? rules.max_size_kb);
 
     let input = $state();
     let over = $state(false);
@@ -56,8 +61,11 @@
     class={['laracrate laracrate-dropzone', look.classes].filter(Boolean).join(' ')}
     style={styleString(look.vars, style) || undefined}
     data-deferred={deferred || undefined}
+    aria-busy={!place.ready || undefined}
 >
-    {#if !view.reachedMax}
+    {#if !place.available}
+        <!-- Asking the target for a grant, or refused: the error is below. -->
+    {:else if !view.reachedMax}
         <div
             role="button"
             tabindex="0"
@@ -72,13 +80,13 @@
             <span class="laracrate-icon"><Icon name={icon} /></span>
             <p class="laracrate-title">{deferred ? labels.select : labels.upload}</p>
             <p class="laracrate-subtitle">{labels.drag_or_click.toLowerCase()}</p>
-            {#if maxSizeKb}<p class="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSizeKb) })}</p>{/if}
+            {#if maxSize}<p class="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSize) })}</p>{/if}
             <input
                 bind:this={input}
                 type="file"
                 class="laracrate-hidden"
                 multiple={multiple && (maxFiles === null || maxFiles > 1)}
-                {accept}
+                accept={accept ?? rules.accept ?? '*/*'}
                 onchange={(event) => { queue.handleFiles(event.target.files); event.target.value = ''; }}
             />
         </div>
@@ -171,4 +179,6 @@
             {/if}
         </div>
     {/if}
+
+    {#if place.error}<p class="laracrate-error">{place.error}</p>{/if}
 </div>

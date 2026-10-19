@@ -1,6 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
-import { rootProps, useUploadQueue } from './useUploadQueue.js';
+import { rootProps, useUploader } from './useUploader.js';
 import { fill, labelsFor } from '../core/labels.js';
 import { megabytes } from '../core/format.js';
 import { currentFile, singleState } from '../core/single.js';
@@ -8,34 +8,39 @@ import { currentFile, singleState } from '../core/single.js';
 /**
  * One file shown big, an avatar or a logo: the React side of laracrate-uploader, with
  * the same markup and its two layouts, `row` and `portrait`. An upload replaces the
- * current file, so the app issues the grant with `replace: true`, and passes the new
- * file back once it is saved:
+ * current file:
  *
- *   <Uploader grant={grant} file={avatar} layout="portrait" rounded="full" onUploaded={reloadAvatar} onRemove={deleteAvatar} />
+ *   <Uploader target="avatar" layout="portrait" rounded="full" />
  *
- * `file` is the app's own JSON of the current one ({ url, preview?, name, size,
- * processing_status? }); while it is pending or processing the app passes it again
- * when it changes. `rounded` rounds the preview, not the card. With `deferred` the
- * file waits for the Upload button, or for ref.current.startBatch() from the page.
+ * The target (UploadTargets::define, with a grant that replaces) gives the grant, the
+ * collection's rules and the current file; the component shows the one just uploaded,
+ * polls its processing, and removes it. With `grant` instead, the app passes the
+ * current file as `file` (File::toComponentArray()). `rounded` rounds the preview, not
+ * the card. With `deferred` the file waits for the Upload button, or for
+ * ref.current.startBatch() from the page.
  */
 const Uploader = forwardRef(function Uploader(props, ref) {
     const {
-        grant, file = null, kind = 'image', layout = 'row', deferred = false, accept = '*/*', maxSizeKb = null,
-        locale = 'en', labels: own = {}, onUploaded, onRejected, onRemove,
+        grant, target, params, file, kind, layout = 'row', deferred = false, removable = true, accept, maxSizeKb, pollMs,
+        locale = 'en', labels: own = {}, onUploaded, onRejected, onRemoved,
     } = props;
     const labels = labelsFor(locale, own);
     const input = useRef(null);
     const [over, setOver] = useState(false);
 
-    const queue = useUploadQueue({
-        grant, autoStart: !deferred, maxFiles: null, persistQueue: false, refusedMessage: labels.refused,
-        onUploaded, onRejected,
+    const uploader = useUploader({
+        grant, target, params, file, pollMs, single: true, autoStart: !deferred, maxFiles: null, persistQueue: false,
+        refusedMessage: labels.refused, onUploaded, onRejected, onRemoved,
     });
+    const queue = uploader.queue;
     useImperativeHandle(ref, () => ({ startBatch: () => queue.startBatch(), clear: () => queue.clear() }), [queue]);
 
     const view = queue.snapshot();
+    const place = uploader.target.snapshot();
+    const rules = place.rules ?? {};
+    const maxSize = maxSizeKb ?? rules.max_size_kb;
     const { item, staged, failed, busy, progress } = singleState(view);
-    const existing = currentFile(file, kind);
+    const existing = currentFile(place.file, kind ?? rules.kind ?? 'image');
     const pick = () => input.current?.click();
     const take = (files) => {
         if (failed) queue.clear();
@@ -52,14 +57,14 @@ const Uploader = forwardRef(function Uploader(props, ref) {
         onDrop: drop,
     };
     const remove = () => {
-        if (window.confirm(labels.delete_confirm)) onRemove(file);
+        if (window.confirm(labels.delete_confirm)) uploader.target.remove();
     };
     const picker = (
         <input
             ref={input}
             type="file"
             className="laracrate-hidden"
-            accept={accept}
+            accept={accept ?? rules.accept ?? '*/*'}
             onChange={(event) => { take(event.target.files); event.target.value = ''; }}
         />
     );
@@ -74,7 +79,7 @@ const Uploader = forwardRef(function Uploader(props, ref) {
     const base = `laracrate laracrate-uploader is-${layout === 'portrait' ? 'portrait' : 'row'}`;
 
     return (
-        <div {...rootProps(props, base, '--wire-laracrate-preview-radius')}>
+        <div {...rootProps(props, base, '--wire-laracrate-preview-radius')} aria-busy={!place.ready || undefined}>
             {staged && (
                 <div className="laracrate-uploader__card is-staged">
                     {media(item.preview)}
@@ -104,7 +109,7 @@ const Uploader = forwardRef(function Uploader(props, ref) {
                 </div>
             )}
 
-            {!staged && !busy && existing && (
+            {place.available && !staged && !busy && existing && (
                 <div className="laracrate-uploader__card" {...(deferred ? {} : dragging)}>
                     {media(existing.preview)}
                     <div className="laracrate-uploader__body">
@@ -122,15 +127,15 @@ const Uploader = forwardRef(function Uploader(props, ref) {
                         {!deferred && (
                             <button type="button" onClick={pick} className="laracrate-button laracrate-uploader__replace">{labels.replace}</button>
                         )}
-                        {onRemove && (
-                            <button type="button" onClick={remove} title={labels.delete_short} className="laracrate-icon-button is-danger"><Icon name="trash" /></button>
+                        {removable && (
+                            <button type="button" onClick={remove} disabled={place.removing} title={labels.delete_short} className="laracrate-icon-button is-danger"><Icon name="trash" /></button>
                         )}
                     </div>
                     {!deferred && picker}
                 </div>
             )}
 
-            {!staged && !busy && !existing && (
+            {place.available && !staged && !busy && !existing && (
                 <div
                     {...dragging}
                     onClick={pick}
@@ -143,7 +148,7 @@ const Uploader = forwardRef(function Uploader(props, ref) {
                     <div className="laracrate-uploader__drop-body">
                         <p className="laracrate-title">{deferred ? labels.select : labels.upload}</p>
                         <p className="laracrate-subtitle">{labels.drag_or_click.toLowerCase()}</p>
-                        {maxSizeKb && <p className="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSizeKb) })}</p>}
+                        {maxSize && <p className="laracrate-hint">{fill(labels.max_size_capital, { size: megabytes(maxSize) })}</p>}
                     </div>
                     <span className="laracrate-button is-small laracrate-uploader__choose">{labels.choose}</span>
                     {picker}
@@ -151,6 +156,7 @@ const Uploader = forwardRef(function Uploader(props, ref) {
             )}
 
             {failed && <p className="laracrate-error">{item.error || labels.failed}</p>}
+            {place.error && <p className="laracrate-error">{place.error}</p>}
         </div>
     );
 });

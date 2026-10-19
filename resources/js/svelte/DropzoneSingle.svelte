@@ -1,43 +1,49 @@
 <!--
     One file, straight to the bucket: the Svelte side of laracrate-dropzone-single, with
-    the same markup. An upload replaces the current file, so the app issues the grant
-    with `replace: true`, and passes the new file back once it is saved:
+    the same markup. An upload replaces the current file:
 
-      <DropzoneSingle {grant} file={cover} kind="image" onuploaded={reloadCover} onremove={deleteCover} />
+      <DropzoneSingle target="venue.cover" params={{ venue: venue.id }} />
 
-    `file` is the app's own JSON of the current one ({ url, name, size, extension?, type? });
-    `onremove` shows the delete button. With `deferred` the file waits for the Upload
-    button, or for single.startBatch() from the page.
+    The target (UploadTargets::define, with a grant that replaces) gives the grant, the
+    collection's rules and the current file; the component shows the one just uploaded,
+    polls its processing, and removes it. With `grant` instead, the app passes the
+    current file as `file` (File::toComponentArray()). With `deferred` the file waits
+    for the Upload button, or for single.startBatch() from the page.
 -->
 <script>
     import Icon from './Icon.svelte';
-    import { uploadQueue } from './queue.svelte.js';
+    import { uploader } from './uploader.svelte.js';
     import { appearance, styleString } from '../core/appearance.js';
     import { fill, labelsFor } from '../core/labels.js';
     import { megabytes } from '../core/format.js';
     import { currentFile, singleState } from '../core/single.js';
 
     let {
-        grant, file = null, kind = 'mixed', deferred = false, hideActions = false, accept = '*/*', maxSizeKb = null,
-        extensions = [], icon = null, locale = 'en', labels: own = {},
+        grant, target, params, file, kind, deferred = false, hideActions = false, removable = true, accept, maxSizeKb,
+        extensions, icon = null, pollMs, locale = 'en', labels: own = {},
         theme = null, rounded = null, bordered = null, shadow = null, size = null, class: className = null, style = '',
-        onuploaded, onrejected, onbatchcompleted, onremove,
+        onuploaded, onrejected, onbatchcompleted, onremoved,
     } = $props();
 
     const labels = $derived(labelsFor(locale, own));
     const look = $derived(appearance({ theme, rounded, bordered, shadow, size, className }));
 
-    const upload = uploadQueue(() => ({
-        grant, autoStart: !deferred, maxFiles: null, persistQueue: false, refusedMessage: labels.refused,
-        onUploaded: onuploaded, onRejected: onrejected, onBatchCompleted: onbatchcompleted,
-    }));
+    const upload = uploader(() => ({
+        grant, target, params, file, pollMs, single: true, autoStart: !deferred, maxFiles: null, persistQueue: false,
+        refusedMessage: labels.refused, onUploaded: onuploaded, onRejected: onrejected, onBatchCompleted: onbatchcompleted,
+        onRemoved: onremoved,
+    }), () => [target, params]);
     const queue = upload.queue;
     const view = $derived(upload.view);
+    const place = $derived(upload.target);
+    const rules = $derived(place.rules ?? {});
+    const types = $derived(kind ?? rules.kind ?? 'mixed');
+    const maxSize = $derived(maxSizeKb ?? rules.max_size_kb);
     const current = $derived(singleState(view));
-    const existing = $derived(currentFile(file, kind));
+    const existing = $derived(currentFile(place.file, types));
     const hint = $derived([
-        maxSizeKb && fill(labels.max_size_capital, { size: megabytes(maxSizeKb) }),
-        extensions.map((extension) => extension.toUpperCase()).join(', '),
+        maxSize && fill(labels.max_size_capital, { size: megabytes(maxSize) }),
+        (extensions ?? rules.extensions ?? []).map((extension) => extension.toUpperCase()).join(', '),
     ].filter(Boolean).join(' · '));
 
     let input = $state();
@@ -56,7 +62,7 @@
     }
 
     function remove() {
-        if (window.confirm(labels.delete_confirm)) onremove(file);
+        if (window.confirm(labels.delete_confirm)) upload.actions.remove();
     }
 </script>
 
@@ -65,7 +71,7 @@
         bind:this={input}
         type="file"
         class="laracrate-hidden"
-        {accept}
+        accept={accept ?? rules.accept ?? '*/*'}
         onchange={(event) => { take(event.target.files); event.target.value = ''; }}
     />
 {/snippet}
@@ -74,8 +80,9 @@
     data-wire-theme={look.theme ?? undefined}
     class={['laracrate laracrate-single', look.classes].filter(Boolean).join(' ')}
     style={styleString(look.vars, style) || undefined}
+    aria-busy={!place.ready || undefined}
 >
-    {#if !current.item && existing}
+    {#if place.available && !current.item && existing}
         <div class="laracrate-card">
             {#if existing.kind === 'image'}
                 <img src={existing.url} alt={existing.name} class="laracrate-card__thumb" />
@@ -92,14 +99,14 @@
             </div>
             <button type="button" onclick={() => input.click()} class="laracrate-icon-button is-accent" title={labels.replace}><Icon name="upload" /></button>
             <a href={existing.url} target="_blank" rel="noreferrer" class="laracrate-icon-button" title={labels.view}><Icon name="eye" /></a>
-            {#if onremove}
-                <button type="button" onclick={remove} class="laracrate-icon-button is-danger" title={labels.delete_short}><Icon name="close" /></button>
+            {#if removable}
+                <button type="button" onclick={remove} disabled={place.removing} class="laracrate-icon-button is-danger" title={labels.delete_short}><Icon name="close" /></button>
             {/if}
             {@render picker()}
         </div>
     {/if}
 
-    {#if !current.item && !existing}
+    {#if place.available && !current.item && !existing}
         <div
             role="button"
             tabindex="0"
@@ -111,7 +118,7 @@
             onclick={() => input.click()}
             onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); input.click(); } }}
         >
-            <span class="laracrate-icon"><Icon name={icon ?? kind} /></span>
+            <span class="laracrate-icon"><Icon name={icon ?? types} /></span>
             <p class="laracrate-title">{labels.select}</p>
             <p class="laracrate-subtitle">{labels.drag_or_click.toLowerCase()}</p>
             {#if hint}<p class="laracrate-hint">{hint}</p>{/if}
@@ -156,4 +163,6 @@
             <button type="button" onclick={() => queue.clear()} class="laracrate-icon-button is-danger" title={labels.cancel}><Icon name="close" /></button>
         </div>
     {/if}
+
+    {#if place.error}<p class="laracrate-error">{place.error}</p>{/if}
 </div>
