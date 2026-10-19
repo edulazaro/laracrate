@@ -2922,11 +2922,13 @@ The callback gets the signed in user, then the component's `params` by name: a m
 
 The file is read the first time a component asks for a target (`laracrate.uploads.targets`); a service provider can call `UploadTargets::define()` too. The endpoint lives in the uploads route group, so it takes its middleware (`auth` by default).
 
-When it mounts, a component asks `POST /laracrate/uploads/targets/{target}` with its params, and gets:
+When it mounts, a component reads what to show, `GET /laracrate/uploads/targets/{target}?params[venue]=12`, with no grant yet:
 
-- a fresh **grant**, asked for again after half an hour, so a page left open still uploads;
 - the collection's **rules**: the mime types for the file picker, the extensions and the largest size for the hint, and the kind of file (`image`, `video`, `audio`, `document` or `mixed`) for the icon. The server checks them again on every upload;
-- for a target that replaces its file (`replace: true`), the **current file**.
+- for a target that replaces its file (`replace: true`), the **current file**;
+- the target's **scope**, to show again the uploads still running for it.
+
+The callback runs there too, so a user it refuses sees why when the component mounts, not after picking a file. The **grant** is asked for only when the user picks or drops files (or presses Upload in a deferred one), `POST /laracrate/uploads/targets/{target}`, and used right away: no grant goes out to whoever only looks at the page, and none is ever old. Meanwhile the files wait in the queue with their spinner.
 
 From there it does the rest: it shows the file just uploaded (the upload endpoints answer it whole, as `File::toComponentArray()`), polls `GET /laracrate/files/{slug}/status` while it is processed, and its delete button removes it with `POST /laracrate/uploads/remove`. Only a grant that replaces can remove, and only the current file of its target: that grant deletes it anyway with its next upload.
 

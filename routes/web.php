@@ -56,7 +56,8 @@ Route::middleware(config('laracrate.uploads.middleware', ['web', 'auth']))
         Route::post('remove', [UploadController::class, 'remove'])->name('remove');
 
         // The targets the app declares, for the React and Svelte components. See UploadTargets.
-        Route::post('targets/{target}', UploadTargetController::class)->name('target');
+        Route::get('targets/{target}', [UploadTargetController::class, 'show'])->name('target');
+        Route::post('targets/{target}', [UploadTargetController::class, 'grant'])->name('target.grant');
     });
 
 // Multipart upload (archivos > 100 MB) directos a S3/R2.

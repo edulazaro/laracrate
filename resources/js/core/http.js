@@ -20,6 +20,15 @@ export function route(name, params = {}) {
     return routes[name].replace(/:(\w+)/g, (_, key) => encodeURIComponent(params[key] ?? ''));
 }
 
+/** The target's params as a query string: ?params[venue]=12. */
+export function query(params = {}) {
+    const pairs = Object.entries(params)
+        .filter(([, value]) => value !== null && value !== undefined)
+        .map(([key, value]) => `${encodeURIComponent(`params[${key}]`)}=${encodeURIComponent(value)}`);
+
+    return pairs.length ? `?${pairs.join('&')}` : '';
+}
+
 export async function request(method, url, body) {
     const response = await fetch(url, {
         method,

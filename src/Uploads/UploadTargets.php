@@ -17,8 +17,8 @@ use ReflectionParameter;
  *   UploadTargets::define('venue.gallery', fn (User $user, Venue $venue) =>
  *       $user->can('update', $venue) ? UploadGrant::for($venue, 'gallery') : null);
  *
- * The React and Svelte components ask for a target by name, with its params, and get
- * a fresh grant. The callback's first argument is the signed in user; the others come
+ * The React and Svelte components ask for a target by name, with its params: what to
+ * show when they mount, and a grant once the user picks files. The callback's first argument is the signed in user; the others come
  * from the params by name, a model resolved by its route key. The params come from the
  * browser, so the callback is where the app decides whether this user may upload
  * there: it returns the grant, or null to refuse.

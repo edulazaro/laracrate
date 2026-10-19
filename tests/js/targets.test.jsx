@@ -36,19 +36,32 @@ describe.each(['react', 'svelte'])('%s components with a target', (name) => {
     const single = mounters(react.DropzoneSingle, svelte.DropzoneSingle)[name];
     const uploader = mounters(react.Uploader, svelte.Uploader)[name];
 
-    it('asks the target for a grant and the collection rules, and uploads with it', async () => {
-        const server = fakeServer({ targets: { 'venue.gallery': (params) => params.venue === 12 && { grant: 'g1', scope: 'sc', replace: false, rules: images, file: null } } });
+    it('reads the collection rules when it mounts, and asks for a grant only once files are picked', async () => {
+        const server = fakeServer({ targets: { 'venue.gallery': (params) => String(params.venue) === '12' && { grant: 'g1', scope: 'sc', replace: false, rules: images, file: null } } });
         const { container } = dropzone({ target: 'venue.gallery', params: { venue: 12 } });
         await settle();
 
-        expect(server.targetCalls()).toHaveLength(1);
+        expect(server.targetCalls('GET').map((call) => call.url)).toEqual(['/laracrate/uploads/targets/venue.gallery?params%5Bvenue%5D=12']);
+        expect(server.targetCalls('POST')).toHaveLength(0);
         expect(container.querySelector('input[type=file]').getAttribute('accept')).toBe('image/jpeg,image/png');
         expect(container.querySelector('.laracrate-hint').textContent).toBe('Max. 2.0 MB');
 
-        await pick(container, [file('a.png')]);
-        expect(engine.items.map((item) => [item.name, item.grant, item.scope])).toEqual([['a.png', 'g1', 'sc']]);
-        // The grant it got when mounted is fresh enough.
-        expect(server.targetCalls()).toHaveLength(1);
+        await pick(container, [file('a.png'), file('b.png')]);
+        expect(server.targetCalls('POST').map((call) => call.body)).toEqual([{ params: { venue: 12 } }]);
+        expect(engine.items.map((item) => [item.name, item.grant, item.scope])).toEqual([['a.png', 'g1', 'sc'], ['b.png', 'g1', 'sc']]);
+    });
+
+    it('does not upload a file removed while its grant is on its way', async () => {
+        fakeServer({ targets: { 'venue.gallery': () => ({ grant: 'g', scope: 'sc', rules: images }) } });
+        const { container } = dropzone({ target: 'venue.gallery', params: { venue: 1 }, deferred: true });
+        await settle();
+
+        await pick(container, [file('a.png'), file('b.png')]);
+        fireEvent.click(container.querySelector('.laracrate-button'));
+        fireEvent.click(container.querySelector('.laracrate-tile__remove'));
+        await settle();
+
+        expect(engine.items.map((item) => item.name)).toEqual(['b.png']);
     });
 
     it('shows why a target refuses, with nothing to upload', async () => {
@@ -67,7 +80,7 @@ describe.each(['react', 'svelte'])('%s components with a target', (name) => {
 
         update({ params: { venue: 2 } });
         await settle();
-        expect(server.targetCalls().map((call) => call.body.params)).toEqual([{ venue: 1 }, { venue: 2 }]);
+        expect(server.targetCalls('GET').map((call) => call.url.split('?')[1])).toEqual(['params%5Bvenue%5D=1', 'params%5Bvenue%5D=2']);
 
         await pick(container, [file('a.png')]);
         expect(engine.items[0].grant).toBe('g2');

@@ -92,12 +92,14 @@ export function createQueue(options = {}) {
             failure = e;
         }
 
-        const tracked = items.map((item) => (target && target.grant
+        // Removed while the grant was on its way: it does not go up.
+        const kept = items.filter((item) => state.queue.includes(item));
+        const tracked = kept.map((item) => (target && target.grant
             ? uploads.enqueue(item, { grant: target.grant, scope: target.scope, collection: target.collection ?? null })
             : uploads.reject(item, failure?.message || options.refusedMessage || 'The upload could not start.', { scope: target?.scope ?? null })));
 
         tracked.forEach((item, index) => {
-            const at = state.queue.indexOf(items[index]);
+            const at = state.queue.indexOf(kept[index]);
             if (at !== -1) state.queue[at] = item;
         });
         changed();
@@ -139,7 +141,8 @@ export function createQueue(options = {}) {
 
     async function startBatch() {
         if (!state.queue.some((item) => item.status === 'pending' && !item.queued)) return;
-        await watchBatch(await handOver());
+        const items = await handOver();
+        if (items.length) await watchBatch(items);
     }
 
     function release(item) {

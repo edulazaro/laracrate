@@ -1,17 +1,16 @@
-import { request, route } from './http.js';
+import { query, request, route } from './http.js';
 
 const PROCESSING = ['pending', 'processing'];
-// A grant lives 24 hours; one this old is asked for again, so a page left open still uploads.
-const GRANT_MAX_AGE = 30 * 60 * 1000;
 
 /**
  * Where a component uploads, and the file it holds, with no framework.
  *
- * With `target` (one the app declared with UploadTargets::define) it asks the server
- * for a grant, the collection's rules and, for a single file, the current one; with
- * `grant` it takes the one the app issued. It keeps the current file: the one the app
- * passes as `file`, or the target's, then the one just uploaded, polling its status
- * while it is processed. And it removes it.
+ * With `target` (one the app declared with UploadTargets::define) it reads what to
+ * show when it mounts, the collection's rules and, for a single file, the current one,
+ * and asks for a grant only once the user picks files; with `grant` it takes the one
+ * the app issued. It keeps the current file: the one the app passes as `file`, or the
+ * target's, then the one just uploaded, polling its status while it is processed. And
+ * it removes it.
  *
  * @param {object} options
  * @param {string} [options.target] a target name
@@ -24,39 +23,33 @@ const GRANT_MAX_AGE = 30 * 60 * 1000;
  */
 export function createTarget(options = {}) {
     const state = { ready: !options.target, available: !options.target, rules: null, file: null, error: null, removing: false };
-    let issued = null;
-    let loading = null;
     let given;
     let timer = null;
     let live = false;
 
     const changed = () => { if (live) options.onChange?.(); };
 
+    /** What the target shows: no grant yet. Resolves its scope. */
     async function load() {
         try {
-            const data = await request('POST', route('targetUrl', { target: options.target }), { params: options.params ?? {} });
-            issued = { grant: data.grant, scope: data.scope, at: Date.now() };
+            const data = await request('GET', route('targetUrl', { target: options.target }) + query(options.params));
             Object.assign(state, { ready: true, available: true, rules: data.rules ?? null, error: null });
             if (options.file === undefined) setFile(data.file ?? null);
             changed();
 
-            return issued;
+            return data.scope ?? null;
         } catch (error) {
-            Object.assign(state, { ready: true, error: error.message });
+            Object.assign(state, { ready: true, available: false, error: error.message });
             changed();
             throw error;
         }
     }
 
-    function fresh() {
-        if (issued && Date.now() - issued.at < GRANT_MAX_AGE) return Promise.resolve(issued);
-        loading ??= load().finally(() => { loading = null; });
-
-        return loading;
-    }
-
+    /** A grant for the files picked, asked for right then. */
     async function grantFor(files) {
-        if (options.target) return fresh();
+        if (options.target) {
+            return request('POST', route('targetUrl', { target: options.target }), { params: options.params ?? {} });
+        }
 
         return typeof options.grant === 'function' ? options.grant(files) : options.grant;
     }
@@ -87,17 +80,16 @@ export function createTarget(options = {}) {
     return {
         state,
 
-        /** Mounted, or the target changed: a fresh grant. Resolves the scope, to show the uploads still running for it. */
+        /** Mounted, or the target changed. Resolves the scope, to show the uploads still running for it. */
         start() {
             live = true;
-            issued = null;
             poll();
 
             if (!options.target) {
                 return Promise.resolve(typeof options.grant === 'object' ? options.grant?.scope ?? null : null);
             }
 
-            return fresh().then((grant) => grant.scope);
+            return load();
         },
 
         destroy() {

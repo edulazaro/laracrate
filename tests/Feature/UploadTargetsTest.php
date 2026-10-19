@@ -50,7 +50,14 @@ class UploadTargetsTest extends TestCase
             UploadGrant::for($owner, 'avatar', replace: true));
     }
 
+    /** What the component shows when it mounts. */
     private function target(string $name, array $params = [])
+    {
+        return $this->getJson("/laracrate/uploads/targets/{$name}?" . http_build_query(['params' => $params]));
+    }
+
+    /** The grant, once the user picks files. */
+    private function targetGrant(string $name, array $params = [])
     {
         return $this->postJson("/laracrate/uploads/targets/{$name}", ['params' => $params]);
     }
@@ -86,13 +93,11 @@ class UploadTargetsTest extends TestCase
         return UploadGrant::for($this->owner, $collection, ...$options)->token();
     }
 
-    public function test_a_target_gives_a_grant_for_its_target_with_the_collection_rules(): void
+    public function test_a_target_answers_what_to_show_with_no_grant(): void
     {
         $response = $this->target('owner.gallery', ['owner' => $this->owner->id])->assertOk();
 
-        $grant = $this->payload($response->json('grant'));
-        $this->assertSame(['test_owner', (string) $this->owner->id], $grant['f']);
-        $this->assertSame('gallery', $grant['c']);
+        $this->assertNull($response->json('grant'));
         $this->assertSame(UploadGrant::for($this->owner, 'gallery')->scope(), $response->json('scope'));
         $this->assertFalse($response->json('replace'));
         $this->assertNull($response->json('file'));
@@ -103,6 +108,17 @@ class UploadTargetsTest extends TestCase
         $this->assertIsArray($response->json('rules.extensions'));
     }
 
+    public function test_a_target_gives_a_grant_for_its_target_when_asked(): void
+    {
+        $response = $this->targetGrant('owner.gallery', ['owner' => $this->owner->id])->assertOk();
+
+        $grant = $this->payload($response->json('grant'));
+        $this->assertSame(['test_owner', (string) $this->owner->id], $grant['f']);
+        $this->assertSame('gallery', $grant['c']);
+        $this->assertSame(UploadGrant::for($this->owner, 'gallery')->scope(), $response->json('scope'));
+        $this->assertNull($response->json('rules'));
+    }
+
     public function test_the_target_decides_who_may_upload_there(): void
     {
         $other = HasFilesTestModel::create(['name' => 'someone else']);
@@ -110,11 +126,13 @@ class UploadTargetsTest extends TestCase
         $this->target('owner.gallery', ['owner' => $other->id])
             ->assertForbidden()
             ->assertJson(['message' => 'You cannot upload files here.']);
+        $this->targetGrant('owner.gallery', ['owner' => $other->id])->assertForbidden();
     }
 
     public function test_an_unknown_target_is_not_found(): void
     {
         $this->target('nowhere')->assertNotFound();
+        $this->targetGrant('nowhere')->assertNotFound();
     }
 
     public function test_a_param_that_does_not_resolve_is_refused(): void
