@@ -135,7 +135,13 @@
             <div class="laracrate-list">
                 <template x-for="(item, i) in queue" :key="item.uid || item.id">
                     <div class="laracrate-row" :data-state="item.status">
-                        <span class="laracrate-row__icon">@include('laracrate::partials.icon', ['icon' => 'file'])</span>
+                        {{-- An image shows itself, small; anything else, the file icon. --}}
+                        <template x-if="item.preview">
+                            <img :src="item.preview" alt="" class="laracrate-row__thumb">
+                        </template>
+                        <template x-if="!item.preview">
+                            <span class="laracrate-row__icon">@include('laracrate::partials.icon', ['icon' => 'file'])</span>
+                        </template>
                         <p class="laracrate-row__name" x-text="item.name"></p>
                         <p class="laracrate-row__size" x-text="item.size < 1024 ? item.size + ' B' : (item.size < 1048576 ? (item.size / 1024).toFixed(1) + ' KB' : (item.size / 1048576).toFixed(1) + ' MB')"></p>
                         <template x-if="item.status === 'uploading'">

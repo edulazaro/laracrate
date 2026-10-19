@@ -403,6 +403,7 @@
     background: var(--_card-bg); border: var(--_card-border); border-radius: var(--_tile-radius);
 }
 .laracrate-row__icon { color: var(--_faint); }
+.laracrate-row__thumb { width: 1.75em; height: 1.75em; flex-shrink: 0; object-fit: cover; border-radius: .25em; }
 .laracrate-row__name { flex: 1; min-width: 0; font-size: .75em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .laracrate-row__size { flex-shrink: 0; font-size: .625em; color: var(--_faint); font-variant-numeric: tabular-nums; }
 .laracrate-row__done { color: #059669; }
