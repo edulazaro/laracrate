@@ -1,0 +1,20 @@
+{
+    "private": true,
+    "type": "module",
+    "description": "Tests of Laracrate's React and Svelte upload components. The components ship as source in resources/js and are built by the app that imports them.",
+    "scripts": {
+        "test": "vitest run"
+    },
+    "devDependencies": {
+        "@sveltejs/vite-plugin-svelte": "^7.3.1",
+        "@testing-library/dom": "^10.4.2",
+        "@testing-library/react": "^16.3.3",
+        "@testing-library/svelte": "^5.4.2",
+        "@vitejs/plugin-react": "^6.1.2",
+        "jsdom": "^29.1.1",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "svelte": "^5.57.2",
+        "vitest": "^5.0.5"
+    }
+}
