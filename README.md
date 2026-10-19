@@ -49,7 +49,7 @@ Polymorphic file storage for Laravel: direct uploads to R2/S3, granular access c
 
 ## What is Laracrate?
 
-**Laracrate** is a polymorphic file storage layer for Laravel built for object storage (Cloudflare R2, AWS S3) and local disks. It lets any Eloquent model own collections of files, uploads the binary straight from the browser to your bucket (the file never passes through PHP), then runs an asynchronous pipeline that derives everything else: image variants, video and PDF previews, extracted text, vector embeddings, and a searchable chunk store for retrieval-augmented generation. The backend is fully decoupled from any frontend, and an optional set of Livewire upload components ships in the box if you want them.
+**Laracrate** is a polymorphic file storage layer for Laravel built for object storage (Cloudflare R2, AWS S3) and local disks. It lets any Eloquent model own collections of files, uploads the binary straight from the browser to your bucket (the file never passes through PHP), then runs an asynchronous pipeline that derives everything else: image variants, video and PDF previews, extracted text, vector embeddings, and a searchable chunk store for retrieval-augmented generation. The backend is fully decoupled from any frontend, and optional upload components for Livewire, React and Svelte ship in the box if you want them.
 
 What you get:
 
@@ -62,7 +62,7 @@ What you get:
 - **Text extraction, embeddings and hybrid search.** Opt-in extraction, chunking, embedding generation, and a pluggable `ChunkStore` (MySQL or Meilisearch) for keyword plus semantic search.
 - **Folders and slots.** A folder tree for organizing files, and file slots for "fill in this required document" workflows with quotas.
 - **Multi-tenant buckets and usage accounting.** Optional dedicated bucket per tenant and storage usage reporting for quotas.
-- **Optional Livewire UI.** Three upload components, styled by a single CSS file with eleven themes. None of it is required to use the package.
+- **Optional upload components.** Three of them, for Livewire, React and Svelte, styled by a single CSS file with eleven themes. The React and Svelte ones upload to targets the app declares once, with their authorization. None of it is required to use the package.
 
 At a glance:
 
@@ -839,6 +839,7 @@ Routing and a disk allowlist for the direct presigned upload endpoints. The mult
     'route_prefix'  => 'laracrate/uploads',
     'middleware'    => ['web', 'auth'],
     'allowed_disks' => [],
+    'targets'       => base_path('routes/uploads.php'),
 ],
 ```
 
@@ -847,6 +848,7 @@ Routing and a disk allowlist for the direct presigned upload endpoints. The mult
 | `route_prefix` | `laracrate/uploads` | URL prefix for the upload endpoints (presign, cancel, and the grant based sign, confirm and receive). |
 | `middleware` | `['web', 'auth']` | Middleware for the upload route group. Authorization is your app's responsibility. |
 | `allowed_disks` | `[]` | Allowlist of disks the plain `presign` and `cancel` endpoints accept. Empty means the disks your configured collections use, never any other disk (`public`, `local`...). The grant based endpoints do not read it: their disk always comes from the grant's collection. |
+| `targets` | `routes/uploads.php` | The file where the app declares its [upload targets](#upload-targets) for the React and Svelte components, read the first time one is asked for. A published config without the key has none. |
 
 A collection may also say how the components send its bytes with `'upload' => 'direct'` (presigned PUT to the bucket) or `'upload' => 'server'` (through PHP). Without it each component uses its own default: the dropzones go direct, the single file uploader goes through the server. A collection with `'encrypt' => true` always goes through the server, the only place it can be encrypted.
 
@@ -1469,6 +1471,9 @@ You rarely call these routes by name from PHP. The JS helper and your upload flo
 | POST | `laracrate/uploads/confirm` | `laracrate.uploads.confirm` | Grant based: create the File of a direct upload (the receipt proves the key was issued to this grant) |
 | POST | `laracrate/uploads/receive` | `laracrate.uploads.receive` | Grant based: take a file through PHP and create the File at once (encrypted collections) |
 | POST | `laracrate/uploads/register` | `laracrate.uploads.register` | Presign mode of the components: create the File of an object the component signed, by its key alone |
+| POST | `laracrate/uploads/remove` | `laracrate.uploads.remove` | Grant based: remove the current file of a target that replaces it (a replacing grant only) |
+| GET | `laracrate/uploads/targets/{target}` | `laracrate.uploads.target` | An upload target: the collection's rules, the current file and the scope, with no grant (`?params[venue]=12`) |
+| POST | `laracrate/uploads/targets/{target}` | `laracrate.uploads.target.grant` | An upload target: a grant, asked for when the user picks files |
 | POST | `laracrate/multipart/init` | `laracrate.multipart.init` | Grant based: check a file against the rules and start a multipart session, returns the part URLs |
 | POST | `laracrate/multipart/{multipart}/parts` | `laracrate.multipart.parts` | Reissue presigned URLs for specific parts (with the session's grant) |
 | POST | `laracrate/multipart/{multipart}/complete` | `laracrate.multipart.complete` | Assemble the object from the part ETags and create the File (with the session's grant) |
@@ -3243,6 +3248,7 @@ public function getLinkAttribute(): ?string;        // $file->link, alias of url
 public function getPreviewLinkAttribute(): string;  // $file->preview_link: preview()'s image link, or placeholder
 public function streamUrl(): string;                // through PHP, inline; session + canView, never expires
 public function downloadUrl(): string;              // through PHP, attachment, counted
+public function toComponentArray(): array;          // id, slug, name, size, type, url, preview, processing_status: what the JS components show
 
 // Folder
 public function moveToFolder(?Folder $folder): void;
