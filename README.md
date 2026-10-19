@@ -36,15 +36,16 @@ Polymorphic file storage for Laravel: direct uploads to R2/S3, granular access c
 20. [Sensitive content and encryption](#sensitive-content-and-encryption)
 21. [Multi-tenancy, buckets and usage](#multi-tenancy-buckets-and-usage)
 22. [Livewire components and themes](#livewire-components-and-themes)
-23. [Localization](#localization)
-24. [Artisan commands](#artisan-commands)
-25. [Events](#events)
-26. [API reference](#api-reference)
-27. [Testing](#testing)
-28. [Roadmap](#roadmap)
-29. [Sponsors](#sponsors)
-30. [Author](#author)
-31. [License](#license)
+23. [React and Svelte components](#react-and-svelte-components)
+24. [Localization](#localization)
+25. [Artisan commands](#artisan-commands)
+26. [Events](#events)
+27. [API reference](#api-reference)
+28. [Testing](#testing)
+29. [Roadmap](#roadmap)
+30. [Sponsors](#sponsors)
+31. [Author](#author)
+32. [License](#license)
 
 ## What is Laracrate?
 
@@ -2861,6 +2862,148 @@ The look of every component is one stylesheet. Import it once, next to the other
 
 Every part has a stable class (`.laracrate-drop`, `.laracrate-title`, `.laracrate-button`, `.laracrate-tile`, `.laracrate-card`…), and states are `data-state` (`pending`, `uploading`, `done`, `error`) and `is-*` classes (`is-dragover`), for whatever variables do not reach.
 
+## React and Svelte components
+
+The three upload components also come for React (18 or later) and Svelte 5: `Dropzone`, `DropzoneSingle` and `Uploader`. They render the same markup as the Livewire ones, so `laracrate.css`, the themes and the appearance props apply as they are, and they put the files in the same page queue (`window.Laracrate.uploads`), so an upload keeps going when the component unmounts on an Inertia or SPA navigation.
+
+They ship as source in `resources/js` and your app's Vite builds them, with the React or Svelte plugin it already has. There is no npm package. An alias keeps the imports short:
+
+```js
+// vite.config.js
+import path from 'node:path';
+
+export default defineConfig({
+    resolve: {
+        alias: { '@laracrate': path.resolve(__dirname, 'vendor/edulazaro/laracrate/resources/js') },
+    },
+});
+```
+
+```css
+/* resources/css/app.css */
+@import '../../vendor/edulazaro/laracrate/resources/css/laracrate.css';
+```
+
+```js
+import { Dropzone, DropzoneSingle, Uploader } from '@laracrate/react/index.js';   // React
+import { Dropzone, DropzoneSingle, Uploader } from '@laracrate/svelte/index.js';  // Svelte
+```
+
+The upload endpoints take the CSRF token from `<meta name="csrf-token">`, as the Livewire components do. If you changed `laracrate.uploads.route_prefix`, tell the queue once with `configure({ signUrl, confirmUrl, registerUrl })`, exported from the same `index.js`.
+
+### The grant comes from your app
+
+A Livewire component builds its own [upload grant](#upload-modes-grants-and-the-upload-tray). These components cannot: your app issues it, in a controller that decides who may upload what, and hands the component the token and the scope. Either in the page's props:
+
+```php
+use EduLazaro\Laracrate\Uploads\UploadGrant;
+
+$grant = UploadGrant::for($venue, 'gallery');
+
+return Inertia::render('Venues/Edit', [
+    'galleryGrant' => ['grant' => $grant->token(), 'scope' => $grant->scope()],
+]);
+```
+
+```jsx
+<Dropzone grant={galleryGrant} onUploaded={() => router.reload({ only: ['gallery'] })} />
+```
+
+Or from a route the component calls when files are picked, with the files in hand (to issue the grant with `maxFiles: count($files)`, say):
+
+```jsx
+<Dropzone grant={(files) => axios.post(`/venues/${venue.slug}/gallery/grant`, { count: files.length }).then((r) => r.data)} />
+```
+
+A grant passed as an object also lets a component mounted again for the same target show the uploads still running for it. The single file components replace the current file, so their grant is issued with `replace: true`.
+
+### `Dropzone`
+
+Several files, as a grid of tiles or a list of rows.
+
+```jsx
+<Dropzone grant={grant} layout="list" maxFiles={10} maxSizeKb={20480} accept="image/*,application/pdf"
+    onUploaded={(file) => ...} onBatchCompleted={({ ok, error }) => ...} />
+```
+
+### `DropzoneSingle`
+
+One file in a card: the drop area, or the current file to replace, view or remove.
+
+```jsx
+<DropzoneSingle grant={coverGrant} file={cover} kind="image" maxSizeKb={5120} extensions={['jpg', 'png']}
+    onUploaded={reloadCover} onRemove={() => router.delete(`/venues/${venue.slug}/cover`)} />
+```
+
+### `Uploader`
+
+One file shown big, an avatar or a logo, in a `row` or `portrait` layout. `rounded` rounds the preview, not the card.
+
+```svelte
+<Uploader grant={avatarGrant} file={avatar} layout="portrait" rounded="full" onuploaded={reloadAvatar} onremove={deleteAvatar} />
+```
+
+### Props
+
+Svelte takes the same props, with the callbacks in lower case (`onuploaded`, `onbatchcompleted`) and `class` instead of `className`.
+
+| Prop | Components | Default | |
+|---|---|---|---|
+| `grant` | all | | `{ grant, scope }`, or a function that takes the files picked and returns them (or a promise of them) |
+| `deferred` | all | `false` | stage the files until the Upload button, or `startBatch()` |
+| `hideActions` | `Dropzone`, `DropzoneSingle` | `false` | no Upload and Cancel buttons: the page calls `startBatch()` |
+| `accept` | all | `*/*` | the file input's `accept` |
+| `maxSizeKb` | all | | shown as the hint; the limit itself is the collection's, checked on the server |
+| `multiple` | `Dropzone` | `true` | |
+| `maxFiles` | `Dropzone` | | how many files it takes; it closes once it holds them |
+| `layout` | `Dropzone`, `Uploader` | `grid`, `row` | `grid` or `list`; `row` or `portrait` |
+| `persistQueue` | `Dropzone` | `false` | keep the uploaded files listed |
+| `icon` | `Dropzone`, `DropzoneSingle` | | the drop area's icon: `upload`, `image`, `video`, `audio`, `document`, `file` |
+| `file` | `DropzoneSingle`, `Uploader` | | the current file, below |
+| `kind` | `DropzoneSingle`, `Uploader` | `mixed`, `image` | what the collection takes, for the icon and the preview |
+| `extensions` | `DropzoneSingle` | `[]` | shown in the hint |
+| `locale`, `labels` | all | `en` | `en` or `es`, and any text of your own: `labels={{ upload: 'Add photos' }}` |
+| `theme`, `rounded`, `bordered`, `shadow`, `size`, `className`, `style` | all | | as in [Themes and customising](#themes-and-customising) |
+
+| Callback | |
+|---|---|
+| `onUploaded(file, item)` | once per saved file: `{ id, slug, name, collection, contextKey, scope }` |
+| `onRejected(item)` | a file the server refused, with its reason in `item.error` |
+| `onBatchCompleted({ ok, error })` | when a batch ends |
+| `onMaxFiles({ max, rejected })` | `Dropzone`: files left out for `maxFiles` |
+| `onRemove(file)` | `DropzoneSingle`, `Uploader`: the delete button, after a confirm. Without it there is no button |
+
+A ref in React, or `bind:this` in Svelte, gives `startBatch()` and `clear()`.
+
+### The current file
+
+`DropzoneSingle` and `Uploader` show the file your app passes as `file`, in its own JSON. The upload response does not carry it: `onUploaded` gives its id and slug, and your app passes the new one once it has it (an Inertia reload is enough).
+
+```php
+$avatar = $user->file('avatar');
+
+return Inertia::render('Profile/Edit', [
+    'avatar' => $avatar ? [
+        'url' => $avatar->streamUrl(),
+        'preview' => $user->fileLink('avatar', 'thumbnail'),
+        'original_name' => $avatar->original_name,
+        'size' => $avatar->size,
+        'processing_status' => $avatar->processing_status?->value,
+    ] : null,
+]);
+```
+
+| Key | |
+|---|---|
+| `url` | to open it, and to show it when it is an image with no `preview` |
+| `preview` | the image shown for it, a variant say |
+| `name`, `title` or `original_name` | its name |
+| `size` | in bytes |
+| `type` | `image`, `video`, `audio` or `document`, when it is not `kind` |
+| `processing_status` | `pending` or `processing` show "processing", `failed` shows "error"; pass the file again when it changes |
+
+What runs after an upload no matter what (attach the file, start a job) belongs on the server, as with the Livewire components, not in `onUploaded`.
+
 ## Localization
 
 The UI strings used by the Livewire components are translatable through the `laracrate` translation namespace, loaded by the service provider via `loadTranslationsFrom(__DIR__ . '/../lang', 'laracrate')`. The package ships English (`lang/en/uploader.php`) and Spanish (`lang/es/uploader.php`) out of the box, and resolves strings against your app's active `locale`.
@@ -3256,6 +3399,15 @@ vendor/bin/phpunit
 The schema is built once per run with `migrate:fresh` and each test is wrapped in a transaction, so a full run finishes in a few seconds. The PHPUnit config defines two suites, `Unit` (`tests/Unit`) and `Feature` (`tests/Feature`), keeps the AWS SDK offline, and sets `APP_ENV=testing`. Any feature you contribute should bring its own test under `tests/`.
 
 When you are done, remove the container with `docker rm -f laracrate-mysql`.
+
+### The React and Svelte components
+
+Their tests run on Vitest with jsdom, against a stand-in for the page's upload queue, so they need no server either:
+
+```bash
+npm install
+npm test
+```
 
 ## Roadmap
 
