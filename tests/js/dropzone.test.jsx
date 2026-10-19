@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render as renderReact } from '@testing-library/react';
-import { render as renderSvelte } from '@testing-library/svelte';
-import { createRef } from 'react';
+import { act, cleanup, fireEvent } from '@testing-library/react';
 import { Dropzone as ReactDropzone } from '../../resources/js/react/index.js';
 import { Dropzone as SvelteDropzone } from '../../resources/js/svelte/index.js';
 import { useEngine } from '../../resources/js/core/engine.js';
-import { fakeEngine, file, tick } from './fakeEngine.js';
+import { fakeEngine, file } from './fakeEngine.js';
+import { mounters, pick, settle } from './mount.jsx';
 
 let engine;
 
@@ -21,30 +20,7 @@ afterEach(() => {
     useEngine(null);
 });
 
-const settle = () => act(async () => { await tick(); await tick(); });
-
-/** Each framework's Dropzone, mounted with the same props: the tests run on both. */
-const frameworks = {
-    react(props) {
-        const ref = createRef();
-        const { container } = renderReact(<ReactDropzone ref={ref} {...props} />);
-        return { container, startBatch: () => act(() => { ref.current.startBatch(); }) };
-    },
-    svelte(props) {
-        const { className, onUploaded, onRejected, onBatchCompleted, onMaxFiles, ...rest } = props;
-        const svelteProps = {
-            ...rest, class: className, onuploaded: onUploaded, onrejected: onRejected,
-            onbatchcompleted: onBatchCompleted, onmaxfiles: onMaxFiles,
-        };
-        const { container, component } = renderSvelte(SvelteDropzone, { props: svelteProps });
-        return { container, startBatch: () => act(() => { component.startBatch(); }) };
-    },
-};
-
-const pick = async (container, files) => {
-    fireEvent.change(container.querySelector('input[type=file]'), { target: { files } });
-    await settle();
-};
+const frameworks = mounters(ReactDropzone, SvelteDropzone);
 
 describe.each(Object.keys(frameworks))('the %s Dropzone', (name) => {
     const mount = frameworks[name];
